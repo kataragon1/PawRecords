@@ -266,6 +266,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.1.4</p>
   </div>
 </div>
 
@@ -402,7 +403,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
       </div>
       <div class="status-spacer"></div>
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.1.3</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.1.4</div>
     </div>
   </div>
 </div>
@@ -460,6 +461,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
+
+// Separate provider for Drive connection that forces token refresh
+const driveProvider = new GoogleAuthProvider();
+driveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
+driveProvider.setCustomParameters({ prompt: 'consent' });
 
 // ── STATE ──
 let currentUser = null;
@@ -543,7 +549,7 @@ $('signin-btn').addEventListener('click', async () => {
     }
     // Store drive token for later use
     const credential = GoogleAuthProvider.credentialFromResult(result);
-    driveAccessToken = result._tokenResponse?.oauthAccessToken || null;
+    driveAccessToken = credential?.accessToken || null;
   } catch (err) {
     show('signin');
     $('signin-btn').disabled = false;
@@ -800,20 +806,26 @@ function filterFiles(filter) {
 
 // ── DRIVE CONNECTION ──
 $('connect-drive-btn').addEventListener('click', async () => {
-  if (!driveAccessToken) {
-    // Re-trigger Google sign-in to get Drive token
-    try {
-      const result = await signInWithPopup(auth, provider);
-      driveAccessToken = result._tokenResponse?.oauthAccessToken || null;
-    } catch(e) {
-      showToast('Could not get Drive access — try signing out and back in', 'warning');
-      return;
+  $('connect-drive-btn').textContent = 'Connecting…';
+  $('connect-drive-btn').disabled = true;
+  try {
+    const result = await signInWithPopup(auth, driveProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    driveAccessToken = credential?.accessToken || null;
+    if (driveAccessToken) {
+      $('drive-dot').className = 'status-dot green';
+      $('drive-status').textContent = 'Drive connected';
+      $('drive-connect-prompt').style.display = 'none';
+      await loadDriveFiles();
+    } else {
+      showToast('Could not get Drive access token — try again', 'warning');
+      $('connect-drive-btn').textContent = 'Connect Drive';
+      $('connect-drive-btn').disabled = false;
     }
-  }
-  if (driveAccessToken) {
-    $('drive-dot').className = 'status-dot green';
-    $('drive-status').textContent = 'Drive connected';
-    await loadDriveFiles();
+  } catch(e) {
+    showToast('Drive connection failed: ' + e.message, 'warning');
+    $('connect-drive-btn').textContent = 'Connect Drive';
+    $('connect-drive-btn').disabled = false;
   }
 });
 
