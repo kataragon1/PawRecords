@@ -835,15 +835,15 @@ async function loadDriveFiles() {
   try {
     // Find PawRecords folder first
     const pawRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)`,
+      `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name,parents)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${driveAccessToken}` } }
     );
     const pawData = await pawRes.json();
+    console.log('PawRecords search result:', JSON.stringify(pawData));
+    // Show debug in UI temporarily
+    filesList.innerHTML = `<div class="files-loading" style="white-space:pre-wrap;font-size:0.6rem;">Drive response:\n${JSON.stringify(pawData, null, 2)}</div>`;
     const pawFolder = pawData.files?.[0];
-    if (!pawFolder) {
-      filesList.innerHTML = '<div class="files-loading">Could not find PawRecords folder in My Drive. Check the folder name is exactly "PawRecords".</div>';
-      return;
-    }
+    if (!pawFolder) return;
     // Find uploads folder inside PawRecords
     const folderRes = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=name%3D'uploads'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+'${pawFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name)`,
