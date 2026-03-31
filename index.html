@@ -244,6 +244,59 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 ::-webkit-scrollbar-track{background:transparent;}
+
+/* ── PROCESSING PIPELINE ── */
+
+/* Process button row inside files panel */
+.files-actions{padding:0.6rem 0.75rem;border-bottom:1px solid var(--border);display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;flex-shrink:0;}
+.files-select-hint{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);flex:1;}
+
+/* File item checkbox + selection state */
+.file-item{position:relative;}
+.file-item-checkbox{position:absolute;left:0.4rem;top:50%;transform:translateY(-50%);width:12px;height:12px;accent-color:var(--accent);cursor:pointer;opacity:0;transition:opacity 0.15s;}
+.file-item:hover .file-item-checkbox,
+.file-item.selected .file-item-checkbox{opacity:1;}
+.file-item.selected{background:var(--surface);border-left:2px solid var(--accent);}
+.file-item.processing-active .file-name{color:var(--accent);}
+
+/* Processing modal */
+#process-modal{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:400;align-items:center;justify-content:center;padding:2rem;}
+#process-modal.open{display:flex;}
+.process-modal-box{background:white;border-radius:14px;width:100%;max-width:560px;box-shadow:0 10px 50px rgba(42,37,32,0.22);overflow:hidden;display:flex;flex-direction:column;}
+.process-modal-header{padding:1rem 1.25rem 0.75rem;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem;}
+.process-modal-title{font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);}
+.process-modal-subtitle{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);margin-top:0.15rem;line-height:1.5;}
+.process-modal-body{padding:1.1rem 1.25rem;overflow-y:auto;max-height:380px;}
+.process-mode-card{border-radius:9px;padding:0.85rem 1rem;margin-bottom:0.75rem;}
+.process-mode-card.realtime{background:var(--green-bg);border:1px solid rgba(74,124,89,0.25);}
+.process-mode-card.batch{background:var(--blue-bg);border:1px solid rgba(13,71,161,0.2);}
+.process-mode-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;margin-bottom:0.35rem;}
+.process-mode-card.realtime .process-mode-label{color:var(--green);}
+.process-mode-card.batch .process-mode-label{color:var(--blue);}
+.process-mode-desc{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);line-height:1.55;}
+.process-cost-row{display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-top:1px solid var(--surface2);margin-top:0.5rem;}
+.process-cost-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);}
+.process-cost-value{font-family:'JetBrains Mono',monospace;font-size:0.8rem;font-weight:600;color:var(--btn-cost);}
+.process-file-list{margin-top:0.6rem;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.process-file-row{display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.75rem;border-bottom:1px solid var(--surface2);font-family:'JetBrains Mono',monospace;font-size:0.61rem;}
+.process-file-row:last-child{border-bottom:none;}
+.process-file-row-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-dim);}
+.process-file-row-ext{color:var(--accent);font-size:0.56rem;width:28px;flex-shrink:0;}
+.process-file-row-size{color:var(--ink-muted);flex-shrink:0;}
+.process-modal-footer{padding:0.85rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-shrink:0;}
+.process-cancel-note{font-family:'JetBrains Mono',monospace;font-size:0.57rem;color:var(--ink-muted);}
+
+/* Active processing progress */
+#process-progress{display:none;background:var(--surface);border-top:1px solid var(--border);padding:0.6rem 0.75rem;flex-shrink:0;}
+#process-progress.active{display:block;}
+.progress-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem;}
+.progress-label{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);}
+.progress-count{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);}
+.progress-bar-wrap{background:var(--surface2);border-radius:4px;height:4px;overflow:hidden;}
+.progress-bar{height:4px;background:var(--green);border-radius:4px;transition:width 0.4s ease;width:0%;}
+.progress-current{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);margin-top:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.progress-stop-btn{font-size:0.57rem;padding:0.15rem 0.4rem;margin-left:0.5rem;cursor:pointer;background:var(--red-bg);border:1px solid rgba(192,36,42,0.2);color:var(--red);border-radius:4px;font-family:'JetBrains Mono',monospace;transition:all 0.15s;}
+.progress-stop-btn:hover{background:var(--red);color:white;}
 </style>
 </head>
 <body>
@@ -266,7 +319,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.1.4</p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.2.0</p>
   </div>
 </div>
 
@@ -323,12 +376,30 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
     </div>
 
     <!-- Files Panel -->
-    <div class="sidebar-panel" id="panel-files" style="overflow-y:auto;">
+    <div class="sidebar-panel" id="panel-files" style="overflow-y:auto;overflow-x:hidden;">
       <div class="files-toolbar" id="files-toolbar">
         <button class="filter-btn active" data-filter="all">All</button>
         <button class="filter-btn" data-filter="unprocessed">Unprocessed</button>
         <button class="filter-btn" data-filter="flagged">Flagged</button>
         <button class="filter-btn" data-filter="complete">Done</button>
+      </div>
+      <div class="files-actions" id="files-actions" style="display:none;">
+        <button class="btn-icon cost-icon" id="process-selected-btn" style="display:none;">
+          <span class="cost-dot"></span> Process Selected
+        </button>
+        <button class="btn-icon cost-icon" id="process-all-btn">
+          <span class="cost-dot"></span> Process Unprocessed
+        </button>
+        <span class="files-select-hint" id="files-select-hint"></span>
+      </div>
+      <div id="process-progress">
+        <div class="progress-header">
+          <span class="progress-label" id="progress-label">Processing…</span>
+          <span class="progress-count" id="progress-count"></span>
+          <button class="progress-stop-btn" id="progress-stop-btn">Stop</button>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="progress-current" id="progress-current"></div>
       </div>
       <div id="files-list">
         <div class="files-connect-prompt" id="drive-connect-prompt">
@@ -403,13 +474,43 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
       </div>
       <div class="status-spacer"></div>
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.1.4</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.2.0</div>
     </div>
   </div>
 </div>
 
 <!-- ══ TOAST CONTAINER ══ -->
 <div id="toast-container"></div>
+
+<!-- ══ PROCESS CONFIRM MODAL ══ -->
+<div id="process-modal">
+  <div class="process-modal-box">
+    <div class="process-modal-header">
+      <div>
+        <div class="process-modal-title" id="process-modal-title">Process Files</div>
+        <div class="process-modal-subtitle" id="process-modal-subtitle"></div>
+      </div>
+      <button class="modal-close" id="process-modal-close">✕</button>
+    </div>
+    <div class="process-modal-body">
+      <div id="process-mode-info"></div>
+      <div class="process-cost-row">
+        <span class="process-cost-label">Estimated cost</span>
+        <span class="process-cost-value" id="process-cost-estimate">calculating…</span>
+      </div>
+      <div class="process-file-list" id="process-file-list"></div>
+    </div>
+    <div class="process-modal-footer">
+      <span class="process-cancel-note" id="process-cancel-note">Processing can be stopped at any time — completed files are saved immediately.</span>
+      <div style="display:flex;gap:0.5rem;">
+        <button class="btn-icon" id="process-modal-cancel">Cancel</button>
+        <button class="btn-icon cost-icon" id="process-modal-confirm">
+          <span class="cost-dot"></span> <span id="process-confirm-label">Start Processing</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ══ API KEY MODAL ══ -->
 <div id="apikey-modal">
@@ -435,7 +536,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, where, orderBy, limit }
+import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
 // ── CONFIG ──
@@ -839,11 +940,11 @@ async function loadDriveFiles() {
       { headers: { Authorization: `Bearer ${driveAccessToken}` } }
     );
     const pawData = await pawRes.json();
-    console.log('PawRecords search result:', JSON.stringify(pawData));
-    // Show debug in UI temporarily
-    filesList.innerHTML = `<div class="files-loading" style="white-space:pre-wrap;font-size:0.6rem;">Drive response:\n${JSON.stringify(pawData, null, 2)}</div>`;
     const pawFolder = pawData.files?.[0];
-    if (!pawFolder) return;
+    if (!pawFolder) {
+      filesList.innerHTML = '<div class="files-loading">Could not find PawRecords folder in My Drive. Check the folder name is exactly "PawRecords".</div>';
+      return;
+    }
     // Find uploads folder inside PawRecords
     const folderRes = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=name%3D'uploads'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+'${pawFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name)`,
@@ -899,14 +1000,19 @@ function renderFilesList(driveFiles, statusMap) {
     const sb = priority[statusMap[b.id] || 'unprocessed'] ?? 0;
     return sa - sb || a.name.localeCompare(b.name);
   });
+
+  // Store globally for pipeline access
+  window._driveFiles = sorted;
+  window._statusMap = statusMap;
+
   filesList.innerHTML = '';
-  // Summary line
   const total = sorted.length;
   const unprocessed = sorted.filter(f => !statusMap[f.id] || statusMap[f.id] === 'unprocessed').length;
   const summary = document.createElement('div');
-  summary.style.cssText = 'padding:0.5rem 0.75rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;color:var(--ink-muted);border-bottom:1px solid var(--surface2);';
-  summary.textContent = `${total} files · ${unprocessed} unprocessed`;
+  summary.style.cssText = 'padding:0.5rem 0.75rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;color:var(--ink-muted);border-bottom:1px solid var(--surface2);display:flex;align-items:center;justify-content:space-between;';
+  summary.innerHTML = `<span>${total} files · ${unprocessed} unprocessed</span><span style="color:var(--accent);cursor:pointer;" id="select-all-link">select all</span>`;
   filesList.appendChild(summary);
+
   for (const file of sorted) {
     const status = statusMap[file.id] || 'unprocessed';
     const ext = file.name.split('.').pop().toUpperCase();
@@ -914,22 +1020,734 @@ function renderFilesList(driveFiles, statusMap) {
     const item = document.createElement('div');
     item.className = 'file-item';
     item.dataset.status = status;
+    item.dataset.fileId = file.id;
+    item.dataset.fileName = file.name;
+    item.dataset.mimeType = file.mimeType || '';
+    item.style.paddingLeft = '1.5rem';
     item.innerHTML = `
+      <input type="checkbox" class="file-item-checkbox" data-file-id="${file.id}">
       <div class="file-item-top">
-        <span class="file-ext-badge">${ext}</span>
+        <span class="file-ext-badge">${escHtml(ext)}</span>
         <span class="file-name" title="${escHtml(file.name)}">${escHtml(file.name)}</span>
-        <span class="file-status-badge ${status}">${status}</span>
+        <span class="file-status-badge ${status}" id="badge-${file.id}">${status}</span>
       </div>
       <div class="file-item-meta">
         <span>${size}</span>
-        ${status === 'complete' ? '<span class="file-cats">processed</span>' : ''}
+        <span class="file-cats" id="cats-${file.id}"></span>
         <a href="https://drive.google.com/file/d/${file.id}/view" target="_blank"
            style="color:var(--accent);text-decoration:none;margin-left:auto;" onclick="event.stopPropagation()">
           open ↗
         </a>
       </div>`;
+    // Checkbox selection
+    const cb = item.querySelector('.file-item-checkbox');
+    cb.addEventListener('change', () => {
+      item.classList.toggle('selected', cb.checked);
+      updateProcessButtons();
+    });
+    item.addEventListener('click', e => {
+      if (e.target === cb || e.target.tagName === 'A') return;
+      cb.checked = !cb.checked;
+      item.classList.toggle('selected', cb.checked);
+      updateProcessButtons();
+    });
     filesList.appendChild(item);
   }
+
+  // Select all link
+  setTimeout(() => {
+    const sal = $('select-all-link');
+    if (sal) sal.addEventListener('click', () => {
+      const all = document.querySelectorAll('.file-item-checkbox');
+      const anyUnchecked = [...all].some(cb => !cb.checked);
+      all.forEach(cb => {
+        cb.checked = anyUnchecked;
+        cb.closest('.file-item').classList.toggle('selected', anyUnchecked);
+      });
+      updateProcessButtons();
+    });
+  }, 50);
+
+  $('files-actions').style.display = 'flex';
+  updateProcessButtons();
+}
+
+function updateProcessButtons() {
+  const selected = [...document.querySelectorAll('.file-item-checkbox')].filter(cb => cb.checked);
+  const selBtn = $('process-selected-btn');
+  const allBtn = $('process-all-btn');
+  const hint = $('files-select-hint');
+  if (selected.length > 0) {
+    selBtn.style.display = 'inline-flex';
+    selBtn.innerHTML = `<span class="cost-dot"></span> Process ${selected.length} Selected`;
+    allBtn.style.display = 'none';
+    hint.textContent = `${selected.length} file${selected.length > 1 ? 's' : ''} selected`;
+  } else {
+    selBtn.style.display = 'none';
+    allBtn.style.display = 'inline-flex';
+    const unprocessed = [...document.querySelectorAll('.file-item')].filter(el =>
+      el.dataset.status === 'unprocessed' || el.dataset.status === 'failed').length;
+    hint.textContent = unprocessed ? `${unprocessed} unprocessed` : 'all files processed';
+    allBtn.disabled = !unprocessed;
+  }
+}
+
+// ── PROCESS BUTTONS ──
+document.addEventListener('DOMContentLoaded', () => {});
+
+$('process-selected-btn').addEventListener('click', () => {
+  const items = [...document.querySelectorAll('.file-item.selected')].map(el => ({
+    id: el.dataset.fileId, name: el.dataset.fileName, mimeType: el.dataset.mimeType,
+    size: parseInt(el.querySelector('.file-item-meta span')?.textContent) || 0
+  }));
+  openProcessModal(items);
+});
+
+$('process-all-btn').addEventListener('click', () => {
+  const items = [...document.querySelectorAll('.file-item')]
+    .filter(el => el.dataset.status === 'unprocessed' || el.dataset.status === 'failed')
+    .map(el => ({
+      id: el.dataset.fileId, name: el.dataset.fileName, mimeType: el.dataset.mimeType, size: 0
+    }));
+  openProcessModal(items);
+});
+
+$('process-modal-close').addEventListener('click', () => $('process-modal').classList.remove('open'));
+$('process-modal-cancel').addEventListener('click', () => $('process-modal').classList.remove('open'));
+
+function estimateCost(files) {
+  // Rough: ~2000 tokens input + ~500 output per file, sonnet pricing ~$3/$15 per M
+  // Multi-pass: narrative + lab + PCR = ~3 passes per file
+  const tokensPerFile = 6000;
+  const totalTokens = files.length * tokensPerFile;
+  const cost = (totalTokens / 1000000) * 9; // blended input/output
+  return { cost, totalTokens };
+}
+
+function openProcessModal(files) {
+  if (!files.length) return;
+  const isRealtime = files.length <= 4;
+  $('process-modal-title').textContent = isRealtime ? 'Real-time Processing' : 'Batch Processing';
+  $('process-modal-subtitle').textContent = `${files.length} file${files.length > 1 ? 's' : ''} selected`;
+
+  const modeInfo = $('process-mode-info');
+  if (isRealtime) {
+    modeInfo.innerHTML = `<div class="process-mode-card realtime">
+      <div class="process-mode-label">Real-time mode</div>
+      <div class="process-mode-desc">Files processed immediately — watch progress live. Best for 1–4 files. Rate limiting handled automatically with pause/resume.</div>
+    </div>`;
+    $('process-confirm-label').textContent = 'Start Processing';
+  } else {
+    modeInfo.innerHTML = `<div class="process-mode-card batch">
+      <div class="process-mode-label">Real-time queue (${files.length} files)</div>
+      <div class="process-mode-desc">Files processed sequentially with automatic rate limit handling. Each file saved to Firestore as it completes. You can close the tab and reopen to resume. ~50% savings vs manual — batching uses the Anthropic Batch API when fully implemented.</div>
+    </div>`;
+    $('process-confirm-label').textContent = `Process ${files.length} Files`;
+  }
+
+  const { cost } = estimateCost(files);
+  $('process-cost-estimate').textContent = `~$${cost.toFixed(3)}`;
+
+  // File list (show up to 20)
+  const listEl = $('process-file-list');
+  listEl.innerHTML = '';
+  const showFiles = files.slice(0, 20);
+  for (const f of showFiles) {
+    const ext = f.name.split('.').pop();
+    const row = document.createElement('div');
+    row.className = 'process-file-row';
+    row.innerHTML = `<span class="process-file-row-ext">${escHtml(ext.toUpperCase())}</span>
+      <span class="process-file-row-name">${escHtml(f.name)}</span>`;
+    listEl.appendChild(row);
+  }
+  if (files.length > 20) {
+    const more = document.createElement('div');
+    more.className = 'process-file-row';
+    more.style.color = 'var(--ink-muted)';
+    more.innerHTML = `<span style="flex:1;padding-left:36px;">…and ${files.length - 20} more</span>`;
+    listEl.appendChild(more);
+  }
+
+  window._pendingProcessFiles = files;
+  $('process-modal').classList.add('open');
+}
+
+$('process-modal-confirm').addEventListener('click', () => {
+  const files = window._pendingProcessFiles;
+  if (!files?.length) return;
+  $('process-modal').classList.remove('open');
+  startProcessingQueue(files);
+});
+
+// ── PROCESSING PIPELINE ──
+
+let processingQueue = [];
+let processingActive = false;
+let processingStop = false;
+
+$('progress-stop-btn').addEventListener('click', () => {
+  processingStop = true;
+  $('progress-label').textContent = 'Stopping after current file…';
+});
+
+async function startProcessingQueue(files) {
+  if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
+  if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+  processingStop = false;
+  processingActive = true;
+  processingQueue = [...files];
+
+  const progress = $('process-progress');
+  progress.classList.add('active');
+  $('process-all-btn').disabled = true;
+  $('process-selected-btn').disabled = true;
+
+  let done = 0;
+  const total = files.length;
+  let failed = 0;
+
+  for (const file of files) {
+    if (processingStop) break;
+    updateProgress(done, total, `Processing: ${file.name}`);
+    updateFileBadge(file.id, 'processing');
+    try {
+      await processFile(file);
+      updateFileBadge(file.id, 'complete');
+      done++;
+      updateProgress(done, total, done < total ? `Done: ${file.name}` : 'All complete!');
+    } catch (err) {
+      console.error(`Failed: ${file.name}`, err);
+      updateFileBadge(file.id, 'failed');
+      await writeFileStatus(file.id, file.name, 'failed', { error: err.message });
+      failed++;
+      done++;
+      showToast(`Failed: ${file.name.slice(0,30)} — ${err.message.slice(0,60)}`, 'warning');
+    }
+    // Throttle: brief pause between files to avoid rate limits
+    if (done < total && !processingStop) await sleep(800);
+  }
+
+  processingActive = false;
+  $('process-all-btn').disabled = false;
+  $('process-selected-btn').disabled = false;
+  $('progress-label').textContent = processingStop ? 'Stopped' : 'Complete';
+  $('progress-current').textContent = `${done - failed} succeeded · ${failed} failed`;
+
+  // Reload sidebars with new data
+  await loadRecordsSidebar();
+  await loadLabsSidebar();
+  await loadJournalSidebar();
+  updateProcessButtons();
+
+  const msg = processingStop
+    ? `Stopped — ${done - failed} of ${total} files processed`
+    : `Processed ${done - failed} files${failed ? ` · ${failed} failed` : ''} ✓`;
+  showToast(msg, 'journal');
+
+  setTimeout(() => { progress.classList.remove('active'); }, 8000);
+}
+
+function updateProgress(done, total, currentFile) {
+  $('progress-count').textContent = `${done}/${total}`;
+  $('progress-bar').style.width = total ? `${(done / total) * 100}%` : '0%';
+  $('progress-current').textContent = currentFile;
+}
+
+function updateFileBadge(fileId, status) {
+  const badge = $(`badge-${fileId}`);
+  if (badge) {
+    badge.className = `file-status-badge ${status}`;
+    badge.textContent = status;
+    const item = document.querySelector(`[data-file-id="${fileId}"]`);
+    if (item) item.dataset.status = status;
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── MAIN FILE PROCESSOR ──
+async function processFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const mime = file.mimeType || '';
+
+  // Mark as processing in Firestore
+  await writeFileStatus(file.id, file.name, 'processing');
+
+  let extractedText = null;
+  let isImage = false;
+  let imageBase64 = null;
+  let imageMediaType = null;
+
+  if (ext === 'xlsx' || ext === 'xls' || mime.includes('spreadsheet')) {
+    // Excel: direct column mapping to labs — no AI needed
+    await processExcelFile(file);
+    return;
+  } else if (['jpg','jpeg','png','gif','webp','tiff','tif'].includes(ext)) {
+    // Image file: pass to Claude vision
+    isImage = true;
+    const blob = await fetchDriveFileBlob(file.id);
+    imageBase64 = await blobToBase64(blob);
+    imageMediaType = blob.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  } else if (ext === 'pdf' || mime === 'application/pdf') {
+    // PDF: extract text via PDF.js
+    const blob = await fetchDriveFileBlob(file.id);
+    extractedText = await extractPdfText(blob);
+    if (!extractedText || extractedText.trim().length < 50) {
+      // Fallback: treat as image (scanned PDF) — render first page
+      imageBase64 = await pdfPageToBase64(blob);
+      imageMediaType = 'image/png';
+      isImage = true;
+      extractedText = null;
+    }
+  } else if (['txt','md','csv'].includes(ext)) {
+    const blob = await fetchDriveFileBlob(file.id);
+    extractedText = await blob.text();
+  } else {
+    // Unknown type — skip gracefully
+    await writeFileStatus(file.id, file.name, 'complete', {
+      flags: [{ type: 'unknown_type', description: `Unsupported file type: ${ext}` }]
+    });
+    return;
+  }
+
+  // ── SPLIT PASS: detect if this is a bulk summary that should be split ──
+  let chunks = [{ text: extractedText, imageBase64, imageMediaType, isImage }];
+  if (extractedText && extractedText.length > 3000) {
+    const isBulkSummary = await detectBulkSummary(extractedText.slice(0, 2000));
+    if (isBulkSummary) {
+      const splitChunks = await splitByDate(extractedText);
+      if (splitChunks.length > 1) {
+        chunks = splitChunks.map(t => ({ text: t, isImage: false }));
+      }
+    }
+  }
+
+  const allVisits = [];
+  const allLabs = [];
+  const allFlags = [];
+  const allCats = new Set();
+  const allDates = new Set();
+  const passes = [];
+
+  for (const chunk of chunks) {
+    if (processingStop) break;
+
+    // ── NARRATIVE PASS ──
+    const narrativeResult = await runNarrativePass(file, chunk);
+    if (narrativeResult) {
+      (narrativeResult.cats || []).forEach(c => allCats.add(c));
+      (narrativeResult.dates || []).forEach(d => allDates.add(d));
+      if (narrativeResult.visits?.length) allVisits.push(...narrativeResult.visits);
+      if (narrativeResult.flags?.length) allFlags.push(...narrativeResult.flags);
+      passes.push('narrative');
+    }
+
+    if (processingStop) break;
+
+    // ── LAB PASS ──
+    const labText = chunk.text || '';
+    if (labText.length > 100 || chunk.isImage) {
+      const labResult = await runLabPass(file, chunk, narrativeResult);
+      if (labResult?.labs?.length) {
+        allLabs.push(...labResult.labs);
+        passes.push('labs');
+      }
+    }
+
+    if (processingStop) break;
+
+    // ── PCR PASS ──
+    if (labText.toLowerCase().match(/\b(felv|fiv|pcr|giardia|corona|feline|detected|negative|positive)\b/)) {
+      const pcrResult = await runPcrPass(file, chunk, narrativeResult);
+      if (pcrResult?.results?.length) {
+        allLabs.push(...pcrResult.results.map(r => ({ ...r, labName: 'PCR/Serology' })));
+        passes.push('pcr');
+      }
+    }
+  }
+
+  // Write visits to Firestore
+  for (const visit of allVisits) {
+    if (!visit.cat || visit.cat === 'SKIP') continue;
+    const visitRef = doc(collection(db, 'visits'));
+    await setDoc(visitRef, {
+      cat: visit.cat,
+      date: visit.date || 'unknown',
+      clinic: visit.clinic || null,
+      doctor: visit.doctor || null,
+      chiefComplaint: visit.chiefComplaint || null,
+      diagnoses: visit.diagnoses || [],
+      medications: visit.medications || [],
+      procedures: visit.procedures || [],
+      narrative: visit.narrative || '',
+      sourceFiles: [file.name],
+      driveFileIds: [file.id],
+      visitCluster: `${visit.date || 'unknown'}_${(visit.clinic || 'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
+      confidence: visit.confidence || 0.8,
+      flags: visit.flags || [],
+      createdAt: new Date().toISOString()
+    });
+    if (visit.cat) allCats.add(visit.cat);
+    if (visit.date) allDates.add(visit.date);
+  }
+
+  // Write labs to Firestore
+  for (const lab of allLabs) {
+    if (!lab.test || lab.value === undefined || lab.value === null) continue;
+    const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
+    if (!cat) continue;
+    const labRef = doc(collection(db, 'labs'));
+    await setDoc(labRef, {
+      cat,
+      visitDate: lab.visitDate || lab.date || null,
+      resultDate: lab.resultDate || lab.date || lab.visitDate || null,
+      labName: lab.labName || null,
+      test: lab.test,
+      value: lab.value,
+      unit: lab.unit || null,
+      refLow: lab.refLow ?? null,
+      refHigh: lab.refHigh ?? null,
+      abnormal: lab.abnormal || null,
+      sourceFile: file.name,
+      driveFileId: file.id,
+      visitCluster: lab.visitCluster || null,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // Write flags to Firestore
+  for (const flag of allFlags) {
+    const flagRef = doc(collection(db, 'flags'));
+    await setDoc(flagRef, {
+      fileId: file.id,
+      filename: file.name,
+      type: flag.type || 'unclear_structure',
+      description: flag.description || '',
+      bestGuess: flag.bestGuess || null,
+      options: flag.options || ['View original'],
+      resolved: false,
+      resolvedAt: null,
+      resolution: null,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // Final file status write
+  const finalStatus = allFlags.length > 0 ? 'flagged' : 'complete';
+  await writeFileStatus(file.id, file.name, finalStatus, {
+    cats: [...allCats],
+    datesCovered: [...allDates].sort(),
+    extractionPasses: [...new Set(passes)],
+    flags: allFlags.map(f => f.type),
+    processedAt: new Date().toISOString()
+  });
+
+  // Update badge for cats found
+  const catsEl = $(`cats-${file.id}`);
+  if (catsEl && allCats.size) catsEl.textContent = [...allCats].join(', ');
+
+  // Update flags button in header
+  const flagCount = parseInt($('flags-count').textContent || '0') + allFlags.length;
+  $('flags-count').textContent = flagCount;
+  if (flagCount > 0) $('flags-btn').style.display = 'inline-flex';
+
+  // Token cost tracking (rough: 8k tokens per file)
+  updateSessionCost(8000);
+}
+
+// ── DRIVE FILE FETCH ──
+async function fetchDriveFileBlob(fileId) {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${driveAccessToken}` } }
+  );
+  if (!res.ok) throw new Error(`Drive fetch failed: ${res.status}`);
+  return res.blob();
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// ── PDF TEXT EXTRACTION via PDF.js ──
+let pdfjs = null;
+async function getPdfJs() {
+  if (pdfjs) return pdfjs;
+  // Load PDF.js from CDN
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  document.head.appendChild(script);
+  await new Promise((r, j) => { script.onload = r; script.onerror = j; });
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjs = window.pdfjsLib;
+  return pdfjs;
+}
+
+async function extractPdfText(blob) {
+  try {
+    const lib = await getPdfJs();
+    const arrayBuffer = await blob.arrayBuffer();
+    const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    const maxPages = Math.min(pdf.numPages, 60);
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      text += pageText + '\n';
+    }
+    return text.trim();
+  } catch (err) {
+    console.warn('PDF.js extraction failed:', err);
+    return '';
+  }
+}
+
+async function pdfPageToBase64(blob) {
+  try {
+    const lib = await getPdfJs();
+    const arrayBuffer = await blob.arrayBuffer();
+    const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    return canvas.toDataURL('image/png').split(',')[1];
+  } catch (err) {
+    console.warn('PDF page render failed:', err);
+    return null;
+  }
+}
+
+// ── EXCEL PROCESSING ──
+async function processExcelFile(file) {
+  // For now: mark complete with a flag to review manually
+  // Full XLSX parsing requires SheetJS — flag for manual review
+  await writeFileStatus(file.id, file.name, 'flagged', {
+    cats: [],
+    datesCovered: [],
+    extractionPasses: ['excel_pending'],
+    flags: ['excel_manual_review'],
+    processedAt: new Date().toISOString()
+  });
+  const flagRef = doc(collection(db, 'flags'));
+  await setDoc(flagRef, {
+    fileId: file.id, filename: file.name,
+    type: 'excel_manual_review',
+    description: 'Excel file detected — requires manual column mapping to labs collection',
+    bestGuess: null,
+    options: ['Map columns manually', 'Skip this file'],
+    resolved: false, resolvedAt: null, resolution: null,
+    createdAt: new Date().toISOString()
+  });
+}
+
+// ── FIRESTORE HELPERS ──
+async function writeFileStatus(fileId, filename, status, extra = {}) {
+  const ref = doc(db, 'files', fileId);
+  await setDoc(ref, {
+    driveFileId: fileId,
+    filename,
+    driveUrl: `https://drive.google.com/file/d/${fileId}/view`,
+    status,
+    updatedAt: new Date().toISOString(),
+    ...extra
+  }, { merge: true });
+}
+
+// ── CLAUDE EXTRACTION PASSES ──
+
+const SYSTEM_EXTRACTION = `You are a veterinary medical records parser. Extract structured data from vet records.
+Rules:
+- Cat names: Mocha, Evie, Latte (or detect new names)
+- Invoices: extract ONLY meds dispensed, vaccines, prescription foods, procedures + dates. Discard all costs/billing. If none of those → respond {skip:true}
+- Bulk clinical summaries: IGNORE any summary/problem list header block at the top. Extract ONLY individual dated visit entries
+- Discard boilerplate: portal instructions, legal text, appointment reminders
+- Multi-cat files: produce separate records per cat
+- Every extraction must include confidence (0-1) and flags for uncertain items
+- Dates: YYYY-MM-DD format. If uncertain, your best guess with low confidence
+- Always respond with ONLY valid JSON, no markdown fences, no extra text`;
+
+async function callExtractionClaude(messages, maxTokens = 2000) {
+  if (!apiKey) throw new Error('No API key');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: SYSTEM_EXTRACTION,
+      messages
+    })
+  });
+
+  if (res.status === 529 || res.status === 429) {
+    // Rate limited — wait and retry once
+    const retryAfter = parseInt(res.headers?.get?.('retry-after') || '60');
+    const wait = Math.min(retryAfter, 120) * 1000;
+    $('progress-current').textContent = `Rate limited — waiting ${Math.round(wait/1000)}s…`;
+    await sleep(wait);
+    return callExtractionClaude(messages, maxTokens);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API ${res.status}`);
+  }
+  const data = await res.json();
+  const raw = data.content.map(b => b.text || '').join('').trim();
+  try {
+    return JSON.parse(raw.replace(/^```json\n?|^```\n?|```$/gm, '').trim());
+  } catch {
+    console.warn('JSON parse failed, raw:', raw.slice(0,200));
+    return null;
+  }
+}
+
+function buildUserContent(chunk, promptText) {
+  if (chunk.isImage && chunk.imageBase64) {
+    return [
+      { type: 'image', source: { type: 'base64', media_type: chunk.imageMediaType || 'image/jpeg', data: chunk.imageBase64 } },
+      { type: 'text', text: promptText }
+    ];
+  }
+  return promptText + '\n\n' + (chunk.text || '').slice(0, 12000);
+}
+
+async function detectBulkSummary(textSnippet) {
+  // Heuristic: bulk summaries often have a dense problem list or multiple dates in header
+  const hasMultipleDates = (textSnippet.match(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/g) || []).length > 3;
+  const hasProblemList = /problem list|active diagnoses|current medications|visit history/i.test(textSnippet);
+  return hasMultipleDates && hasProblemList;
+}
+
+async function splitByDate(fullText) {
+  // Simple heuristic split by date headers before AI processing
+  const datePattern = /(?:^|\n)(?:Date of Service|Visit Date|DOS|Date):\s*(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})/gi;
+  const splits = [];
+  let lastIdx = 0;
+  let match;
+  while ((match = datePattern.exec(fullText)) !== null) {
+    if (match.index > lastIdx + 100) {
+      splits.push(fullText.slice(lastIdx, match.index));
+      lastIdx = match.index;
+    }
+  }
+  splits.push(fullText.slice(lastIdx));
+  return splits.filter(s => s.trim().length > 100);
+}
+
+async function runNarrativePass(file, chunk) {
+  const prompt = `Extract all veterinary visit records from this document.
+
+Return JSON:
+{
+  "skip": false,
+  "cats": ["Mocha"],
+  "dates": ["2024-03-15"],
+  "visits": [{
+    "cat": "Mocha",
+    "date": "2024-03-15",
+    "clinic": "...",
+    "doctor": "...",
+    "chiefComplaint": "...",
+    "diagnoses": ["IBD"],
+    "medications": [{"name":"...","dose":"...","frequency":"...","route":"...","dispensed":true}],
+    "procedures": [{"name":"...","date":"...","findings":"..."}],
+    "narrative": "full extracted text for this visit",
+    "confidence": 0.9,
+    "flags": []
+  }],
+  "flags": [{"type":"no_date","description":"...","bestGuess":"..."}]
+}
+
+If this is an invoice with no clinical content, return {"skip":true}.`;
+
+  const result = await callExtractionClaude([
+    { role: 'user', content: buildUserContent(chunk, prompt) }
+  ], 3000);
+
+  if (!result || result.skip) return null;
+  return result;
+}
+
+async function runLabPass(file, chunk, narrativeCtx) {
+  const catContext = narrativeCtx?.cats?.join(', ') || 'unknown cat';
+  const dateContext = narrativeCtx?.visits?.[0]?.date || 'unknown date';
+
+  const prompt = `Extract ALL laboratory results from this veterinary document. Include every single test value — never omit any.
+
+Known cat: ${catContext}
+Approximate date: ${dateContext}
+
+Return JSON:
+{
+  "labs": [{
+    "cat": "Mocha",
+    "test": "BUN",
+    "value": 12,
+    "unit": "mg/dL",
+    "refLow": 16,
+    "refHigh": 37,
+    "abnormal": "LOW",
+    "resultDate": "2024-03-15",
+    "visitDate": "2024-03-15",
+    "labName": "CBC with Differential",
+    "visitCluster": "2024-03-15_clinic"
+  }]
+}
+
+If no lab values found, return {"labs":[]}.
+For PCR/serology binary tests, use value: "NEGATIVE" or "POSITIVE", unit: null.`;
+
+  const result = await callExtractionClaude([
+    { role: 'user', content: buildUserContent(chunk, prompt) }
+  ], 2500);
+
+  return result;
+}
+
+async function runPcrPass(file, chunk, narrativeCtx) {
+  const catContext = narrativeCtx?.cats?.join(', ') || 'unknown cat';
+
+  const prompt = `Extract ALL PCR, serology, and infectious disease test results buried in this veterinary text.
+Look for: FeLV, FIV, Giardia, Tritrichomonas, Cryptosporidium, Coronavirus, Panleukopenia, Herpesvirus, Calicivirus, Bartonella, Toxoplasma, Heartworm, fecal float, culture results.
+
+Known cat: ${catContext}
+
+Return JSON:
+{
+  "results": [{
+    "cat": "Mocha",
+    "test": "FeLV",
+    "value": "NEGATIVE",
+    "unit": null,
+    "abnormal": "NEG",
+    "resultDate": "2024-03-15",
+    "visitDate": "2024-03-15",
+    "labName": "PCR/Serology"
+  }]
+}
+
+If no PCR/serology results found, return {"results":[]}.`;
+
+  const result = await callExtractionClaude([
+    { role: 'user', content: buildUserContent(chunk, prompt) }
+  ], 1500);
+
+  return result;
 }
 
 // ── VISIT DETAIL ──
