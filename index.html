@@ -461,10 +461,10 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <div class="progress-current" id="progress-current"></div>
       </div>
       <div id="files-list">
-        <div class="files-connect-prompt" id="drive-connect-prompt">
-          <p>Connect Google Drive to access your <strong>PawRecords/uploads</strong> folder.</p>
+        <div class="files-connect-prompt" id="drive-connect-prompt" style="display:none;">
+          <p>Drive connection lost. Sign out and back in to reconnect.</p>
           <button class="btn-icon free-icon" id="connect-drive-btn">
-            <span class="free-dot"></span> Connect Drive
+            <span class="free-dot"></span> Reconnect Drive
           </button>
         </div>
       </div>
@@ -679,10 +679,9 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
-// Separate provider for Drive connection that forces token refresh
+// Drive uses the same provider — token captured at sign-in, or re-prompted if needed
 const driveProvider = new GoogleAuthProvider();
 driveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
-driveProvider.setCustomParameters({ prompt: 'consent' });
 
 // ── STATE ──
 let currentUser = null;
@@ -797,8 +796,16 @@ onAuthStateChanged(auth, async user => {
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
+    // Capture Drive token from sign-in credential (scope already requested)
+    if (driveAccessToken) {
+      $('drive-dot').className = 'status-dot green';
+      $('drive-status').textContent = 'Drive connected';
+      $('drive-connect-prompt').style.display = 'none';
+    }
     await loadApiKey();
     await loadInitialData();
+    // Auto-load Drive files if token available
+    if (driveAccessToken) await loadDriveFiles();
     show('app');
   } else {
     currentUser = null;
@@ -1070,6 +1077,14 @@ function filterFiles(filter) {
 
 // ── DRIVE CONNECTION ──
 $('connect-drive-btn').addEventListener('click', async () => {
+  // If we already have a token from sign-in, use it directly
+  if (driveAccessToken) {
+    $('drive-connect-prompt').style.display = 'none';
+    $('drive-dot').className = 'status-dot green';
+    $('drive-status').textContent = 'Drive connected';
+    await loadDriveFiles();
+    return;
+  }
   $('connect-drive-btn').textContent = 'Connecting…';
   $('connect-drive-btn').disabled = true;
   try {
@@ -1082,7 +1097,7 @@ $('connect-drive-btn').addEventListener('click', async () => {
       $('drive-connect-prompt').style.display = 'none';
       await loadDriveFiles();
     } else {
-      showToast('Could not get Drive access token — try again', 'warning');
+      showToast('Could not get Drive access token — try signing out and back in', 'warning');
       $('connect-drive-btn').textContent = 'Connect Drive';
       $('connect-drive-btn').disabled = false;
     }
