@@ -462,7 +462,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
       <div id="files-list">
         <div class="files-connect-prompt" id="drive-connect-prompt" style="display:none;">
-          <p>Drive connection lost. Sign out and back in to reconnect.</p>
+          <p>Drive token expired. Sign out and back in to reconnect, or click below.</p>
           <button class="btn-icon free-icon" id="connect-drive-btn">
             <span class="free-dot"></span> Reconnect Drive
           </button>
@@ -796,17 +796,11 @@ onAuthStateChanged(auth, async user => {
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
-    // Capture Drive token from sign-in credential (scope already requested)
-    if (driveAccessToken) {
-      $('drive-dot').className = 'status-dot green';
-      $('drive-status').textContent = 'Drive connected';
-      $('drive-connect-prompt').style.display = 'none';
-    }
     await loadApiKey();
     await loadInitialData();
-    // Auto-load Drive files if token available
-    if (driveAccessToken) await loadDriveFiles();
     show('app');
+    // Load Drive files — works if token captured at sign-in, shows reconnect if not
+    await loadDriveFiles();
   } else {
     currentUser = null;
     show('signin');
@@ -1110,6 +1104,16 @@ $('connect-drive-btn').addEventListener('click', async () => {
 
 async function loadDriveFiles() {
   const filesList = $('files-list');
+  if (!driveAccessToken) {
+    $('drive-connect-prompt').style.display = 'flex';
+    $('drive-dot').className = 'status-dot amber';
+    $('drive-status').textContent = 'Drive not connected';
+    return;
+  }
+  $('drive-connect-prompt').style.display = 'none';
+  $('drive-dot').className = 'status-dot green';
+  $('drive-status').textContent = 'Drive connected';
+  $('files-actions').style.display = 'none';
   filesList.innerHTML = '<div class="files-loading">Loading files from Drive…</div>';
   try {
     // Find PawRecords folder first
