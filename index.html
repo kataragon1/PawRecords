@@ -1956,18 +1956,18 @@ function abbreviateClinic(name) {
 let popupMatches = [], popupMatchIdx = 0, popupRawText = '';
 
 function openVisit(visit) {
-  const title = `${visit.cat} \u00b7 ${formatDate(visit.date)}${visit.clinic ? ' \u00b7 ' + abbreviateClinic(visit.clinic) : ''}`;
+  const title = `${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : ''}`;
   let content = '';
   if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
   if (visit.diagnoses?.length) content += `Diagnoses: ${visit.diagnoses.join(', ')}\n\n`;
   if (visit.medications?.length) {
     content += `Medications:\n`;
-    for (const m of visit.medications) content += `  \u2022 ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}\n`;
+    for (const m of visit.medications) content += `  • ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}\n`;
     content += '\n';
   }
   if (visit.procedures?.length) {
     content += `Procedures:\n`;
-    for (const p of visit.procedures) content += `  \u2022 ${p.name}${p.findings ? ' \u2014 ' + p.findings : ''}\n`;
+    for (const p of visit.procedures) content += `  • ${p.name}${p.findings ? ' — ' + p.findings : ''}\n`;
     content += '\n';
   }
   if (visit.narrative) content += `\n${visit.narrative}`;
@@ -1983,7 +1983,7 @@ function openVisit(visit) {
 
   const linkEl = $('popup-drive-link');
   if (visit.driveFileIds?.[0]) {
-    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive \u2197</a>`;
+    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
   } else {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
@@ -2048,7 +2048,7 @@ async function checkAbnormalLabs() {
       bycat[l.cat].push(`${l.test} ${l.value}${l.unit?' '+l.unit:''} [${l.abnormal}]`);
     }
     const parts = Object.entries(bycat).map(([cat,tests]) => `${cat}: ${tests.join(', ')}`);
-    $('abnormal-banner-text').textContent = `\u26a0 Recent abnormal values \u2014 ${parts.join(' \u00b7 ')}`;
+    $('abnormal-banner-text').textContent = `⚠ Recent abnormal values — ${parts.join(' · ')}`;
     $('abnormal-banner').classList.add('show');
   } catch(e) { console.warn('Abnormal check failed:', e); }
 }
@@ -2071,12 +2071,12 @@ async function throttleCheck() {
 }
 async function showThrottleCountdown(secs) {
   for (let i = secs; i > 0; i--) {
-    $('progress-current').textContent = `Rate limit \u2014 cooling down ${i}s\u2026`;
+    $('progress-current').textContent = `Rate limit — cooling down ${i}s…`;
     await sleep(1000);
   }
 }
 function showPauseOverlay(filename) {
-  $('pause-file-info').textContent = filename ? `Paused on: ${filename}` : 'Paused \u2014 progress so far is saved';
+  $('pause-file-info').textContent = filename ? `Paused on: ${filename}` : 'Paused — progress so far is saved';
   $('pause-overlay').classList.add('open');
 }
 function hidePauseOverlay() { $('pause-overlay').classList.remove('open'); }
@@ -2208,7 +2208,7 @@ async function sendMessage() {
     const msg = err.message || '';
     const isRate = msg.toLowerCase().includes('rate') || msg.includes('429') || msg.toLowerCase().includes('credit');
     if (isRate) {
-      appendMsg('assistant', '\u23f8 Rate limit reached. Wait a moment then resend your message.');
+      appendMsg('assistant', '⏸ Rate limit reached. Wait a moment then resend your message.');
       convHistory.pop();
       $('user-input').value = text;
     } else {
@@ -2241,7 +2241,7 @@ async function extractJournalFromConversation(userMsg, assistantMsg) {
     const journalLines = [];
     jSnap.forEach(d => {
       const j = d.data();
-      journalLines.push(`${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose ? ' \u2014 '+j.dose : ''}`);
+      journalLines.push(`${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose ? ' — '+j.dose : ''}`);
     });
     const journalContext = journalLines.length ? journalLines.join('\n') : '(empty)';
     const today = new Date().toISOString().split('T')[0];
@@ -2271,7 +2271,7 @@ function applyJournalExtraction(data, date) {
     const item = { id:Math.random().toString(36).slice(2,9), cat:e.cat, list:e.list||'General', text:e.text, status:e.status||'current', startDate:e.startDate||date, endDate:e.endDate||null, addedDate:date };
     pendingJournalItems.push(item);
     const undo = () => { pendingJournalItems = pendingJournalItems.filter(i=>i!==item); loadJournalSidebar(); };
-    showToast(`Journal: ${e.cat} \u00b7 ${e.text.slice(0,28)}${e.status==='maybe'?' (maybe)':e.status==='plan'?' (plan)':''}`, 'journal', undo);
+    showToast(`Journal: ${e.cat} · ${e.text.slice(0,28)}${e.status==='maybe'?' (maybe)':e.status==='plan'?' (plan)':''}`, 'journal', undo);
   }
   for (const m of (data.mentions || [])) {
     const cats = m.cat === 'all' ? ['Mocha','Evie','Latte'] : [m.cat];
@@ -2281,7 +2281,7 @@ function applyJournalExtraction(data, date) {
       if (mentionTally[key] === 2) {
         const item = {id:Math.random().toString(36).slice(2,9),cat,list:'Maybe',text:m.term,status:'maybe',startDate:date,addedDate:date};
         pendingJournalItems.push(item);
-        showToast(`Journal: ${cat} \u00b7 ${m.term} \u2192 maybe (mentioned twice)`,'journal');
+        showToast(`Journal: ${cat} · ${m.term} → maybe (mentioned twice)`,'journal');
       }
     }
   }
@@ -2292,7 +2292,7 @@ function applyJournalExtraction(data, date) {
 $('save-session-btn').addEventListener('click', async () => {
   if (!convHistory.length) return;
   $('save-session-btn').disabled = true;
-  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Saving\u2026';
+  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Saving…';
   try {
     const today = new Date().toISOString().split('T')[0];
     const prompt = `Review this veterinary care conversation. Extract:
@@ -2325,10 +2325,10 @@ Conversation:\n${convHistory.map(m=>`${m.role}: ${m.content}`).join('\n\n').slic
     pendingJournalItems = [];
     await loadJournalSidebar();
     updateSessionCost(2000);
-    showToast(`Session saved \u2014 ${(extracted.highlights||[]).length} highlights, ${allItems.length} journal entries`,'journal');
+    showToast(`Session saved — ${(extracted.highlights||[]).length} highlights, ${allItems.length} journal entries`,'journal');
   } catch(err) {
     console.error('Save session error:', err);
-    showToast('Save failed \u2014 '+err.message,'warning');
+    showToast('Save failed — '+err.message,'warning');
   }
   $('save-session-btn').disabled = false;
   $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Save Session';
@@ -2416,6 +2416,98 @@ $('apikey-save-btn').addEventListener('click', async () => {
 $('apikey-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') $('apikey-save-btn').click();
 });
+
+// ── TYPING INDICATOR ──
+function appendTyping() {
+  const chatBody = $('chat-body');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `<div class="msg-avatar">pr</div><div class="msg-bubble"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  return div;
+}
+
+// ── CONTEXT BUILDER ──
+async function buildChatContext(userMessage) {
+  const knownCats = ['Mocha', 'Evie', 'Latte'];
+  const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
+  const targetCats = mentioned.length ? mentioned : knownCats;
+  let context = '';
+  try {
+    for (const cat of targetCats) {
+      const vq = query(collection(db, 'visits'), where('cat', '==', cat), orderBy('date', 'desc'), limit(10));
+      const vsnap = await getDocs(vq);
+      if (!vsnap.empty) {
+        context += `\n\n## ${cat} — Recent Visits\n`;
+        vsnap.forEach(d => {
+          const v = d.data();
+          context += `\n### ${v.date}${v.clinic ? ' — ' + v.clinic : ''}\n`;
+          if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
+          if (v.diagnoses?.length) context += `Diagnoses: ${v.diagnoses.join(', ')}\n`;
+          if (v.medications?.length) context += `Medications: ${v.medications.map(m=>m.name+(m.dose?' '+m.dose:'')).join(', ')}\n`;
+          if (v.narrative) context += `${v.narrative.slice(0, 800)}\n`;
+        });
+      }
+      const lq = query(collection(db, 'labs'), where('cat', '==', cat), orderBy('resultDate', 'desc'), limit(60));
+      const lsnap = await getDocs(lq);
+      if (!lsnap.empty) {
+        context += `\n\n## ${cat} — Recent Labs\n`;
+        lsnap.forEach(d => {
+          const l = d.data();
+          context += `${l.resultDate||''} ${l.test}: ${l.value}${l.unit?' '+l.unit:''}${l.abnormal?' ['+l.abnormal+']':''}\n`;
+        });
+      }
+    }
+    const jq = query(collection(db, 'journal'), where('cat', 'in', targetCats));
+    const jsnap = await getDocs(jq);
+    if (!jsnap.empty) {
+      context += '\n\n## Care Journal\n';
+      jsnap.forEach(d => {
+        const j = d.data();
+        if (j.status !== 'past') context += `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' — '+j.dose:''}\n`;
+      });
+    }
+  } catch(e) { console.error('Context build error:', e); }
+  return context;
+}
+
+// ── CLAUDE CHAT API ──
+async function callClaude(history, context) {
+  const system = `You are a veterinary care assistant for cats Mocha, Evie, and Latte, belonging to Katherine Coleman.
+You have access to their complete medical records, lab results, and care journal below.
+Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
+If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+
+${context || '(No records loaded yet — records will appear after files are processed)'}`;
+
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2048, system, messages: history })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.content.map(b => b.text || '').join('').trim();
+    }
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || `API error ${res.status}`;
+    const isRate = res.status === 429 || res.status === 529;
+    if (isRate && attempt < MAX_RETRIES) {
+      const wait = 15 * Math.pow(2, attempt) * 1000;
+      await sleep(wait);
+      continue;
+    }
+    throw new Error(msg);
+  }
+}
 
 // ── UTILITIES ──
 function escHtml(s) {
