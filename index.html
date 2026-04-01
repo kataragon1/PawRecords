@@ -297,7 +297,65 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .progress-current{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);margin-top:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .progress-stop-btn{font-size:0.57rem;padding:0.15rem 0.4rem;margin-left:0.5rem;cursor:pointer;background:var(--red-bg);border:1px solid rgba(192,36,42,0.2);color:var(--red);border-radius:4px;font-family:'JetBrains Mono',monospace;transition:all 0.15s;}
 .progress-stop-btn:hover{background:var(--red);color:white;}
-</style>
+
+/* ── LAYER 3 ── */
+#record-popup{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:200;align-items:center;justify-content:center;padding:2rem;}
+#record-popup.open{display:flex;}
+.record-popup-box{background:white;border-radius:13px;width:100%;max-width:700px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;}
+.record-popup-header{padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;flex-wrap:wrap;}
+.record-popup-title{font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);flex:1;min-width:0;}
+.record-popup-meta{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);white-space:nowrap;}
+.record-popup-search{display:flex;align-items:center;gap:0.3rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem;transition:border-color 0.2s;}
+.record-popup-search:focus-within{border-color:var(--accent);}
+#popup-search-input{background:transparent;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink);width:110px;}
+#popup-search-input::placeholder{color:var(--ink-muted);}
+.popup-search-nav{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.65rem;padding:0 0.1rem;transition:color 0.15s;line-height:1;}
+.popup-search-nav:hover{color:var(--accent);}
+#popup-search-count{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);white-space:nowrap;min-width:40px;}
+.record-popup-body{flex:1;overflow-y:auto;padding:1.1rem 1.25rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;line-height:1.75;color:var(--ink-dim);white-space:pre-wrap;word-break:break-word;}
+.record-popup-body::-webkit-scrollbar{width:4px;}
+.record-popup-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.record-popup-footer{padding:0.65rem 1.1rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.popup-footer-meta{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);}
+mark.sh{background:#fde68a;border-radius:2px;padding:0 1px;}
+mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
+#pause-overlay{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.58);z-index:500;align-items:center;justify-content:center;padding:2rem;}
+#pause-overlay.open{display:flex;}
+.pause-box{background:white;border-radius:14px;padding:2rem;max-width:400px;width:100%;text-align:center;box-shadow:0 8px 40px rgba(42,37,32,0.2);}
+.pause-icon{font-size:2rem;margin-bottom:0.75rem;}
+.pause-title{font-family:'Instrument Serif',serif;font-size:1.3rem;margin-bottom:0.5rem;color:var(--ink);}
+.pause-desc{font-size:0.83rem;color:var(--ink-muted);line-height:1.6;margin-bottom:1.25rem;}
+.pause-file{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-dim);background:var(--surface);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:1.25rem;word-break:break-all;}
+.pause-continue-btn{width:100%;background:var(--green);color:white;border:none;border-radius:8px;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:0.95rem;padding:0.85rem;cursor:pointer;transition:background 0.15s;}
+.pause-continue-btn:hover{background:var(--btn-free-hover);}
+.journal-pending-section{border-bottom:1px solid var(--border);padding-bottom:0.5rem;margin-bottom:0.25rem;}
+.journal-pending-header{padding:0.45rem 1rem 0.3rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--amber);display:flex;align-items:center;justify-content:space-between;}
+.journal-pending-item{padding:0.22rem 1rem 0.22rem 1.5rem;display:flex;align-items:center;gap:0.4rem;}
+.journal-pending-text{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--amber);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.journal-pending-dismiss{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0.1rem 0.2rem;border-radius:3px;flex-shrink:0;transition:color 0.15s;}
+.journal-pending-dismiss:hover{color:var(--red);}
+.journal-group-label{padding:0.15rem 1rem 0.1rem 2.25rem;font-family:'JetBrains Mono',monospace;font-size:0.57rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);margin-top:0.2rem;}
+.journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
+.journal-entry-full:hover{background:var(--surface);}
+.journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.journal-entry-full:hover .journal-entry-text-full{color:var(--accent);}
+.journal-entry-date-full{font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--ink-muted);margin-top:0.05rem;}
+.journal-list-count{background:var(--surface2);border-radius:10px;padding:0 0.35rem;font-size:0.58rem;color:var(--ink-muted);}
+#chat-search-bar{display:none;padding:0.45rem 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;gap:0.5rem;}
+#chat-search-bar.open{display:flex;}
+#chat-search-input{flex:1;background:white;border:1.5px solid var(--border);border-radius:7px;padding:0.38rem 0.75rem;font-family:'JetBrains Mono',monospace;font-size:0.73rem;color:var(--ink);outline:none;transition:border-color 0.2s;}
+#chat-search-input:focus{border-color:var(--accent);}
+#chat-search-input::placeholder{color:var(--ink-muted);}
+.chat-search-nav{background:var(--btn-secondary);border:1px solid rgba(158,90,58,0.25);border-radius:6px;padding:0.3rem 0.5rem;font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--btn-secondary-ink);cursor:pointer;transition:all 0.15s;}
+.chat-search-nav:hover{background:var(--btn-secondary-hover);}
+#chat-search-count{font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--ink-muted);white-space:nowrap;min-width:48px;}
+#chat-search-close{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.9rem;padding:0.15rem 0.3rem;transition:color 0.15s;}
+#chat-search-close:hover{color:var(--ink);}
+#abnormal-banner{display:none;padding:0.55rem 1.25rem;background:var(--red-bg);border-bottom:1px solid rgba(192,36,42,0.2);flex-shrink:0;align-items:center;gap:0.75rem;flex-wrap:wrap;}
+#abnormal-banner.show{display:flex;}
+#abnormal-banner-text{font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--red);flex:1;line-height:1.5;}
+#abnormal-banner-close{background:none;border:none;cursor:pointer;color:var(--red);font-size:0.85rem;padding:0.1rem 0.3rem;opacity:0.6;transition:opacity 0.15s;flex-shrink:0;}
+#abnormal-banner-close:hover{opacity:1;}
 </head>
 <body>
 
@@ -420,6 +478,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
         <span class="header-context" id="header-context"></span>
       </div>
       <div class="app-header-right">
+        <button class="btn-icon free-icon" id="chat-search-btn" title="Search conversation (Ctrl+F)">🔍</button>
         <button class="btn-icon free-icon" id="flags-btn" style="display:none">
           <span class="free-dot"></span> <span id="flags-count">0</span> Flagged
         </button>
@@ -429,6 +488,21 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
         <button class="btn-icon" id="apikey-btn" title="Set Anthropic API key">🔑 API Key</button>
         <button class="btn-icon danger" id="signout-btn">Sign Out</button>
       </div>
+    </div>
+
+    <!-- Abnormal lab banner -->
+    <div id="abnormal-banner">
+      <span id="abnormal-banner-text"></span>
+      <button id="abnormal-banner-close">✕</button>
+    </div>
+
+    <!-- Chat search bar -->
+    <div id="chat-search-bar">
+      <input id="chat-search-input" placeholder="Search conversation…">
+      <button class="chat-search-nav" id="chat-search-prev">▲</button>
+      <button class="chat-search-nav" id="chat-search-next">▼</button>
+      <span id="chat-search-count"></span>
+      <button id="chat-search-close">✕</button>
     </div>
 
     <!-- Chat body -->
@@ -482,6 +556,38 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 <!-- ══ TOAST CONTAINER ══ -->
 <div id="toast-container"></div>
 
+<!-- ══ RECORD POPUP ══ -->
+<div id="record-popup">
+  <div class="record-popup-box">
+    <div class="record-popup-header">
+      <div class="record-popup-title" id="popup-title"></div>
+      <div class="record-popup-search">
+        <input id="popup-search-input" placeholder="Search…">
+        <button class="popup-search-nav" id="popup-prev">▲</button>
+        <button class="popup-search-nav" id="popup-next">▼</button>
+        <span id="popup-search-count"></span>
+      </div>
+      <button class="modal-close" id="popup-close">✕</button>
+    </div>
+    <div class="record-popup-body" id="popup-body"></div>
+    <div class="record-popup-footer">
+      <span class="popup-footer-meta" id="popup-drive-link"></span>
+      <button class="btn-icon" id="popup-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAUSE OVERLAY ══ -->
+<div id="pause-overlay">
+  <div class="pause-box">
+    <div class="pause-icon">⏸</div>
+    <div class="pause-title">Processing Paused</div>
+    <div class="pause-desc">Rate limit reached. Your progress so far is saved. Wait a moment for your quota to reset, then continue.</div>
+    <div class="pause-file" id="pause-file-info"></div>
+    <button class="pause-continue-btn" id="pause-continue-btn">▶ Continue Processing</button>
+  </div>
+</div>
+
 <!-- ══ PROCESS CONFIRM MODAL ══ -->
 <div id="process-modal">
   <div class="process-modal-box">
@@ -520,13 +626,22 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
       <button class="modal-close" id="apikey-modal-close">✕</button>
     </div>
     <div class="modal-body">
-      <label for="apikey-input">API Key</label>
-      <input type="password" id="apikey-input" placeholder="sk-ant-…" autocomplete="off">
-      <p class="modal-note">Your key is stored locally in this browser only — never sent anywhere except Anthropic's API. Used for chat and file processing.</p>
+      <div style="background:var(--surface);border-radius:8px;padding:0.7rem 0.9rem;margin-bottom:1rem;font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);line-height:1.65;">
+        1. Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent);">console.anthropic.com/settings/keys</a><br>
+        2. Create a key and <strong>copy</strong> it<br>
+        3. Paste it below and click Save
+      </div>
+      <label for="apikey-input">Paste key here</label>
+      <div style="position:relative;margin-bottom:0.5rem;">
+        <input type="text" id="apikey-input" placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false" style="width:100%;padding-right:3.5rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;">
+        <button id="apikey-toggle" style="position:absolute;right:0.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);padding:0.2rem 0.3rem;">hide</button>
+      </div>
+      <div id="apikey-status-msg" style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);margin-bottom:0.5rem;min-height:1.2em;"></div>
+      <p class="modal-note" style="margin-bottom:0;">Key is saved to your Firestore account — available on any device you sign in from. Never shared with anyone except Anthropic's API.</p>
     </div>
     <div class="modal-footer">
       <button class="btn-icon" id="apikey-cancel-btn">Cancel</button>
-      <button class="btn-icon cost-icon" id="apikey-save-btn"><span class="cost-dot"></span> Save Key</button>
+      <button class="btn-icon cost-icon" id="apikey-save-btn"><span class="cost-dot"></span> Save to Account</button>
     </div>
   </div>
 </div>
@@ -570,7 +685,7 @@ driveProvider.setCustomParameters({ prompt: 'consent' });
 
 // ── STATE ──
 let currentUser = null;
-let apiKey = localStorage.getItem('pr_apikey') || '';
+let apiKey = (() => { try { return localStorage.getItem('pr_apikey') || ''; } catch(e) { return ''; } })(); // pre-auth fallback; overwritten by loadApiKey() after sign-in
 let driveAccessToken = null;
 let sessionCost = 0;
 let convHistory = [];
@@ -680,7 +795,7 @@ onAuthStateChanged(auth, async user => {
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
-    updateStatusBar();
+    await loadApiKey();
     await loadInitialData();
     show('app');
   } else {
@@ -700,6 +815,8 @@ async function loadInitialData() {
     await loadJournalSidebar();
     // Dynamic pet list for welcome message
     await updatePetList();
+    // Check for recent abnormal lab values
+    await checkAbnormalLabs();
     setLoading('Ready');
   } catch (err) {
     console.error('Load error:', err);
@@ -851,30 +968,74 @@ async function loadJournalSidebar() {
 function renderJournalSidebar(bycat) {
   const container = $('journal-tree');
   const empty = $('journal-empty');
+
+  // Pending items section
+  if (pendingJournalItems.length) {
+    empty.style.display = 'none';
+    let pending = container.querySelector('.journal-pending-section');
+    if (!pending) { pending = document.createElement('div'); pending.className = 'journal-pending-section'; container.prepend(pending); }
+    pending.innerHTML = `<div class="journal-pending-header"><span>⏳ Pending (${pendingJournalItems.length})</span><span style="font-size:0.58rem;color:var(--ink-muted);">Save Session to commit</span></div>`;
+    for (const item of pendingJournalItems) {
+      const el = document.createElement('div');
+      el.className = 'journal-pending-item';
+      el.innerHTML = `<span class="journal-pending-text" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,32))}${item.text.length>32?'…':''}</span><button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
+      el.querySelector('button').addEventListener('click', () => {
+        pendingJournalItems = pendingJournalItems.filter(i => i !== item);
+        loadJournalSidebar();
+      });
+      pending.appendChild(el);
+    }
+  }
+
   const cats = Object.keys(bycat);
-  if (!cats.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
+  if (!cats.length && !pendingJournalItems.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
   empty.style.display = 'none';
-  container.innerHTML = '';
+
+  // Clear non-pending content
+  container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
+
   for (const cat of cats.sort()) {
     const lists = bycat[cat];
     const sec = document.createElement('div');
     sec.className = 'journal-cat-section';
     const heading = document.createElement('div');
-    heading.className = 'journal-cat-heading';
-    heading.innerHTML = `<span>🐱</span><span>${cat}</span>`;
+    heading.className = 'journal-cat-heading open';
+    heading.innerHTML = `<span>🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
+    const body = document.createElement('div');
+    body.className = 'journal-cat-body open';
+    heading.onclick = () => { heading.classList.toggle('open'); body.classList.toggle('open'); };
     sec.appendChild(heading);
+
     for (const [listName, items] of Object.entries(lists)) {
-      const ln = document.createElement('div');
-      ln.className = 'journal-list-name';
-      ln.textContent = listName;
-      sec.appendChild(ln);
-      for (const item of items.filter(i => i.status !== 'removed').slice(0, 5)) {
-        const el = document.createElement('div');
-        el.className = 'journal-item';
-        el.innerHTML = `<div class="journal-status-dot ${item.status}"></div><span>${item.text}${item.dose ? ' — ' + item.dose : ''}</span>`;
-        sec.appendChild(el);
+      if (!items.length) continue;
+      const ls = document.createElement('div');
+      ls.className = 'journal-list-section';
+      const lh = document.createElement('div');
+      lh.className = 'journal-list-heading';
+      lh.innerHTML = `${listName} <span class="journal-list-count">${items.length}</span>`;
+      const lb = document.createElement('div');
+      lb.className = 'journal-list-body open';
+      lh.onclick = () => lb.classList.toggle('open');
+
+      // Group by status
+      const groups = { current:[], plan:[], maybe:[], past:[] };
+      for (const item of items) (groups[item.status] || groups.current).push(item);
+      for (const [grp, grpItems] of Object.entries(groups)) {
+        if (!grpItems.length) continue;
+        const gl = document.createElement('div');
+        gl.className = 'journal-group-label';
+        gl.textContent = grp === 'current' ? '▸ Current' : grp === 'past' ? '▸ Past' : grp === 'plan' ? '▸ Planned' : '▸ Maybe';
+        lb.appendChild(gl);
+        for (const item of grpItems) {
+          const ee = document.createElement('div');
+          ee.className = 'journal-entry-full';
+          ee.innerHTML = `<div class="journal-entry-text-full">${escHtml((item.text||'').slice(0,44))}${(item.text||'').length>44?'…':''}</div><div class="journal-entry-date-full">${item.startDate||''}${item.endDate?' → '+item.endDate:''}</div>`;
+          lb.appendChild(ee);
+        }
       }
+      ls.appendChild(lh); ls.appendChild(lb); body.appendChild(ls);
     }
+    sec.appendChild(body);
     container.appendChild(sec);
   }
 }
@@ -1196,6 +1357,7 @@ async function startProcessingQueue(files) {
   processingStop = false;
   processingActive = true;
   processingQueue = [...files];
+  await requestWakeLock();
 
   const progress = $('process-progress');
   progress.classList.add('active');
@@ -1228,6 +1390,7 @@ async function startProcessingQueue(files) {
   }
 
   processingActive = false;
+  releaseWakeLock();
   $('process-all-btn').disabled = false;
   $('process-selected-btn').disabled = false;
   $('progress-label').textContent = processingStop ? 'Stopped' : 'Complete';
@@ -1578,6 +1741,7 @@ Rules:
 
 async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
+  await throttleCheck();
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -1595,12 +1759,27 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
   });
 
   if (res.status === 529 || res.status === 429) {
-    // Rate limited — wait and retry once
-    const retryAfter = parseInt(res.headers?.get?.('retry-after') || '60');
-    const wait = Math.min(retryAfter, 120) * 1000;
+    // Rate limited — exponential backoff then pause overlay
+    const retryAfter = parseInt(res.headers?.get?.('retry-after') || '30');
+    const wait = Math.min(retryAfter, 60) * 1000;
     $('progress-current').textContent = `Rate limited — waiting ${Math.round(wait/1000)}s…`;
     await sleep(wait);
-    return callExtractionClaude(messages, maxTokens);
+    // Second attempt
+    const res2 = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,system:SYSTEM_EXTRACTION,messages})
+    });
+    if (res2.status === 429 || res2.status === 529) {
+      // Still rate limited — show pause overlay, wait for user
+      showPauseOverlay($('progress-current').textContent);
+      await waitForResume();
+      bucketReset = Date.now(); bucketUsed = 0;
+      return callExtractionClaude(messages, maxTokens);
+    }
+    if (!res2.ok) { const e2 = await res2.json().catch(()=>({})); throw new Error(e2?.error?.message||`API ${res2.status}`); }
+    const d2 = await res2.json();
+    try { return JSON.parse(d2.content.map(b=>b.text||'').join('').trim().replace(/^```json\n?|^```\n?|```$/gm,'').trim()); } catch { return null; }
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1750,32 +1929,258 @@ If no PCR/serology results found, return {"results":[]}.`;
   return result;
 }
 
-// ── VISIT DETAIL ──
-function openVisit(visit) {
-  // For now, show in chat as context — full detail modal coming in Layer 3
-  const msg = `Show me the full record for ${visit.cat}'s visit on ${visit.date}${visit.clinic ? ' at ' + visit.clinic : ''}.`;
-  $('user-input').value = msg;
-  $('user-input').focus();
+// ── VISIT DETAIL POPUP ──
+const CLINIC_ABBREV = {
+  'morrisville cat hospital':'Morrisville','morrisville':'Morrisville',
+  'grace park animal hospital':'Grace Park','grace park':'Grace Park',
+  'truss vet':'TRUSS','truss':'TRUSS',
+  'vca parkway':'VCA Parkway','vca':'VCA Parkway',
+  'carpenter animal hospital':'Carpenter','carpenter':'Carpenter',
+  'bluepearl':'BluePearl','blue pearl':'BluePearl',
+  'quartet veterinary':'Quartet ER','quartet':'Quartet ER',
+  'triangle veterinary':'Triangle Vet',
+  'carolina veterinary dermatology':'Derm Clinic',
+  'town & country':'Town & Country','town and country':'Town & Country',
+  'nc state':'NC State','north carolina state':'NC State',
+};
+function abbreviateClinic(name) {
+  if (!name) return '';
+  const lower = name.toLowerCase();
+  for (const [key, abbr] of Object.entries(CLINIC_ABBREV)) {
+    if (lower.includes(key)) return abbr;
+  }
+  return name.replace(/\b(animal hospital|veterinary|vet|clinic|hospital|care|pet)\b/gi,'').trim().split(/\s+/).slice(0,2).join(' ');
 }
+
+let popupMatches = [], popupMatchIdx = 0, popupRawText = '';
+
+function openVisit(visit) {
+  const title = `${visit.cat} \u00b7 ${formatDate(visit.date)}${visit.clinic ? ' \u00b7 ' + abbreviateClinic(visit.clinic) : ''}`;
+  let content = '';
+  if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
+  if (visit.diagnoses?.length) content += `Diagnoses: ${visit.diagnoses.join(', ')}\n\n`;
+  if (visit.medications?.length) {
+    content += `Medications:\n`;
+    for (const m of visit.medications) content += `  \u2022 ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}\n`;
+    content += '\n';
+  }
+  if (visit.procedures?.length) {
+    content += `Procedures:\n`;
+    for (const p of visit.procedures) content += `  \u2022 ${p.name}${p.findings ? ' \u2014 ' + p.findings : ''}\n`;
+    content += '\n';
+  }
+  if (visit.narrative) content += `\n${visit.narrative}`;
+  content = content.trim();
+
+  $('popup-title').textContent = title;
+  $('popup-search-input').value = '';
+  $('popup-search-count').textContent = '';
+  popupRawText = content;
+  popupMatches = []; popupMatchIdx = 0;
+  const body = $('popup-body');
+  body.textContent = content;
+
+  const linkEl = $('popup-drive-link');
+  if (visit.driveFileIds?.[0]) {
+    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive \u2197</a>`;
+  } else {
+    linkEl.textContent = visit.sourceFiles?.[0] || '';
+  }
+  $('record-popup').classList.add('open');
+  setTimeout(() => $('popup-search-input').focus(), 80);
+}
+
+function runPopupSearch() {
+  const term = $('popup-search-input').value.trim();
+  const body = $('popup-body');
+  if (!term) { body.textContent = popupRawText; $('popup-search-count').textContent = ''; popupMatches = []; return; }
+  const esc = term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re = new RegExp(esc, 'gi');
+  const parts = popupRawText.split(re);
+  const ms = [...popupRawText.matchAll(re)];
+  popupMatches = ms; popupMatchIdx = 0;
+  if (!ms.length) { body.innerHTML = escHtml(popupRawText); $('popup-search-count').textContent = '0'; return; }
+  let html = '', mi = 0;
+  for (const p of parts) {
+    html += escHtml(p);
+    if (mi < ms.length) { html += `<mark class="sh${mi===0?' current':''}" data-idx="${mi}">${escHtml(ms[mi][0])}</mark>`; mi++; }
+  }
+  body.innerHTML = html;
+  $('popup-search-count').textContent = `1/${ms.length}`;
+  body.querySelector('mark.current')?.scrollIntoView({ block:'nearest' });
+}
+function navigatePopup(dir) {
+  if (!popupMatches.length) return;
+  const body = $('popup-body');
+  body.querySelectorAll('mark.sh').forEach(m => m.classList.remove('current'));
+  popupMatchIdx = (popupMatchIdx + dir + popupMatches.length) % popupMatches.length;
+  const cur = body.querySelector(`mark[data-idx="${popupMatchIdx}"]`);
+  if (cur) { cur.classList.add('current'); cur.scrollIntoView({ block:'nearest' }); }
+  $('popup-search-count').textContent = `${popupMatchIdx+1}/${popupMatches.length}`;
+}
+
+$('popup-close').addEventListener('click', () => $('record-popup').classList.remove('open'));
+$('popup-close-btn').addEventListener('click', () => $('record-popup').classList.remove('open'));
+$('record-popup').addEventListener('click', e => { if (e.target === $('record-popup')) $('record-popup').classList.remove('open'); });
+$('popup-search-input').addEventListener('input', runPopupSearch);
+$('popup-next').addEventListener('click', () => navigatePopup(1));
+$('popup-prev').addEventListener('click', () => navigatePopup(-1));
+$('popup-search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); navigatePopup(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') $('record-popup').classList.remove('open');
+});
+
+// ── ABNORMAL LAB ALERTS ──
+async function checkAbnormalLabs() {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
+    const snap = await getDocs(collection(db, 'labs'));
+    const recent = [];
+    snap.forEach(d => {
+      const l = d.data();
+      if (l.abnormal && l.abnormal !== 'NEG' && l.abnormal !== 'NEGATIVE' && l.resultDate && l.resultDate >= thirtyDaysAgo) recent.push(l);
+    });
+    if (!recent.length) return;
+    const bycat = {};
+    for (const l of recent) {
+      if (!bycat[l.cat]) bycat[l.cat] = [];
+      bycat[l.cat].push(`${l.test} ${l.value}${l.unit?' '+l.unit:''} [${l.abnormal}]`);
+    }
+    const parts = Object.entries(bycat).map(([cat,tests]) => `${cat}: ${tests.join(', ')}`);
+    $('abnormal-banner-text').textContent = `\u26a0 Recent abnormal values \u2014 ${parts.join(' \u00b7 ')}`;
+    $('abnormal-banner').classList.add('show');
+  } catch(e) { console.warn('Abnormal check failed:', e); }
+}
+$('abnormal-banner-close').addEventListener('click', () => $('abnormal-banner').classList.remove('show'));
+
+// ── RATE LIMIT THROTTLE ──
+let bucketReset = Date.now(), bucketUsed = 0;
+const BUCKET_LIMIT = 22000, TOKENS_PER_CALL = 2200;
+let pauseResolver = null;
+
+async function throttleCheck() {
+  const now = Date.now();
+  if (now - bucketReset > 60000) { bucketReset = now; bucketUsed = 0; }
+  bucketUsed += TOKENS_PER_CALL;
+  if (bucketUsed > BUCKET_LIMIT) {
+    const waitMs = 62000 - (Date.now() - bucketReset);
+    await showThrottleCountdown(Math.ceil(waitMs/1000));
+    bucketReset = Date.now(); bucketUsed = TOKENS_PER_CALL;
+  }
+}
+async function showThrottleCountdown(secs) {
+  for (let i = secs; i > 0; i--) {
+    $('progress-current').textContent = `Rate limit \u2014 cooling down ${i}s\u2026`;
+    await sleep(1000);
+  }
+}
+function showPauseOverlay(filename) {
+  $('pause-file-info').textContent = filename ? `Paused on: ${filename}` : 'Paused \u2014 progress so far is saved';
+  $('pause-overlay').classList.add('open');
+}
+function hidePauseOverlay() { $('pause-overlay').classList.remove('open'); }
+function waitForResume() { return new Promise(r => { pauseResolver = r; }); }
+$('pause-continue-btn').addEventListener('click', () => {
+  if (pauseResolver) { pauseResolver(); pauseResolver = null; }
+  hidePauseOverlay();
+});
+
+// ── WAKE LOCK ──
+let wakeLock = null;
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null; } }
+document.addEventListener('visibilitychange', async () => {
+  if (wakeLock !== null && document.visibilityState === 'visible') await requestWakeLock();
+});
+
+// ── CHAT SEARCH ──
+let chatSearchMatches = [], chatSearchIdx = 0;
+
+$('chat-search-btn').addEventListener('click', () => {
+  const bar = $('chat-search-bar');
+  bar.classList.toggle('open');
+  if (bar.classList.contains('open')) $('chat-search-input').focus();
+  else clearChatSearch();
+});
+$('chat-search-close').addEventListener('click', () => {
+  $('chat-search-bar').classList.remove('open');
+  clearChatSearch();
+});
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && $('app').classList.contains('active')) {
+    e.preventDefault();
+    $('chat-search-bar').classList.add('open');
+    $('chat-search-input').focus();
+  }
+  if (e.key === 'Escape' && $('chat-search-bar').classList.contains('open')) {
+    $('chat-search-bar').classList.remove('open');
+    clearChatSearch();
+  }
+});
+$('chat-search-input').addEventListener('input', runChatSearch);
+$('chat-search-next').addEventListener('click', () => navigateChatSearch(1));
+$('chat-search-prev').addEventListener('click', () => navigateChatSearch(-1));
+$('chat-search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); navigateChatSearch(e.shiftKey ? -1 : 1); }
+});
+
+function runChatSearch() {
+  clearChatSearchHighlights();
+  const term = $('chat-search-input').value.trim();
+  if (!term) { $('chat-search-count').textContent = ''; chatSearchMatches = []; return; }
+  const esc = term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re = new RegExp(esc,'gi');
+  chatSearchMatches = []; chatSearchIdx = 0;
+  document.querySelectorAll('.msg-bubble').forEach(bubble => {
+    const raw = bubble.dataset.raw || bubble.textContent;
+    bubble.dataset.raw = raw;
+    if (!re.test(raw)) return;
+    re.lastIndex = 0;
+    const parts = raw.split(re);
+    const ms = [...raw.matchAll(re)];
+    let html = '', mi = 0;
+    for (const p of parts) {
+      html += escHtml(p);
+      if (mi < ms.length) { html += `<mark class="sh" data-match="${chatSearchMatches.length+mi}">${escHtml(ms[mi][0])}</mark>`; mi++; }
+    }
+    bubble.innerHTML = html;
+    bubble.querySelectorAll('mark.sh').forEach(m => chatSearchMatches.push(m));
+  });
+  if (chatSearchMatches.length) {
+    chatSearchMatches[0].classList.add('current');
+    chatSearchMatches[0].scrollIntoView({ block:'center' });
+  }
+  $('chat-search-count').textContent = chatSearchMatches.length ? `1/${chatSearchMatches.length}` : '0';
+}
+function navigateChatSearch(dir) {
+  if (!chatSearchMatches.length) return;
+  chatSearchMatches[chatSearchIdx].classList.remove('current');
+  chatSearchIdx = (chatSearchIdx + dir + chatSearchMatches.length) % chatSearchMatches.length;
+  chatSearchMatches[chatSearchIdx].classList.add('current');
+  chatSearchMatches[chatSearchIdx].scrollIntoView({ block:'center' });
+  $('chat-search-count').textContent = `${chatSearchIdx+1}/${chatSearchMatches.length}`;
+}
+function clearChatSearchHighlights() {
+  document.querySelectorAll('.msg-bubble').forEach(b => {
+    if (b.dataset.raw) { b.textContent = b.dataset.raw; delete b.dataset.raw; }
+  });
+  chatSearchMatches = []; chatSearchIdx = 0;
+}
+function clearChatSearch() { $('chat-search-input').value = ''; clearChatSearchHighlights(); $('chat-search-count').textContent = ''; }
 
 // ── CHAT ──
 $('user-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 $('send-btn').addEventListener('click', sendMessage);
-
-// Auto-resize textarea
 $('user-input').addEventListener('input', function() {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
-
-// Hint clicks
 document.querySelectorAll('.chat-hint').forEach(h => {
-  h.addEventListener('click', () => {
-    $('user-input').value = h.dataset.prompt;
-    sendMessage();
-  });
+  h.addEventListener('click', () => { $('user-input').value = h.dataset.prompt; sendMessage(); });
 });
 
 async function sendMessage() {
@@ -1794,16 +2199,20 @@ async function sendMessage() {
     typingEl.remove();
     appendMsg('assistant', response);
     convHistory.push({ role: 'assistant', content: response });
-    // Rough token estimate for cost tracking
-    const tokens = (text.length + response.length) / 4;
-    updateSessionCost(tokens);
-    // Show save session button once we have a real conversation
+    updateSessionCost((text.length + response.length) / 4);
     if (convHistory.length >= 2) $('save-session-btn').style.display = 'inline-flex';
-    // Passive journal detection (local, no API call)
-    detectJournalMentions(text, response);
+    extractJournalFromConversation(text, response); // async, non-blocking
   } catch (err) {
     typingEl.remove();
-    appendMsg('assistant', `Sorry, I hit an error: ${err.message}`);
+    const msg = err.message || '';
+    const isRate = msg.toLowerCase().includes('rate') || msg.includes('429') || msg.toLowerCase().includes('credit');
+    if (isRate) {
+      appendMsg('assistant', '\u23f8 Rate limit reached. Wait a moment then resend your message.');
+      convHistory.pop();
+      $('user-input').value = text;
+    } else {
+      appendMsg('assistant', `Sorry, I hit an error: ${msg}`);
+    }
   }
   $('send-btn').disabled = !apiKey;
 }
@@ -1812,227 +2221,199 @@ function appendMsg(role, text) {
   const chatBody = $('chat-body');
   const div = document.createElement('div');
   div.className = `msg ${role}`;
-  div.innerHTML = `
-    <div class="msg-avatar">${role === 'user' ? 'you' : 'pr'}</div>
-    <div class="msg-bubble">${escHtml(text)}</div>`;
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  div.innerHTML = `<div class="msg-avatar">${role === 'user' ? 'you' : 'pr'}</div>`;
+  div.appendChild(bubble);
   chatBody.appendChild(div);
   chatBody.scrollTop = chatBody.scrollHeight;
   return div;
 }
 
-function appendTyping() {
-  const chatBody = $('chat-body');
-  const div = document.createElement('div');
-  div.className = 'msg assistant';
-  div.innerHTML = `<div class="msg-avatar">pr</div><div class="msg-bubble"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
-  chatBody.appendChild(div);
-  chatBody.scrollTop = chatBody.scrollHeight;
-  return div;
-}
+// ── JOURNAL — Claude-powered (Haiku, background) ──
+let pendingJournalItems = [];
+const mentionTally = {};
 
-// ── CONTEXT BUILDER ──
-async function buildChatContext(userMessage) {
-  // Detect which cats are mentioned
-  const cats = ['Mocha', 'Evie', 'Latte'].filter(c =>
-    userMessage.toLowerCase().includes(c.toLowerCase())
-  );
-  const targetCats = cats.length ? cats : ['Mocha', 'Evie', 'Latte'];
-  let context = '';
+async function extractJournalFromConversation(userMsg, assistantMsg) {
+  if (!apiKey) return;
   try {
-    // Load recent visits for relevant cats
-    for (const cat of targetCats) {
-      const q = query(collection(db, 'visits'),
-        where('cat', '==', cat), orderBy('date', 'desc'), limit(10));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        context += `\n\n## ${cat} — Recent Visits\n`;
-        snap.forEach(d => {
-          const v = d.data();
-          context += `\n### ${v.date}${v.clinic ? ' — ' + v.clinic : ''}\n${v.narrative || ''}\n`;
-        });
-      }
-      // Load recent labs
-      const lq = query(collection(db, 'labs'),
-        where('cat', '==', cat), orderBy('resultDate', 'desc'), limit(50));
-      const lsnap = await getDocs(lq);
-      if (!lsnap.empty) {
-        context += `\n\n## ${cat} — Recent Labs\n`;
-        lsnap.forEach(d => {
-          const l = d.data();
-          context += `${l.resultDate} ${l.test}: ${l.value}${l.unit ? ' ' + l.unit : ''}${l.abnormal ? ' [' + l.abnormal + ']' : ''}\n`;
-        });
-      }
-    }
-    // Load journal
-    const jq = query(collection(db, 'journal'), where('cat', 'in', targetCats));
-    const jsnap = await getDocs(jq);
-    if (!jsnap.empty) {
-      context += '\n\n## Care Journal\n';
-      jsnap.forEach(d => {
-        const j = d.data();
-        if (j.status !== 'removed') {
-          context += `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose ? ' — ' + j.dose : ''}\n`;
-        }
-      });
-    }
-  } catch(err) { console.error('Context build error:', err); }
-  return context;
+    const jSnap = await getDocs(collection(db, 'journal'));
+    const journalLines = [];
+    jSnap.forEach(d => {
+      const j = d.data();
+      journalLines.push(`${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose ? ' \u2014 '+j.dose : ''}`);
+    });
+    const journalContext = journalLines.length ? journalLines.join('\n') : '(empty)';
+    const today = new Date().toISOString().split('T')[0];
+
+    const prompt = `You are a veterinary care journal extractor for cats Mocha, Evie, and Latte.
+Analyze this conversation and extract loggable care information.
+Return ONLY valid JSON, no markdown:
+{"entries":[{"cat":"Mocha|Evie|Latte","list":"Medications|Foods|Supplements|Symptoms|Plans|Procedures|Weight Log","status":"current|past|plan|maybe","text":"terse factual text","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD or null","updateOf":"existing entry text or null","updateNote":"what changed or null"}],"mentions":[{"cat":"cat or all","term":"item mentioned","context":"brief note"}]}
+Status: current=actively receiving, past=stopped, plan=intending, maybe=speculation. Single neutral mention goes in mentions only. Return empty arrays if nothing to log. Be conservative.
+Existing journal:\n${journalContext}\nUser: ${userMsg}\nAssistant: ${assistantMsg.slice(0,400)}`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,system:'Return only valid JSON.',messages:[{role:'user',content:prompt}]})
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const parsed = JSON.parse(data.content.map(b=>b.text||'').join('').trim().replace(/```json|```/g,'').trim());
+    applyJournalExtraction(parsed, today);
+  } catch(e) { console.warn('Journal extraction (non-critical):', e.message); }
 }
 
-// ── CLAUDE API ──
-async function callClaude(history, context) {
-  const system = `You are a veterinary care assistant for cats Mocha, Evie, and Latte, belonging to Katherine Coleman.
-You have access to their complete medical records, lab results, and care journal below.
-Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
-If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
-
-${context || '(No records loaded yet — records will appear after files are processed)'}`;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      system,
-      messages: history
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error ${res.status}`);
+function applyJournalExtraction(data, date) {
+  for (const e of (data.entries || [])) {
+    if (!e.cat || !e.text) continue;
+    const item = { id:Math.random().toString(36).slice(2,9), cat:e.cat, list:e.list||'General', text:e.text, status:e.status||'current', startDate:e.startDate||date, endDate:e.endDate||null, addedDate:date };
+    pendingJournalItems.push(item);
+    const undo = () => { pendingJournalItems = pendingJournalItems.filter(i=>i!==item); loadJournalSidebar(); };
+    showToast(`Journal: ${e.cat} \u00b7 ${e.text.slice(0,28)}${e.status==='maybe'?' (maybe)':e.status==='plan'?' (plan)':''}`, 'journal', undo);
   }
-  const data = await res.json();
-  return data.content.map(b => b.text || '').join('').trim();
-}
-
-// ── JOURNAL DETECTION (local, no API) ──
-const mentionTally = {}; // {cat_item: count}
-
-function detectJournalMentions(userMsg, assistantMsg) {
-  const fullText = userMsg + ' ' + assistantMsg;
-  const cats = ['Mocha', 'Evie', 'Latte'];
-
-  // Explicit action patterns — log immediately
-  const explicitPatterns = [
-    { re: /(?:increased?|decreased?|changed?|switched?|started?|began?|giving|gave)\s+(\w+(?:'s)?)\s+(.+?)\s+(?:to|dose|at)\s+([\d./]+\s*\w+)/gi, action: 'dose_change' },
-    { re: /(\w+)\s+(?:is\s+now\s+on|started|beginning)\s+(.+?)(?:\s+at\s+([\d./]+\s*\w+))?[.,]/gi, action: 'started' },
-    { re: /(?:stopped?|discontinued?|no\s+longer\s+(?:giving|using))\s+(\w+(?:'s)?)\s+(.+)/gi, action: 'stopped' },
-  ];
-
-  for (const cat of cats) {
-    if (!fullText.toLowerCase().includes(cat.toLowerCase())) continue;
-    // Check for repeated mentions of products near cat name
-    const productRe = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?(?:\s+\d+\w*)?)\b/g;
-    let m;
-    while ((m = productRe.exec(fullText)) !== null) {
-      const product = m[1];
-      if (['Mocha','Evie','Latte','Monday','Tuesday','Wednesday','Thursday','Friday'].includes(product)) continue;
-      if (product.length < 4) continue;
-      const key = `${cat}_${product.toLowerCase()}`;
-      mentionTally[key] = (mentionTally[key] || 0) + 1;
-      if (mentionTally[key] === 3) {
-        // Third mention — add to pending/considering
-        const item = { cat, text: product, status: 'considering', list: 'Supplements', addedFrom: 'mention_tally' };
+  for (const m of (data.mentions || [])) {
+    const cats = m.cat === 'all' ? ['Mocha','Evie','Latte'] : [m.cat];
+    for (const cat of cats) {
+      const key = `${cat}_${(m.term||'').toLowerCase()}`;
+      mentionTally[key] = (mentionTally[key]||0) + 1;
+      if (mentionTally[key] === 2) {
+        const item = {id:Math.random().toString(36).slice(2,9),cat,list:'Maybe',text:m.term,status:'maybe',startDate:date,addedDate:date};
         pendingJournalItems.push(item);
-        const undo = () => { pendingJournalItems = pendingJournalItems.filter(i => i !== item); };
-        showToast(`Added ${product} → ${cat} / Considering`, 'journal', undo);
+        showToast(`Journal: ${cat} \u00b7 ${m.term} \u2192 maybe (mentioned twice)`,'journal');
       }
     }
   }
-
-  // Show save session if pending items exist
-  if (pendingJournalItems.length > 0) $('save-session-btn').style.display = 'inline-flex';
+  if (pendingJournalItems.length) { loadJournalSidebar(); $('save-session-btn').style.display='inline-flex'; }
 }
 
 // ── SAVE SESSION ──
 $('save-session-btn').addEventListener('click', async () => {
   if (!convHistory.length) return;
   $('save-session-btn').disabled = true;
-  showToast('Saving session…', 'info');
+  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Saving\u2026';
   try {
-    // Extract highlights via Claude (one API call)
-    const highlightPrompt = `Review this conversation and extract:
-1. Key clinical decisions or conclusions (what was decided, not just discussed)
-2. Any medication/supplement/food changes with cat name, item, and change
-3. Any concerns flagged for follow-up
-
+    const today = new Date().toISOString().split('T')[0];
+    const prompt = `Review this veterinary care conversation. Extract:
+1. Key clinical decisions or conclusions
+2. Medication/supplement/food changes (cat, item, change)
+3. Follow-up concerns
 Return ONLY valid JSON:
-{"highlights":["..."],"journalUpdates":[{"cat":"...","list":"...","text":"...","dose":"...","status":"using|removed|considering"}]}
+{"highlights":["..."],"journalUpdates":[{"cat":"...","list":"...","text":"...","dose":"...","status":"current|past|plan|maybe","startDate":"${today}"}]}
+Conversation:\n${convHistory.map(m=>`${m.role}: ${m.content}`).join('\n\n').slice(0,8000)}`;
 
-Conversation:
-${convHistory.map(m => `${m.role}: ${m.content}`).join('\n\n').slice(0, 8000)}`;
+    const raw = await callClaude([{role:'user',content:prompt}], 1024);
+    const extracted = JSON.parse(raw.replace(/```json|```/g,'').trim());
 
-    const raw = await callClaude([{ role: 'user', content: highlightPrompt }], 1024);
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const extracted = JSON.parse(clean);
-
-    // Save session to Firestore
-    const sessionRef = doc(collection(db, 'sessions'));
-    await setDoc(sessionRef, {
-      date: new Date().toISOString(),
-      userId: currentUser.uid,
-      highlights: extracted.highlights || [],
-      journalChanges: extracted.journalUpdates || [],
-      messageCount: convHistory.length
+    await setDoc(doc(collection(db,'sessions')), {
+      date:new Date().toISOString(), userId:currentUser.uid,
+      highlights:extracted.highlights||[], journalChanges:extracted.journalUpdates||[],
+      messageCount:convHistory.length
     });
 
-    // Save journal updates
-    for (const update of (extracted.journalUpdates || [])) {
-      const jRef = doc(collection(db, 'journal'));
-      await setDoc(jRef, {
-        cat: update.cat,
-        list: update.list || 'General',
-        text: update.text,
-        dose: update.dose || null,
-        status: update.status || 'using',
-        addedDate: new Date().toISOString(),
-        updatedDate: new Date().toISOString(),
-        updates: []
+    const allItems = [...pendingJournalItems, ...(extracted.journalUpdates||[]).map(u=>({...u,addedDate:today}))];
+    for (const item of allItems) {
+      if (!item.cat || !item.text) continue;
+      await setDoc(doc(collection(db,'journal')), {
+        cat:item.cat, list:item.list||'General', text:item.text,
+        dose:item.dose||null, status:item.status||'current',
+        startDate:item.startDate||today, endDate:item.endDate||null,
+        addedDate:today, updatedDate:today, updates:[]
       });
     }
-
-    // Save pending items from tally
-    for (const item of pendingJournalItems) {
-      const jRef = doc(collection(db, 'journal'));
-      await setDoc(jRef, { ...item, addedDate: new Date().toISOString(), updatedDate: new Date().toISOString(), updates: [] });
-    }
     pendingJournalItems = [];
-
-    // Reload journal sidebar
     await loadJournalSidebar();
-    showToast(`Session saved — ${(extracted.highlights || []).length} highlights`, 'journal');
-    updateSessionCost(2000); // rough token cost for this call
-  } catch (err) {
+    updateSessionCost(2000);
+    showToast(`Session saved \u2014 ${(extracted.highlights||[]).length} highlights, ${allItems.length} journal entries`,'journal');
+  } catch(err) {
     console.error('Save session error:', err);
-    showToast('Save failed — ' + err.message, 'warning');
+    showToast('Save failed \u2014 '+err.message,'warning');
   }
   $('save-session-btn').disabled = false;
+  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Save Session';
 });
 
 // ── API KEY MODAL ──
+async function loadApiKey() {
+  // Try Firestore first (persists across devices)
+  if (currentUser) {
+    try {
+      const snap = await getDoc(doc(db, 'settings', currentUser.uid));
+      if (snap.exists() && snap.data().anthropicKey) {
+        apiKey = snap.data().anthropicKey;
+        updateStatusBar();
+        return;
+      }
+    } catch(e) { console.warn('Firestore key load failed:', e); }
+  }
+  // Fallback to localStorage
+  try { apiKey = localStorage.getItem('pr_apikey') || ''; } catch(e) {}
+  updateStatusBar();
+}
+
+async function saveApiKey(key) {
+  // Save to Firestore (primary)
+  if (currentUser) {
+    try {
+      await setDoc(doc(db, 'settings', currentUser.uid), { anthropicKey: key }, { merge: true });
+    } catch(e) {
+      console.warn('Firestore key save failed, using localStorage:', e);
+      try { localStorage.setItem('pr_apikey', key); } catch(e2) {}
+    }
+  } else {
+    // Not signed in yet — localStorage only
+    try { localStorage.setItem('pr_apikey', key); } catch(e) {}
+  }
+  // Always keep in localStorage as backup
+  try { localStorage.setItem('pr_apikey', key); } catch(e) {}
+}
+
 $('apikey-btn').addEventListener('click', () => {
-  $('apikey-input').value = apiKey;
+  const inp = $('apikey-input');
+  inp.value = apiKey;
+  inp.type = 'text';
+  $('apikey-toggle').textContent = 'hide';
+  $('apikey-status-msg').textContent = apiKey ? '✓ Key loaded from your account' : '';
   $('apikey-modal').classList.add('open');
-  $('apikey-input').focus();
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
 });
+
 $('apikey-modal-close').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
 $('apikey-cancel-btn').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
-$('apikey-save-btn').addEventListener('click', () => {
-  const key = $('apikey-input').value.trim();
-  if (key) {
-    apiKey = key;
-    localStorage.setItem('pr_apikey', key);
-    $('apikey-modal').classList.remove('open');
-    updateStatusBar();
-    showToast('API key saved', 'journal');
-  }
+
+$('apikey-toggle').addEventListener('click', () => {
+  const inp = $('apikey-input');
+  if (inp.type === 'text') { inp.type = 'password'; $('apikey-toggle').textContent = 'show'; }
+  else { inp.type = 'text'; $('apikey-toggle').textContent = 'hide'; }
 });
+
+// Live validation feedback as user types/pastes
+$('apikey-input').addEventListener('input', () => {
+  const val = $('apikey-input').value.trim();
+  const msg = $('apikey-status-msg');
+  if (!val) { msg.textContent = ''; return; }
+  if (val.length < 20) { msg.style.color = 'var(--amber)'; msg.textContent = 'Key looks too short…'; return; }
+  msg.style.color = 'var(--green)'; msg.textContent = '✓ Looks good — click Save to Account';
+});
+
+$('apikey-save-btn').addEventListener('click', async () => {
+  const key = $('apikey-input').value.trim();
+  const msg = $('apikey-status-msg');
+  if (!key) { msg.style.color = 'var(--red)'; msg.textContent = 'Paste your key from console.anthropic.com first'; return; }
+  if (key.length < 20) { msg.style.color = 'var(--red)'; msg.textContent = 'That key looks too short — copy it again'; return; }
+  $('apikey-save-btn').disabled = true;
+  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Saving…';
+  apiKey = key;
+  await saveApiKey(key);
+  $('apikey-save-btn').disabled = false;
+  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Save to Account';
+  $('apikey-modal').classList.remove('open');
+  updateStatusBar();
+  showToast('API key saved to your account ✓', 'journal');
+});
+
 $('apikey-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') $('apikey-save-btn').click();
 });
