@@ -690,6 +690,7 @@ let driveAccessToken = null;
 let sessionCost = 0;
 let convHistory = [];
 let pendingJournalItems = []; // queued during session, saved in batch
+const mentionTally = {}; // {cat_term: count} for repeat-mention detection
 
 // ── HELPERS ──
 const $ = id => document.getElementById(id);
@@ -2232,8 +2233,6 @@ function appendMsg(role, text) {
 }
 
 // ── JOURNAL — Claude-powered (Haiku, background) ──
-let pendingJournalItems = [];
-const mentionTally = {};
 
 async function extractJournalFromConversation(userMsg, assistantMsg) {
   if (!apiKey) return;
