@@ -356,6 +356,69 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #abnormal-banner-text{font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--red);flex:1;line-height:1.5;}
 #abnormal-banner-close{background:none;border:none;cursor:pointer;color:var(--red);font-size:0.85rem;padding:0.1rem 0.3rem;opacity:0.6;transition:opacity 0.15s;flex-shrink:0;}
 #abnormal-banner-close:hover{opacity:1;}
+
+/* ── FLOWSHEET MODAL ── */
+#flowsheet-modal{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.55);z-index:200;align-items:flex-start;justify-content:center;padding:1.5rem;}
+#flowsheet-modal.open{display:flex;}
+#flowsheet-modal-box{background:white;border-radius:14px;width:100%;max-width:1200px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(42,37,32,0.2);overflow:hidden;}
+#flowsheet-modal-header{padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.75rem;flex-shrink:0;}
+#flowsheet-modal-title{font-family:'Instrument Serif',serif;font-size:1.1rem;color:var(--ink);flex:1;}
+.flowsheet-modal-cat-select{font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;}
+#flowsheet-modal-close{background:var(--surface);border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;}
+#flowsheet-modal-body{overflow:auto;padding:0.75rem;}
+#flowsheet-modal-body::-webkit-scrollbar{width:6px;height:6px;}
+#flowsheet-modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.lab-expand-btn{width:100%;background:none;border:none;border-top:1px solid var(--border);padding:0.45rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);cursor:pointer;text-align:center;letter-spacing:0.04em;}
+.lab-expand-btn:hover{background:var(--surface);color:var(--btn);}
+
+/* ── LAYERS 8-10 ── */
+
+/* Flags modal */
+#flags-modal{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:300;align-items:center;justify-content:center;padding:2rem;}
+#flags-modal.open{display:flex;}
+.flags-modal-box{background:white;border-radius:13px;width:100%;max-width:620px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;}
+.flags-modal-header{padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.flags-modal-title{font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);}
+.flags-modal-body{flex:1;overflow-y:auto;padding:0.75rem 1.25rem;}
+.flag-item{border:1px solid var(--border);border-radius:9px;padding:0.85rem 1rem;margin-bottom:0.75rem;}
+.flag-item.resolved{opacity:0.45;}
+.flag-item-header{display:flex;align-items:flex-start;justify-content:space-between;gap:0.75rem;margin-bottom:0.4rem;}
+.flag-filename{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.flag-type{font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:var(--amber-bg);color:var(--amber);padding:0.1rem 0.4rem;border-radius:10px;white-space:nowrap;flex-shrink:0;}
+.flag-type.resolved{background:var(--green-bg);color:var(--green);}
+.flag-desc{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);line-height:1.55;margin-bottom:0.5rem;}
+.flag-best-guess{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);margin-bottom:0.6rem;}
+.flag-actions{display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;}
+.flag-input{flex:1;min-width:140px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.6rem;color:var(--ink);outline:none;}
+.flag-input:focus{border-color:var(--accent);}
+.flag-resolved-note{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--green);}
+.flags-modal-footer{padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.flags-summary{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);}
+
+/* Batch status banner */
+#batch-banner{display:none;padding:0.5rem 1.25rem;background:var(--blue-bg);border-bottom:1px solid rgba(13,71,161,0.15);flex-shrink:0;align-items:center;gap:0.75rem;}
+#batch-banner.show{display:flex;}
+#batch-banner-text{font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--blue);flex:1;}
+#batch-banner-close{background:none;border:none;cursor:pointer;color:var(--blue);font-size:0.85rem;opacity:0.6;flex-shrink:0;}
+
+/* Cost threshold modal */
+#cost-modal{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:300;align-items:center;justify-content:center;padding:2rem;}
+#cost-modal.open{display:flex;}
+.cost-modal-box{background:white;border-radius:13px;width:100%;max-width:400px;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;}
+.cost-modal-header{padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cost-modal-title{font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);}
+.cost-modal-body{padding:1.25rem;}
+.cost-modal-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;gap:1rem;}
+.cost-modal-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);}
+.cost-modal-input{width:80px;font-family:'JetBrains Mono',monospace;font-size:0.8rem;background:var(--bg);border:1.5px solid var(--border);border-radius:7px;padding:0.4rem 0.6rem;color:var(--ink);outline:none;text-align:right;}
+.cost-modal-input:focus{border-color:var(--accent);}
+.cost-total-row{border-top:1px solid var(--surface2);padding-top:0.75rem;margin-top:0.25rem;}
+.cost-total-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-muted);}
+.cost-total-value{font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:600;color:var(--ink);}
+
+/* Session cost clickable */
+#session-cost{cursor:pointer;}
+#session-cost:hover{color:var(--accent)!important;}
 </style>
 </head>
 <body>
@@ -491,6 +554,12 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
     </div>
 
+    <!-- Batch status banner -->
+    <div id="batch-banner">
+      <span id="batch-banner-text">Batch processing…</span>
+      <button id="batch-banner-close">✕</button>
+    </div>
+
     <!-- Abnormal lab banner -->
     <div id="abnormal-banner">
       <span id="abnormal-banner-text"></span>
@@ -549,7 +618,68 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
       <div class="status-spacer"></div>
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.2.0</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.3.0</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FLOWSHEET MODAL ══ -->
+<div id="flowsheet-modal">
+  <div id="flowsheet-modal-box">
+    <div id="flowsheet-modal-header">
+      <div id="flowsheet-modal-title">Lab Results</div>
+      <select class="flowsheet-modal-cat-select" id="flowsheet-modal-cat"></select>
+      <button id="flowsheet-modal-close">✕</button>
+    </div>
+    <div id="flowsheet-modal-body"></div>
+  </div>
+</div>
+
+<!-- ══ FLAGS MODAL ══ -->
+<div id="flags-modal">
+  <div class="flags-modal-box">
+    <div class="flags-modal-header">
+      <span class="flags-modal-title">Flagged Items</span>
+      <button class="modal-close" id="flags-modal-close">✕</button>
+    </div>
+    <div class="flags-modal-body" id="flags-modal-body"></div>
+    <div class="flags-modal-footer">
+      <span class="flags-summary" id="flags-summary"></span>
+      <button class="btn-icon cost-icon" id="flags-reprocess-btn" style="display:none">
+        <span class="cost-dot"></span> Reprocess Resolved
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ COST MODAL ══ -->
+<div id="cost-modal">
+  <div class="cost-modal-box">
+    <div class="cost-modal-header">
+      <span class="cost-modal-title">Cost Tracking</span>
+      <button class="modal-close" id="cost-modal-close">✕</button>
+    </div>
+    <div class="cost-modal-body">
+      <div class="cost-modal-row">
+        <span class="cost-modal-label">Warning threshold ($)</span>
+        <input type="number" class="cost-modal-input" id="cost-warn-input" value="0.25" step="0.05" min="0">
+      </div>
+      <div class="cost-modal-row">
+        <span class="cost-modal-label">Alert threshold ($)</span>
+        <input type="number" class="cost-modal-input" id="cost-alert-input" value="1.00" step="0.25" min="0">
+      </div>
+      <div class="cost-modal-row cost-total-row">
+        <span class="cost-total-label">Session total</span>
+        <span class="cost-total-value" id="cost-modal-total">$0.0000</span>
+      </div>
+      <div class="cost-modal-row">
+        <span class="cost-total-label">All-time total</span>
+        <span class="cost-total-value" id="cost-modal-alltime">$0.0000</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon" id="cost-reset-btn">Reset Session</button>
+      <button class="btn-icon free-icon" id="cost-save-btn"><span class="free-dot"></span> Save</button>
     </div>
   </div>
 </div>
@@ -733,16 +863,6 @@ function updateStatusBar() {
   }
 }
 
-function updateSessionCost(tokensUsed) {
-  // claude-sonnet-4: ~$3/M input, ~$15/M output — rough blended estimate
-  const cost = (tokensUsed / 1000000) * 6;
-  sessionCost += cost;
-  const el = $('session-cost');
-  el.style.display = 'block';
-  el.textContent = `Session: $${sessionCost.toFixed(4)}`;
-  el.className = 'session-cost' + (sessionCost > 1 ? ' alert' : sessionCost > 0.25 ? ' warning' : '');
-}
-
 // ── AUTH ──
 $('signin-btn').addEventListener('click', async () => {
   $('signin-btn').disabled = true;
@@ -811,6 +931,7 @@ async function loadInitialData() {
     await updatePetList();
     // Check for recent abnormal lab values
     await checkAbnormalLabs();
+    await checkPendingBatches();
     setLoading('Ready');
   } catch (err) {
     console.error('Load error:', err);
@@ -893,52 +1014,200 @@ function renderRecordsTree(tree) {
   }
 }
 
-// ── LABS SIDEBAR ──
+// ── LABS SIDEBAR + FLOWSHEET ──
+const TEST_ORDER = ['BUN','Creatinine','SDMA','Albumin','Globulin','Total Protein',
+  'ALT','ALP','Glucose','Phosphorus','Potassium','Sodium','Chloride',
+  'T4','Folate','Cobalamin','TLI','PLI',
+  'WBC','RBC','Hematocrit','Hemoglobin','Platelets','USG'];
+
+let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
+let flowsheetCat = null;
+
 async function loadLabsSidebar() {
   try {
-    const q = query(collection(db, 'labs'), orderBy('resultDate', 'desc'));
-    const snap = await getDocs(q);
-    // Group by cat, then test — keep most recent per test
-    const bycat = {};
+    const snap = await getDocs(query(collection(db, 'labs'), orderBy('resultDate', 'desc')));
+    labDataCache = {};
     snap.forEach(d => {
       const l = d.data();
-      if (!bycat[l.cat]) bycat[l.cat] = {};
-      if (!bycat[l.cat][l.test]) bycat[l.cat][l.test] = l; // first = most recent
+      if (!l.cat || !l.test) return;
+      if (!labDataCache[l.cat]) labDataCache[l.cat] = [];
+      labDataCache[l.cat].push(l);
     });
-    renderLabsSidebar(bycat);
-  } catch (err) {
-    console.error('Labs load error:', err);
-  }
+    renderLabsSidebar();
+  } catch (err) { console.error('Labs load error:', err); }
 }
 
-function renderLabsSidebar(bycat) {
+function renderLabsSidebar() {
   const container = $('labs-tree');
   const empty = $('labs-empty');
-  const cats = Object.keys(bycat);
+  const cats = Object.keys(labDataCache);
   if (!cats.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
   empty.style.display = 'none';
   container.innerHTML = '';
-  for (const cat of cats.sort()) {
-    const tests = bycat[cat];
-    const sec = document.createElement('div');
-    sec.className = 'lab-cat-section';
-    const heading = document.createElement('div');
-    heading.className = 'lab-cat-heading';
-    heading.innerHTML = `<span>🐱</span><span>${cat}</span>`;
-    sec.appendChild(heading);
-    for (const [test, lab] of Object.entries(tests)) {
-      const row = document.createElement('div');
-      row.className = 'lab-summary-row';
-      const abnClass = lab.abnormal === 'HIGH' ? 'high' : lab.abnormal === 'LOW' ? 'low' :
-                       (lab.abnormal === 'NEG' || lab.abnormal === 'NEGATIVE') ? 'neg' : 'normal';
-      row.innerHTML = `
-        <span class="lab-test-name">${test}</span>
-        <span class="lab-val ${abnClass}">${lab.value}${lab.unit ? ' ' + lab.unit : ''}</span>
-        <span class="lab-date">${formatDateShort(lab.resultDate)}</span>`;
-      sec.appendChild(row);
-    }
-    container.appendChild(sec);
+  if (!flowsheetCat) flowsheetCat = cats.sort()[0];
+
+  // Cat selector
+  const controls = document.createElement('div');
+  controls.style.cssText = 'padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);background:white;position:sticky;top:0;z-index:2;';
+  const sel = document.createElement('select');
+  sel.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;width:100%;';
+  cats.sort().forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat; opt.textContent = '🐱 ' + cat;
+    if (cat === flowsheetCat) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener('change', () => { flowsheetCat = sel.value; renderLabsSidebar(); });
+  controls.appendChild(sel);
+  container.appendChild(controls);
+
+  const entries = labDataCache[flowsheetCat] || [];
+  if (!entries.length) {
+    const empty2 = document.createElement('div');
+    empty2.className = 'sidebar-empty';
+    empty2.innerHTML = '<div class="sidebar-empty-icon">🧪</div><div>No labs for ' + flowsheetCat + '</div>';
+    container.appendChild(empty2);
+    return;
   }
+
+  // Most recent value per test
+  const latest = {};
+  for (const e of entries) {
+    if (!latest[e.test] || (e.resultDate||'') > (latest[e.test].resultDate||'')) latest[e.test] = e;
+  }
+  const allTests = Object.keys(latest);
+  const orderedTests = [
+    ...TEST_ORDER.filter(t => allTests.includes(t)),
+    ...allTests.filter(t => !TEST_ORDER.includes(t)).sort()
+  ];
+
+  for (const test of orderedTests) {
+    const e = latest[test];
+    const row = document.createElement('div');
+    row.className = 'lab-summary-row';
+    const abn = (e.abnormal||'').toUpperCase();
+    const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
+    const displayVal = typeof e.value === 'number'
+      ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
+      : String(e.value || '');
+    row.innerHTML = `
+      <span class="lab-test-name">${escHtml(test)}</span>
+      <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
+      <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
+    row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
+    row.addEventListener('click', () => openFlowsheetModal(flowsheetCat));
+    container.appendChild(row);
+  }
+
+  const expandBtn = document.createElement('button');
+  expandBtn.className = 'lab-expand-btn';
+  expandBtn.textContent = '⊞ View Full Flowsheet';
+  expandBtn.addEventListener('click', () => openFlowsheetModal(flowsheetCat));
+  container.appendChild(expandBtn);
+}
+
+// ── FLOWSHEET MODAL ──
+function openFlowsheetModal(cat) {
+  flowsheetCat = cat || flowsheetCat;
+  // Populate cat selector
+  const sel = $('flowsheet-modal-cat');
+  sel.innerHTML = '';
+  Object.keys(labDataCache).sort().forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = '🐱 ' + c;
+    if (c === flowsheetCat) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
+  const body = $('flowsheet-modal-body');
+  body.innerHTML = '';
+  buildFlowsheetTable(flowsheetCat, body);
+  $('flowsheet-modal').classList.add('open');
+}
+
+function buildFlowsheetTable(cat, container) {
+  const entries = labDataCache[cat] || [];
+  if (!entries.length) {
+    container.innerHTML = '<div style="padding:1.5rem;font-family:JetBrains Mono,monospace;font-size:0.7rem;color:var(--ink-muted);text-align:center;">No lab data for ' + cat + '</div>';
+    return;
+  }
+  const dates = [...new Set(entries.map(e => e.resultDate||e.visitDate||'').filter(Boolean))].sort();
+  const allTests = [...new Set(entries.map(e => e.test))];
+  const orderedTests = [
+    ...TEST_ORDER.filter(t => allTests.includes(t)),
+    ...allTests.filter(t => !TEST_ORDER.includes(t)).sort()
+  ];
+  const lookup = {};
+  for (const e of entries) {
+    if (!lookup[e.test]) lookup[e.test] = {};
+    const d = e.resultDate || e.visitDate || '';
+    if (!lookup[e.test][d] || (e.resultDate||'') >= (lookup[e.test][d].resultDate||'')) lookup[e.test][d] = e;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'overflow:auto;padding:0.5rem;';
+  const table = document.createElement('table');
+  table.style.cssText = 'border-collapse:collapse;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
+
+  // Header
+  const thead = document.createElement('thead');
+  const hrow = document.createElement('tr');
+  const thTest = document.createElement('th');
+  thTest.textContent = 'Test';
+  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);font-weight:500;position:sticky;left:0;z-index:3;';
+  hrow.appendChild(thTest);
+  for (const date of dates) {
+    const th = document.createElement('th');
+    th.textContent = date.slice(0,7);
+    th.title = date;
+    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);font-weight:500;';
+    hrow.appendChild(th);
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  for (const test of orderedTests) {
+    const row = document.createElement('tr');
+    const tdName = document.createElement('td');
+    tdName.textContent = test;
+    tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);';
+    row.appendChild(tdName);
+    for (const date of dates) {
+      const td = document.createElement('td');
+      td.style.cssText = 'padding:0.3rem 0.6rem;border:1px solid var(--border);text-align:center;color:var(--ink);cursor:pointer;';
+      const entry = lookup[test]?.[date];
+      if (!entry) {
+        td.textContent = '—';
+        td.style.color = 'var(--border)';
+      } else {
+        const abn = (entry.abnormal||'').toUpperCase();
+        const displayVal = typeof entry.value === 'number'
+          ? (entry.value % 1 === 0 ? entry.value.toString() : entry.value < 0.1 ? entry.value.toFixed(3) : entry.value < 10 ? entry.value.toFixed(2) : entry.value.toFixed(1))
+          : String(entry.value || '');
+        td.textContent = displayVal;
+        if (abn === 'HIGH') td.style.cssText += 'color:var(--red);font-weight:600;';
+        else if (abn === 'LOW') td.style.cssText += 'color:var(--blue);font-weight:600;';
+        else if (abn === 'NEG' || abn === 'NEGATIVE') td.style.color = 'var(--ink-muted)';
+        let tooltip = test;
+        if (entry.unit) tooltip += ' (' + entry.unit + ')';
+        if (entry.refLow != null && entry.refHigh != null) tooltip += '\nRef: ' + entry.refLow + '–' + entry.refHigh;
+        if (abn && abn !== 'NEG' && abn !== 'NEGATIVE') tooltip += '\n⚠ ' + abn;
+        td.title = tooltip;
+        // Click → open visit record
+        td.addEventListener('click', () => {
+          const matchingVisit = { cat, date: entry.visitDate || date, driveFileIds: entry.driveFileId ? [entry.driveFileId] : [], sourceFiles: entry.sourceFile ? [entry.sourceFile] : [], narrative: `${test}: ${displayVal}${entry.unit?' '+entry.unit:''}${entry.refLow!=null?'\nRef: '+entry.refLow+'–'+entry.refHigh:''}${abn?' ['+abn+']':''}` };
+          openVisit(matchingVisit);
+        });
+      }
+      row.appendChild(td);
+    }
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  container.appendChild(wrap);
 }
 
 // ── JOURNAL SIDEBAR ──
@@ -1308,10 +1577,10 @@ function openProcessModal(files) {
     $('process-confirm-label').textContent = 'Start Processing';
   } else {
     modeInfo.innerHTML = `<div class="process-mode-card batch">
-      <div class="process-mode-label">Real-time queue (${files.length} files)</div>
-      <div class="process-mode-desc">Files processed sequentially with automatic rate limit handling. Each file saved to Firestore as it completes. You can close the tab and reopen to resume. ~50% savings vs manual — batching uses the Anthropic Batch API when fully implemented.</div>
+      <div class="process-mode-label">Batch mode — ${files.length} files</div>
+      <div class="process-mode-desc">Uses Anthropic Batch API — 50% cheaper, runs on Anthropic servers. Your PC can be off. Results poll automatically when you reopen the app. Phase 2 reprocessing available for flagged files after review.</div>
     </div>`;
-    $('process-confirm-label').textContent = `Process ${files.length} Files`;
+    $('process-confirm-label').textContent = `Submit Batch (${files.length} files)`;
   }
 
   const { cost } = estimateCost(files);
@@ -1345,7 +1614,11 @@ $('process-modal-confirm').addEventListener('click', () => {
   const files = window._pendingProcessFiles;
   if (!files?.length) return;
   $('process-modal').classList.remove('open');
-  startProcessingQueue(files);
+  if (files.length >= 5) {
+    submitBatchJob(files);
+  } else {
+    startProcessingQueue(files);
+  }
 });
 
 // ── PROCESSING PIPELINE ──
@@ -1503,38 +1776,16 @@ async function processFile(file) {
   for (const chunk of chunks) {
     if (processingStop) break;
 
-    // ── NARRATIVE PASS ──
-    const narrativeResult = await runNarrativePass(file, chunk);
-    if (narrativeResult) {
-      (narrativeResult.cats || []).forEach(c => allCats.add(c));
-      (narrativeResult.dates || []).forEach(d => allDates.add(d));
-      if (narrativeResult.visits?.length) allVisits.push(...narrativeResult.visits);
-      if (narrativeResult.flags?.length) allFlags.push(...narrativeResult.flags);
-      passes.push('narrative');
-    }
+    // ── SINGLE COMBINED PASS (narrative + labs + PCR in one call) ──
+    const result = await runCombinedPass(file, chunk);
+    if (!result) continue;
 
-    if (processingStop) break;
-
-    // ── LAB PASS ──
-    const labText = chunk.text || '';
-    if (labText.length > 100 || chunk.isImage) {
-      const labResult = await runLabPass(file, chunk, narrativeResult);
-      if (labResult?.labs?.length) {
-        allLabs.push(...labResult.labs);
-        passes.push('labs');
-      }
-    }
-
-    if (processingStop) break;
-
-    // ── PCR PASS ──
-    if (labText.toLowerCase().match(/\b(felv|fiv|pcr|giardia|corona|feline|detected|negative|positive)\b/)) {
-      const pcrResult = await runPcrPass(file, chunk, narrativeResult);
-      if (pcrResult?.results?.length) {
-        allLabs.push(...pcrResult.results.map(r => ({ ...r, labName: 'PCR/Serology' })));
-        passes.push('pcr');
-      }
-    }
+    (result.cats || []).forEach(c => allCats.add(c));
+    (result.dates || []).forEach(d => allDates.add(d));
+    if (result.visits?.length) { allVisits.push(...result.visits); passes.push('narrative'); }
+    if (result.labs?.length) { allLabs.push(...result.labs); passes.push('labs'); }
+    if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: 'PCR/Serology' }))); passes.push('pcr'); }
+    if (result.flags?.length) allFlags.push(...result.flags);
   }
 
   // Write visits to Firestore
@@ -1759,7 +2010,7 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-20250514', // Sonnet for extraction quality — labs/meds need accuracy
       max_tokens: maxTokens,
       system: SYSTEM_EXTRACTION,
       messages
@@ -1810,7 +2061,7 @@ function buildUserContent(chunk, promptText) {
       { type: 'text', text: promptText }
     ];
   }
-  return promptText + '\n\n' + (chunk.text || '').slice(0, 12000);
+  return promptText + '\n\n' + (chunk.text || '').slice(0, 18000);
 }
 
 async function detectBulkSummary(textSnippet) {
@@ -1836,10 +2087,39 @@ async function splitByDate(fullText) {
   return splits.filter(s => s.trim().length > 100);
 }
 
-async function runNarrativePass(file, chunk) {
-  const prompt = `Extract all veterinary visit records from this document.
+async function runCombinedPass(file, chunk) {
+  const prompt = `You are a veterinary medical records processor for cats Mocha, Evie, and Latte.
+Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
-Return JSON:
+IMPORTANT — LAB TABLE FORMAT:
+PDF extraction often garbles table columns. The lab table has columns:
+  Test Name | Result | Units | Low Reference | High Reference | Qualifier (H/L/blank)
+The values may appear out of order or with columns separated. Reconstruct each row carefully.
+Common tests: BUN, Creatinine, SDMA, ALT, ALP, Albumin, Globulin, Total Protein, Glucose, 
+Phosphorus, Potassium, Sodium, Chloride, T4, Folate, Cobalamin, TLI, PLI, WBC, RBC, 
+Hematocrit, Hemoglobin, Platelets, MCV, MCH, MCHC, USG, pH, Protein, Glucose (urine),
+Ketones, Bilirubin, Blood, WBC (urine), Casts, Crystals, Bacteria.
+Extract EVERY row — do not skip any. If a qualifier column says H or HIGH → abnormal:"HIGH", 
+L or LOW → abnormal:"LOW", blank/normal → abnormal:null.
+
+EXTRACT:
+- Cat name(s), visit date(s), clinic name, attending vet name and specialty
+- Chief complaint, all diagnoses, conditions, symptoms, allergies, adverse reactions
+- ALL medications: name, dosage, frequency, route, prescribing vet, date, whether dispensed
+- ALL supplements, vitamins, special/prescription foods, feeding instructions, nutritional notes, caloric targets
+- ALL vaccines: name, date given, next due date
+- ALL lab results — every single row from the lab table, never omit any
+- ALL PCR/serology results including NEGATIVE results: FeLV, FIV, Giardia, etc.
+- Imaging: type, region, findings, impression, date
+- Procedures/surgeries: name, date, findings, outcome
+- Vital signs: weight, temp, HR, RR, body condition score
+- Follow-up instructions, care plans, referrals
+
+SKIP: costs/fees/billing, boilerplate, appointment reminders, portal instructions, legal text.
+INVOICES: keep only meds dispensed, vaccines, prescription foods, procedures + dates.
+BULK SUMMARIES: skip any header problem-list block, extract only individual dated visit entries.
+
+Return JSON only, no markdown:
 {
   "skip": false,
   "cats": ["Mocha"],
@@ -1847,40 +2127,16 @@ Return JSON:
   "visits": [{
     "cat": "Mocha",
     "date": "2024-03-15",
-    "clinic": "...",
-    "doctor": "...",
-    "chiefComplaint": "...",
-    "diagnoses": ["IBD"],
-    "medications": [{"name":"...","dose":"...","frequency":"...","route":"...","dispensed":true}],
-    "procedures": [{"name":"...","date":"...","findings":"..."}],
-    "narrative": "full extracted text for this visit",
+    "clinic": "Morrisville Cat Hospital",
+    "doctor": "Dr. Chris Simkins",
+    "chiefComplaint": "vomiting, weight loss",
+    "diagnoses": ["IBD", "Pancreatitis"],
+    "medications": [{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","dispensed":true}],
+    "procedures": [{"name":"Abdominal ultrasound","date":"2024-03-15","findings":"thickened intestinal walls"}],
+    "narrative": "complete filtered clinical text for this visit",
     "confidence": 0.9,
     "flags": []
   }],
-  "flags": [{"type":"no_date","description":"...","bestGuess":"..."}]
-}
-
-If this is an invoice with no clinical content, return {"skip":true}.`;
-
-  const result = await callExtractionClaude([
-    { role: 'user', content: buildUserContent(chunk, prompt) }
-  ], 3000);
-
-  if (!result || result.skip) return null;
-  return result;
-}
-
-async function runLabPass(file, chunk, narrativeCtx) {
-  const catContext = narrativeCtx?.cats?.join(', ') || 'unknown cat';
-  const dateContext = narrativeCtx?.visits?.[0]?.date || 'unknown date';
-
-  const prompt = `Extract ALL laboratory results from this veterinary document. Include every single test value — never omit any.
-
-Known cat: ${catContext}
-Approximate date: ${dateContext}
-
-Return JSON:
-{
   "labs": [{
     "cat": "Mocha",
     "test": "BUN",
@@ -1891,49 +2147,30 @@ Return JSON:
     "abnormal": "LOW",
     "resultDate": "2024-03-15",
     "visitDate": "2024-03-15",
-    "labName": "CBC with Differential",
-    "visitCluster": "2024-03-15_clinic"
-  }]
-}
-
-If no lab values found, return {"labs":[]}.
-For PCR/serology binary tests, use value: "NEGATIVE" or "POSITIVE", unit: null.`;
-
-  const result = await callExtractionClaude([
-    { role: 'user', content: buildUserContent(chunk, prompt) }
-  ], 2500);
-
-  return result;
-}
-
-async function runPcrPass(file, chunk, narrativeCtx) {
-  const catContext = narrativeCtx?.cats?.join(', ') || 'unknown cat';
-
-  const prompt = `Extract ALL PCR, serology, and infectious disease test results buried in this veterinary text.
-Look for: FeLV, FIV, Giardia, Tritrichomonas, Cryptosporidium, Coronavirus, Panleukopenia, Herpesvirus, Calicivirus, Bartonella, Toxoplasma, Heartworm, fecal float, culture results.
-
-Known cat: ${catContext}
-
-Return JSON:
-{
-  "results": [{
+    "labName": "AC CBC Lytes UA"
+  }],
+  "pcr": [{
     "cat": "Mocha",
-    "test": "FeLV",
+    "test": "FeLV Antigen",
     "value": "NEGATIVE",
     "unit": null,
     "abnormal": "NEG",
     "resultDate": "2024-03-15",
-    "visitDate": "2024-03-15",
-    "labName": "PCR/Serology"
-  }]
+    "visitDate": "2024-03-15"
+  }],
+  "flags": [{"type":"no_date","description":"Could not determine visit date","bestGuess":"2024-03"}]
 }
 
-If no PCR/serology results found, return {"results":[]}.`;
+If invoice with no medications/vaccines/procedures → {"skip":true}
+
+--- FILE: ${file.name} ---
+`;
 
   const result = await callExtractionClaude([
     { role: 'user', content: buildUserContent(chunk, prompt) }
-  ], 1500);
+  ], 6000);
 
+  if (!result || result.skip) return null;
   return result;
 }
 
@@ -2026,6 +2263,17 @@ function navigatePopup(dir) {
   if (cur) { cur.classList.add('current'); cur.scrollIntoView({ block:'nearest' }); }
   $('popup-search-count').textContent = `${popupMatchIdx+1}/${popupMatches.length}`;
 }
+
+// ── FLOWSHEET MODAL WIRING ──
+$('flowsheet-modal-close').addEventListener('click', () => $('flowsheet-modal').classList.remove('open'));
+$('flowsheet-modal').addEventListener('click', e => { if (e.target === $('flowsheet-modal')) $('flowsheet-modal').classList.remove('open'); });
+$('flowsheet-modal-cat').addEventListener('change', () => {
+  flowsheetCat = $('flowsheet-modal-cat').value;
+  $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
+  const body = $('flowsheet-modal-body');
+  body.innerHTML = '';
+  buildFlowsheetTable(flowsheetCat, body);
+});
 
 $('popup-close').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('popup-close-btn').addEventListener('click', () => $('record-popup').classList.remove('open'));
@@ -2341,7 +2589,526 @@ Conversation:\n${convHistory.map(m=>`${m.role}: ${m.content}`).join('\n\n').slic
   $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Save Session';
 });
 
-// ── API KEY MODAL ──
+// ══════════════════════════════════════════════
+// LAYER 8 — BATCH API
+// ══════════════════════════════════════════════
+
+async function submitBatchJob(files) {
+  if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
+  showToast(`Preparing batch for ${files.length} files…`, 'info');
+
+  // Mark all files as queued in Firestore
+  for (const file of files) {
+    await writeFileStatus(file.id, file.name, 'queued');
+    updateFileBadge(file.id, 'queued');
+  }
+
+  try {
+    // Build batch requests — one per file
+    const requests = [];
+    for (const file of files) {
+      // Fetch file content first (needed for batch)
+      let text = '';
+      try {
+        const blob = await fetchDriveFileBlob(file.id);
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'pdf' || file.mimeType === 'application/pdf') {
+          text = await extractPdfText(blob);
+        } else if (['txt','md','csv'].includes(ext)) {
+          text = await blob.text();
+        }
+      } catch(e) {
+        console.warn(`Could not fetch ${file.name}:`, e.message);
+        continue;
+      }
+      if (!text || text.trim().length < 50) continue;
+
+      requests.push({
+        custom_id: file.id,
+        params: {
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 6000,
+          system: SYSTEM_EXTRACTION,
+          messages: [{
+            role: 'user',
+            content: buildBatchPrompt(file.name, text)
+          }]
+        }
+      });
+    }
+
+    if (!requests.length) {
+      showToast('No processable files found in selection', 'warning');
+      return;
+    }
+
+    // Submit to Anthropic Batch API
+    const res = await fetch('https://api.anthropic.com/v1/messages/batches', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ requests })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Batch submit failed: ${res.status}`);
+    }
+
+    const batch = await res.json();
+    const batchId = batch.id;
+
+    // Save batch state to Firestore so we can poll later
+    await setDoc(doc(db, 'batches', batchId), {
+      batchId,
+      status: 'in_progress',
+      fileIds: files.map(f => f.id),
+      fileNames: Object.fromEntries(files.map(f => [f.id, f.name])),
+      submittedAt: new Date().toISOString(),
+      totalFiles: requests.length,
+      processedFiles: 0
+    });
+
+    // Show batch banner
+    showBatchBanner(batchId, requests.length, 0);
+    showToast(`Batch submitted — ${requests.length} files queued. Results will appear automatically.`, 'journal');
+
+    // Start polling
+    pollBatchJob(batchId);
+
+  } catch(err) {
+    console.error('Batch submit error:', err);
+    showToast('Batch failed: ' + err.message, 'warning');
+    // Revert file statuses
+    for (const file of files) {
+      await writeFileStatus(file.id, file.name, 'unprocessed');
+      updateFileBadge(file.id, 'unprocessed');
+    }
+  }
+}
+
+function buildBatchPrompt(filename, text) {
+  const prompt = `You are a veterinary medical records processor for cats Mocha, Evie, and Latte.
+Extract ALL clinical data from this document. Be exhaustive — never omit values.
+
+IMPORTANT — LAB TABLE FORMAT:
+PDF extraction often garbles table columns. The lab table columns are:
+  Test Name | Result | Units | Low Reference | High Reference | Qualifier (H/L/blank)
+Reconstruct each row carefully. Extract EVERY row — do not skip any.
+H or HIGH qualifier → abnormal:"HIGH", L or LOW → abnormal:"LOW", blank → abnormal:null.
+
+EXTRACT everything: visits, diagnoses, medications, supplements, foods, vaccines, ALL lab values, PCR results, imaging, procedures, vitals, care plans.
+SKIP: costs, billing, boilerplate, appointment reminders, legal text.
+
+Return JSON only, no markdown:
+{"skip":false,"cats":["Mocha"],"dates":["2024-03-15"],"visits":[{"cat":"Mocha","date":"2024-03-15","clinic":"...","doctor":"...","chiefComplaint":"...","diagnoses":[],"medications":[],"procedures":[],"narrative":"...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":12,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":"LOW","resultDate":"2024-03-15","visitDate":"2024-03-15","labName":"CBC"}],"pcr":[],"flags":[]}
+
+If invoice with no clinical content → {"skip":true}
+
+--- FILE: ${filename} ---
+${text.slice(0, 18000)}`;
+  return prompt;
+}
+
+async function pollBatchJob(batchId) {
+  // Poll every 30 seconds
+  const poll = async () => {
+    try {
+      const res = await fetch(`https://api.anthropic.com/v1/messages/batches/${batchId}`, {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        }
+      });
+      if (!res.ok) return;
+      const batch = await res.json();
+
+      const processed = (batch.request_counts?.succeeded || 0) + (batch.request_counts?.errored || 0);
+      const total = batch.request_counts?.processing + processed + (batch.request_counts?.canceled || 0) || 0;
+
+      // Update banner
+      if ($('batch-banner').classList.contains('show')) {
+        showBatchBanner(batchId, total, processed);
+      }
+
+      if (batch.processing_status === 'ended') {
+        await processBatchResults(batchId);
+        return;
+      }
+
+      // Continue polling
+      setTimeout(poll, 30000);
+    } catch(e) {
+      console.warn('Batch poll error:', e.message);
+      setTimeout(poll, 60000); // back off on error
+    }
+  };
+  setTimeout(poll, 15000); // first poll after 15s
+}
+
+async function processBatchResults(batchId) {
+  try {
+    // Get results URL
+    const res = await fetch(`https://api.anthropic.com/v1/messages/batches/${batchId}/results`, {
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      }
+    });
+    if (!res.ok) throw new Error(`Results fetch failed: ${res.status}`);
+
+    // Results come as JSONL
+    const text = await res.text();
+    const lines = text.trim().split('\n').filter(Boolean);
+
+    // Load batch metadata
+    const batchDoc = await getDoc(doc(db, 'batches', batchId));
+    const batchData = batchDoc.exists() ? batchDoc.data() : {};
+    const fileNames = batchData.fileNames || {};
+
+    let succeeded = 0, failed = 0, flagged = 0;
+
+    for (const line of lines) {
+      try {
+        const result = JSON.parse(line);
+        const fileId = result.custom_id;
+        const filename = fileNames[fileId] || fileId;
+
+        if (result.result?.type === 'succeeded') {
+          const raw = result.result.message?.content?.map(b => b.text || '').join('') || '';
+          const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+          if (parsed.skip) {
+            await writeFileStatus(fileId, filename, 'complete', { extractionPasses: ['skipped'] });
+            updateFileBadge(fileId, 'complete');
+            continue;
+          }
+
+          // Write to Firestore (same as realtime)
+          await writeBatchResultToFirestore(fileId, filename, parsed);
+          succeeded++;
+          updateFileBadge(fileId, parsed.flags?.length ? 'flagged' : 'complete');
+          if (parsed.flags?.length) flagged++;
+        } else {
+          await writeFileStatus(fileId, filename, 'failed', { error: result.result?.error?.message || 'Batch error' });
+          updateFileBadge(fileId, 'failed');
+          failed++;
+        }
+      } catch(e) {
+        console.warn('Result parse error:', e.message);
+        failed++;
+      }
+    }
+
+    // Update batch record
+    await setDoc(doc(db, 'batches', batchId), { status: 'complete', completedAt: new Date().toISOString() }, { merge: true });
+
+    // Reload sidebars
+    await loadRecordsSidebar();
+    await loadLabsSidebar();
+
+    // Update flags button
+    const flagCount = parseInt($('flags-count').textContent || '0') + flagged;
+    if (flagCount > 0) { $('flags-count').textContent = flagCount; $('flags-btn').style.display = 'inline-flex'; }
+
+    $('batch-banner').classList.remove('show');
+    showToast(`Batch complete — ${succeeded} processed, ${failed} failed, ${flagged} flagged`, 'journal');
+
+  } catch(err) {
+    console.error('Batch results error:', err);
+    showToast('Error processing batch results: ' + err.message, 'warning');
+  }
+}
+
+async function writeBatchResultToFirestore(fileId, filename, parsed) {
+  const allCats = new Set(parsed.cats || []);
+  const allDates = new Set(parsed.dates || []);
+
+  for (const visit of (parsed.visits || [])) {
+    if (!visit.cat || visit.cat === 'SKIP') continue;
+    await setDoc(doc(collection(db, 'visits')), {
+      cat: visit.cat, date: visit.date || 'unknown',
+      clinic: visit.clinic || null, doctor: visit.doctor || null,
+      chiefComplaint: visit.chiefComplaint || null,
+      diagnoses: visit.diagnoses || [], medications: visit.medications || [],
+      procedures: visit.procedures || [], narrative: visit.narrative || '',
+      sourceFiles: [filename], driveFileIds: [fileId],
+      visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
+      confidence: visit.confidence || 0.8, flags: visit.flags || [],
+      createdAt: new Date().toISOString()
+    });
+    allCats.add(visit.cat);
+    if (visit.date) allDates.add(visit.date);
+  }
+
+  for (const lab of [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology'}))]) {
+    if (!lab.test || lab.value === undefined || lab.value === null) continue;
+    const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
+    if (!cat) continue;
+    await setDoc(doc(collection(db, 'labs')), {
+      cat, test: lab.test, value: lab.value, unit: lab.unit || null,
+      refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
+      resultDate: lab.resultDate || null, visitDate: lab.visitDate || null,
+      labName: lab.labName || null, sourceFile: filename, driveFileId: fileId,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  for (const flag of (parsed.flags || [])) {
+    await setDoc(doc(collection(db, 'flags')), {
+      fileId, filename, type: flag.type || 'unclear_structure',
+      description: flag.description || '', bestGuess: flag.bestGuess || null,
+      options: ['Accept guess', 'Enter manually', 'View original'],
+      resolved: false, resolvedAt: null, resolution: null,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  const finalStatus = (parsed.flags || []).length > 0 ? 'flagged' : 'complete';
+  await writeFileStatus(fileId, filename, finalStatus, {
+    cats: [...allCats], datesCovered: [...allDates].sort(),
+    extractionPasses: ['combined_batch'],
+    processedAt: new Date().toISOString()
+  });
+}
+
+function showBatchBanner(batchId, total, processed) {
+  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+  $('batch-banner-text').textContent = `Batch processing — ${processed}/${total} files complete (${pct}%) · ID: ${batchId.slice(-8)}`;
+  $('batch-banner').classList.add('show');
+}
+
+// Check for pending batches on load
+async function checkPendingBatches() {
+  if (!apiKey || !currentUser) return;
+  try {
+    const snap = await getDocs(query(collection(db, 'batches'), where('status', '==', 'in_progress')));
+    snap.forEach(d => {
+      const b = d.data();
+      showBatchBanner(b.batchId, b.totalFiles, b.processedFiles || 0);
+      pollBatchJob(b.batchId);
+    });
+  } catch(e) { console.warn('Pending batch check:', e.message); }
+}
+
+$('batch-banner-close').addEventListener('click', () => $('batch-banner').classList.remove('show'));
+
+// ══════════════════════════════════════════════
+// LAYER 9 — FLAGS QUEUE
+// ══════════════════════════════════════════════
+
+$('flags-btn').addEventListener('click', () => openFlagsModal());
+$('flags-modal-close').addEventListener('click', () => $('flags-modal').classList.remove('open'));
+
+async function openFlagsModal() {
+  $('flags-modal').classList.add('open');
+  $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div>Loading flags…</div></div>';
+  try {
+    const snap = await getDocs(query(collection(db, 'flags'), orderBy('createdAt', 'desc')));
+    const flags = [];
+    snap.forEach(d => flags.push({ id: d.id, ...d.data() }));
+
+    if (!flags.length) {
+      $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div class="sidebar-empty-icon">✓</div><div>No flagged items</div></div>';
+      $('flags-summary').textContent = '';
+      return;
+    }
+
+    const unresolved = flags.filter(f => !f.resolved).length;
+    $('flags-summary').textContent = `${unresolved} unresolved · ${flags.length} total`;
+    if (unresolved < flags.length) $('flags-reprocess-btn').style.display = 'inline-flex';
+
+    $('flags-modal-body').innerHTML = '';
+    for (const flag of flags) {
+      const el = document.createElement('div');
+      el.className = 'flag-item' + (flag.resolved ? ' resolved' : '');
+      el.innerHTML = `
+        <div class="flag-item-header">
+          <span class="flag-filename" title="${escHtml(flag.filename)}">${escHtml(flag.filename)}</span>
+          <span class="flag-type ${flag.resolved ? 'resolved' : ''}">${flag.resolved ? 'resolved' : escHtml(flag.type || 'unknown')}</span>
+        </div>
+        <div class="flag-desc">${escHtml(flag.description || '')}</div>
+        ${flag.bestGuess ? `<div class="flag-best-guess">Best guess: ${escHtml(flag.bestGuess)}</div>` : ''}
+        <div class="flag-actions" id="flag-actions-${flag.id}"></div>`;
+
+      const actionsEl = el.querySelector(`#flag-actions-${flag.id}`);
+
+      if (flag.resolved) {
+        actionsEl.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(flag.resolution || 'Resolved')}</span>`;
+      } else {
+        // Accept best guess button
+        if (flag.bestGuess) {
+          const acceptBtn = document.createElement('button');
+          acceptBtn.className = 'btn-icon free-icon';
+          acceptBtn.style.fontSize = '0.62rem';
+          acceptBtn.innerHTML = '<span class="free-dot"></span> Accept guess';
+          acceptBtn.addEventListener('click', () => resolveFlag(flag.id, 'accepted_guess', flag.bestGuess, el, actionsEl));
+          actionsEl.appendChild(acceptBtn);
+        }
+
+        // Manual entry
+        const input = document.createElement('input');
+        input.className = 'flag-input';
+        input.placeholder = 'Enter value…';
+        input.type = 'text';
+        actionsEl.appendChild(input);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn-icon free-icon';
+        saveBtn.style.fontSize = '0.62rem';
+        saveBtn.innerHTML = '<span class="free-dot"></span> Save';
+        saveBtn.addEventListener('click', () => {
+          const val = input.value.trim();
+          if (!val) return;
+          resolveFlag(flag.id, 'manual_entry', val, el, actionsEl);
+        });
+        actionsEl.appendChild(saveBtn);
+
+        // View in Drive
+        if (flag.fileId) {
+          const viewBtn = document.createElement('a');
+          viewBtn.className = 'btn-icon';
+          viewBtn.style.cssText = 'font-size:0.62rem;text-decoration:none;';
+          viewBtn.href = `https://drive.google.com/file/d/${flag.fileId}/view`;
+          viewBtn.target = '_blank';
+          viewBtn.textContent = 'View original ↗';
+          actionsEl.appendChild(viewBtn);
+        }
+
+        // Skip
+        const skipBtn = document.createElement('button');
+        skipBtn.className = 'btn-icon';
+        skipBtn.style.fontSize = '0.62rem';
+        skipBtn.textContent = 'Skip';
+        skipBtn.addEventListener('click', () => resolveFlag(flag.id, 'skipped', 'skipped', el, actionsEl));
+        actionsEl.appendChild(skipBtn);
+      }
+
+      $('flags-modal-body').appendChild(el);
+    }
+  } catch(e) {
+    $('flags-modal-body').innerHTML = '<div style="padding:1rem;font-family:JetBrains Mono,monospace;font-size:0.7rem;color:var(--red);">Error loading flags: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function resolveFlag(flagId, resolution, value, itemEl, actionsEl) {
+  try {
+    await setDoc(doc(db, 'flags', flagId), {
+      resolved: true, resolution, resolvedValue: value,
+      resolvedAt: new Date().toISOString()
+    }, { merge: true });
+    itemEl.classList.add('resolved');
+    actionsEl.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(value)}</span>`;
+    itemEl.querySelector('.flag-type').className = 'flag-type resolved';
+    itemEl.querySelector('.flag-type').textContent = 'resolved';
+
+    // Update count
+    const remaining = $('flags-modal-body').querySelectorAll('.flag-item:not(.resolved)').length;
+    const total = $('flags-modal-body').querySelectorAll('.flag-item').length;
+    $('flags-summary').textContent = `${remaining} unresolved · ${total} total`;
+    if (remaining === 0) $('flags-count').textContent = '0';
+    $('flags-reprocess-btn').style.display = 'inline-flex';
+  } catch(e) {
+    showToast('Could not save resolution: ' + e.message, 'warning');
+  }
+}
+
+// Reprocess flagged files with resolutions
+$('flags-reprocess-btn').addEventListener('click', async () => {
+  $('flags-modal').classList.remove('open');
+  try {
+    const snap = await getDocs(query(collection(db, 'flags'), where('resolved', '==', true)));
+    const resolvedFlags = [];
+    snap.forEach(d => resolvedFlags.push({ id: d.id, ...d.data() }));
+    if (!resolvedFlags.length) { showToast('No resolved flags to reprocess', 'info'); return; }
+
+    // Get unique file IDs
+    const fileIds = [...new Set(resolvedFlags.map(f => f.fileId).filter(Boolean))];
+    const files = (window._driveFiles || []).filter(f => fileIds.includes(f.id));
+
+    if (!files.length) { showToast('Could not find source files in Drive list', 'warning'); return; }
+    showToast(`Reprocessing ${files.length} files with resolutions…`, 'info');
+    if (files.length >= 5) {
+      submitBatchJob(files);
+    } else {
+      startProcessingQueue(files);
+    }
+  } catch(e) {
+    showToast('Reprocess error: ' + e.message, 'warning');
+  }
+});
+
+// ══════════════════════════════════════════════
+// LAYER 10 — COST TRACKING
+// ══════════════════════════════════════════════
+
+let costWarnThreshold = 0.25;
+let costAlertThreshold = 1.00;
+let allTimeCost = 0;
+
+// Load cost settings
+try {
+  const saved = JSON.parse(localStorage.getItem('pr_cost_settings') || '{}');
+  if (saved.warn) costWarnThreshold = saved.warn;
+  if (saved.alert) costAlertThreshold = saved.alert;
+  if (saved.allTime) allTimeCost = saved.allTime;
+} catch(e) {}
+
+function saveCostSettings() {
+  try { localStorage.setItem('pr_cost_settings', JSON.stringify({ warn: costWarnThreshold, alert: costAlertThreshold, allTime: allTimeCost })); } catch(e) {}
+}
+
+// Override updateSessionCost to use configurable thresholds and track all-time
+function updateSessionCost(tokensUsed) {
+  const cost = (tokensUsed / 1000000) * 3.0; // blended Sonnet/Haiku estimate
+  sessionCost += cost;
+  allTimeCost += cost;
+  saveCostSettings();
+  const el = $('session-cost');
+  el.style.display = 'block';
+  el.textContent = `Session: $${sessionCost.toFixed(4)}`;
+  el.className = 'session-cost' + (sessionCost > costAlertThreshold ? ' alert' : sessionCost > costWarnThreshold ? ' warning' : '');
+  if (sessionCost > costAlertThreshold && sessionCost - cost <= costAlertThreshold) {
+    showToast(`⚠ Cost alert: session has reached $${sessionCost.toFixed(2)}`, 'warning');
+  } else if (sessionCost > costWarnThreshold && sessionCost - cost <= costWarnThreshold) {
+    showToast(`Cost warning: session at $${sessionCost.toFixed(2)}`, 'info');
+  }
+}
+
+// Cost modal
+$('session-cost').addEventListener('click', openCostModal);
+$('cost-modal-close').addEventListener('click', () => $('cost-modal').classList.remove('open'));
+
+function openCostModal() {
+  $('cost-warn-input').value = costWarnThreshold;
+  $('cost-alert-input').value = costAlertThreshold;
+  $('cost-modal-total').textContent = `$${sessionCost.toFixed(4)}`;
+  $('cost-modal-alltime').textContent = `$${allTimeCost.toFixed(4)}`;
+  $('cost-modal').classList.add('open');
+}
+
+$('cost-save-btn').addEventListener('click', () => {
+  costWarnThreshold = parseFloat($('cost-warn-input').value) || 0.25;
+  costAlertThreshold = parseFloat($('cost-alert-input').value) || 1.00;
+  saveCostSettings();
+  $('cost-modal').classList.remove('open');
+  showToast('Cost thresholds saved ✓', 'journal');
+  updateSessionCost(0); // refresh status bar color
+});
+
+$('cost-reset-btn').addEventListener('click', () => {
+  sessionCost = 0;
+  $('session-cost').style.display = 'none';
+  $('cost-modal-total').textContent = '$0.0000';
+  $('cost-modal').classList.remove('open');
+  showToast('Session cost reset', 'info');
+});
 async function loadApiKey() {
   // Try Firestore first (persists across devices)
   if (currentUser) {
