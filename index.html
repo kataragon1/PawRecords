@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='68' r='22' fill='%237c6f5b'/><ellipse cx='28' cy='42' rx='10' ry='13' fill='%237c6f5b'/><ellipse cx='72' cy='42' rx='10' ry='13' fill='%237c6f5b'/><ellipse cx='38' cy='28' rx='8' ry='11' fill='%237c6f5b'/><ellipse cx='62' cy='28' rx='8' ry='11' fill='%237c6f5b'/></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paw Records</title>
 <style>
@@ -928,6 +928,7 @@ onAuthStateChanged(auth, async user => {
     await loadApiKey();
     await loadInitialData();
     show('app');
+    getPdfJs().catch(() => {}); // preload PDF.js in background so first file processes instantly
     await loadDriveFiles();
   } else {
     currentUser = null;
@@ -2071,12 +2072,36 @@ async function processFile(file) {
 
   // ── SPLIT PASS: detect if this is a bulk summary that should be split ──
   let chunks = [{ text: extractedText, imageBase64, imageMediaType, isImage }];
-  if (extractedText && extractedText.length > 3000) {
-    const isBulkSummary = await detectBulkSummary(extractedText.slice(0, 2000));
-    if (isBulkSummary) {
-      const splitChunks = await splitByDate(extractedText);
-      if (splitChunks.length > 1) {
-        chunks = splitChunks.map(t => ({ text: t, isImage: false }));
+  if (extractedText) {
+    // Always split large text into manageable chunks (~15k chars each)
+    const CHUNK_SIZE = 15000;
+    if (extractedText.length > CHUNK_SIZE) {
+      // Try to split on date boundaries first for better context
+      const isBulkSummary = await detectBulkSummary(extractedText.slice(0, 2000));
+      let splitTexts = isBulkSummary ? await splitByDate(extractedText) : [extractedText];
+      // Further split any chunks still over CHUNK_SIZE
+      const finalChunks = [];
+      for (const t of splitTexts) {
+        if (t.length <= CHUNK_SIZE) {
+          finalChunks.push(t);
+        } else {
+          // Split on paragraph boundaries near chunk size
+          let pos = 0;
+          while (pos < t.length) {
+            let end = Math.min(pos + CHUNK_SIZE, t.length);
+            // Try to break at a paragraph boundary
+            if (end < t.length) {
+              const breakAt = t.lastIndexOf('\n\n', end);
+              if (breakAt > pos + 5000) end = breakAt;
+            }
+            finalChunks.push(t.slice(pos, end));
+            pos = end;
+          }
+        }
+      }
+      if (finalChunks.length > 1) {
+        chunks = finalChunks.map(t => ({ text: t, isImage: false }));
+        updateProgress(0, chunks.length, `${file.name}: split into ${chunks.length} chunks`);
       }
     }
   }
@@ -2088,13 +2113,36 @@ async function processFile(file) {
   const allDates = new Set();
   const passes = [];
 
-  for (const chunk of chunks) {
+  for (let ci = 0; ci < chunks.length; ci++) {
+    const chunk = chunks[ci];
     if (processingStop) break;
+    if (chunks.length > 1) updateProgress(ci, chunks.length, `${file.name}: chunk ${ci+1}/${chunks.length}`);
 
     // ── SINGLE COMBINED PASS ──
     const result = await runCombinedPass(file, chunk);
     if (!result) {
-      console.warn(`${file.name}: extraction returned null`);
+      if (chunk._retried) {
+        // Already retried once — pause and ask rather than loop
+        const chunkSize = chunk.text?.length || 0;
+        const estimatedCost = ((chunkSize / 4) / 1000000 * 3).toFixed(4);
+        const choice = await promptChunkFailure(file.name, chunkSize, estimatedCost);
+        if (choice === 'split') {
+          const mid = chunk.text.lastIndexOf('\n\n', Math.floor(chunkSize / 2)) || Math.floor(chunkSize / 2);
+          chunks.splice(ci + 1, 0,
+            { text: chunk.text.slice(0, mid), isImage: false, _retried: false },
+            { text: chunk.text.slice(mid), isImage: false, _retried: false }
+          );
+        } else if (choice === 'skip') {
+          allFlags.push({ type: 'chunk_skipped', description: `User skipped chunk of ${chunkSize} chars`, bestGuess: null });
+        } else {
+          // abort
+          processingStop = true;
+        }
+        continue;
+      }
+      // First failure — retry once with the chunk marked as retried
+      console.warn(`${file.name}: chunk failed — retrying once`);
+      chunks.splice(ci + 1, 0, { ...chunk, _retried: true });
       continue;
     }
     if (result.skip) {
@@ -2249,7 +2297,7 @@ async function extractPdfText(blob) {
     const arrayBuffer = await blob.arrayBuffer();
     const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
     let text = '';
-    const maxPages = Math.min(pdf.numPages, 60);
+    const maxPages = pdf.numPages; // process all pages — chunking handles size limits
     for (let i = 1; i <= maxPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
@@ -2712,6 +2760,16 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
   if (data.usage) {
     updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
   }
+  // Check if response was truncated
+  if (data.stop_reason === 'max_tokens') {
+    console.warn(`Response truncated at ${maxTokens} tokens — retrying with higher limit`);
+    if (maxTokens < 16000) {
+      return callExtractionClaude(messages, Math.min(maxTokens * 2, 16000));
+    }
+    // At 16k limit and still truncating — chunk was too large
+    console.error('Response still truncating at 16k tokens — chunk may be too large');
+    return null;
+  }
   const raw = data.content.map(b => b.text || '').join('').trim();
   try {
     return JSON.parse(raw.replace(/^```json\n?|^```\n?|```$/gm, '').trim());
@@ -2728,7 +2786,7 @@ function buildUserContent(chunk, promptText) {
       { type: 'text', text: promptText }
     ];
   }
-  return promptText + '\n\n' + (chunk.text || '').slice(0, 18000);
+  return promptText + '\n\n' + (chunk.text || ''); // chunks are pre-sized, no truncation needed
 }
 
 async function detectBulkSummary(textSnippet) {
@@ -2835,7 +2893,7 @@ If invoice with no medications/vaccines/procedures → {"skip":true}
 
   const result = await callExtractionClaude([
     { role: 'user', content: buildUserContent(chunk, prompt) }
-  ], 6000);
+  ], 8000);
 
   if (!result || result.skip) return null;
   return result;
@@ -3007,6 +3065,43 @@ $('pause-continue-btn').addEventListener('click', () => {
   if (pauseResolver) { pauseResolver(); pauseResolver = null; }
   hidePauseOverlay();
 });
+
+function promptChunkFailure(filename, chunkSize, estimatedCost) {
+  return new Promise(resolve => {
+    // Reuse pause overlay with custom content
+    $('pause-file-info').textContent = `${filename.slice(0,40)} — section of ${chunkSize.toLocaleString()} chars`;
+    const box = document.querySelector('.pause-box');
+    const origContent = box.innerHTML;
+
+    box.innerHTML = `
+      <div class="pause-icon">⚠</div>
+      <div class="pause-title">Extraction Failed</div>
+      <div class="pause-desc">A section of this file failed twice. How would you like to proceed?<br><br>
+        Splitting will retry at ~$${estimatedCost} additional cost.</div>
+      <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:0.5rem;">
+        <button class="pause-continue-btn" id="chunk-split-btn">Split & Retry</button>
+        <button class="pause-continue-btn" id="chunk-skip-btn" style="background:var(--surface);color:var(--ink);">Skip Section</button>
+        <button class="pause-continue-btn" id="chunk-abort-btn" style="background:var(--red-bg);color:var(--red);">Abort</button>
+      </div>`;
+
+    $('pause-overlay').classList.add('open');
+
+    const cleanup = (choice) => {
+      $('pause-overlay').classList.remove('open');
+      box.innerHTML = origContent;
+      // Re-wire the original continue button
+      $('pause-continue-btn').addEventListener('click', () => {
+        if (pauseResolver) { pauseResolver(); pauseResolver = null; }
+        hidePauseOverlay();
+      });
+      resolve(choice);
+    };
+
+    document.getElementById('chunk-split-btn').onclick = () => cleanup('split');
+    document.getElementById('chunk-skip-btn').onclick = () => cleanup('skip');
+    document.getElementById('chunk-abort-btn').onclick = () => cleanup('abort');
+  });
+}
 
 // ── WAKE LOCK ──
 let wakeLock = null;
@@ -3849,54 +3944,6 @@ async function saveApiKey(key) {
   // Always keep in localStorage as backup
   try { localStorage.setItem('pr_apikey', key); } catch(e) {}
 }
-
-$('apikey-btn').addEventListener('click', () => {
-  const inp = $('apikey-input');
-  inp.value = apiKey;
-  inp.type = 'text';
-  $('apikey-toggle').textContent = 'hide';
-  $('apikey-status-msg').textContent = apiKey ? '✓ Key loaded from your account' : '';
-  $('apikey-modal').classList.add('open');
-  setTimeout(() => { inp.focus(); inp.select(); }, 50);
-});
-
-$('apikey-modal-close').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
-$('apikey-cancel-btn').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
-
-$('apikey-toggle').addEventListener('click', () => {
-  const inp = $('apikey-input');
-  if (inp.type === 'text') { inp.type = 'password'; $('apikey-toggle').textContent = 'show'; }
-  else { inp.type = 'text'; $('apikey-toggle').textContent = 'hide'; }
-});
-
-// Live validation feedback as user types/pastes
-$('apikey-input').addEventListener('input', () => {
-  const val = $('apikey-input').value.trim();
-  const msg = $('apikey-status-msg');
-  if (!val) { msg.textContent = ''; return; }
-  if (val.length < 20) { msg.style.color = 'var(--amber)'; msg.textContent = 'Key looks too short…'; return; }
-  msg.style.color = 'var(--green)'; msg.textContent = '✓ Looks good — click Save to Account';
-});
-
-$('apikey-save-btn').addEventListener('click', async () => {
-  const key = $('apikey-input').value.trim();
-  const msg = $('apikey-status-msg');
-  if (!key) { msg.style.color = 'var(--red)'; msg.textContent = 'Paste your key from console.anthropic.com first'; return; }
-  if (key.length < 20) { msg.style.color = 'var(--red)'; msg.textContent = 'That key looks too short — copy it again'; return; }
-  $('apikey-save-btn').disabled = true;
-  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Saving…';
-  apiKey = key;
-  await saveApiKey(key);
-  $('apikey-save-btn').disabled = false;
-  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Save to Account';
-  $('apikey-modal').classList.remove('open');
-  updateStatusBar();
-  showToast('API key saved to your account ✓', 'journal');
-});
-
-$('apikey-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('apikey-save-btn').click();
-});
 
 // ── TYPING INDICATOR ──
 function appendTyping() {
