@@ -650,7 +650,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
@@ -748,39 +748,26 @@ function updateSessionCost(tokensUsed) {
 }
 
 // ── AUTH ──
-$('signin-btn').addEventListener('click', async () => {
+// redirectResultPromise resolves before onAuthStateChanged proceeds,
+// guaranteeing driveAccessToken is populated before loadDriveFiles runs.
+const redirectResultPromise = getRedirectResult(auth).then(result => {
+  if (result) {
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) driveAccessToken = credential.accessToken;
+  }
+  return result;
+}).catch(err => { console.warn('getRedirectResult:', err.message); return null; });
+
+$('signin-btn').addEventListener('click', () => {
   $('signin-btn').disabled = true;
   $('signin-error').classList.remove('show');
   setLoading('Signing in with Google…');
-  try {
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    // Check authorization
-    if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(user.email)) {
-      await signOut(auth);
-      show('signin');
-      $('signin-btn').disabled = false;
-      $('signin-error').textContent = `Access denied for ${user.email}. This app is private.`;
-      $('signin-error').classList.add('show');
-      return;
-    }
-    // Store drive token for later use
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    driveAccessToken = credential?.accessToken || null;
-  } catch (err) {
-    show('signin');
-    $('signin-btn').disabled = false;
-    $('signin-error').textContent = err.message || 'Sign in failed. Please try again.';
-    $('signin-error').classList.add('show');
-  }
+  signInWithRedirect(auth, provider);
 });
 
 $('signout-btn').addEventListener('click', async () => {
   await signOut(auth);
-  sessionCost = 0;
-  convHistory = [];
-  pendingJournalItems = [];
-  driveAccessToken = null;
+  sessionCost = 0; convHistory = []; pendingJournalItems = []; driveAccessToken = null;
   show('signin');
   $('signin-btn').disabled = false;
 });
@@ -788,18 +775,16 @@ $('signout-btn').addEventListener('click', async () => {
 onAuthStateChanged(auth, async user => {
   if (user) {
     if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(user.email)) {
-      await signOut(auth);
-      show('signin');
-      return;
+      await signOut(auth); show('signin'); return;
     }
     currentUser = user;
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
+    await redirectResultPromise; // ensures Drive token is captured before we proceed
     await loadInitialData();
     show('app');
-    // Load Drive files — works if token captured at sign-in, shows reconnect if not
     await loadDriveFiles();
   } else {
     currentUser = null;
@@ -1069,37 +1054,9 @@ function filterFiles(filter) {
   });
 }
 
-// ── DRIVE CONNECTION ──
+// ── DRIVE CONNECTION (fallback if token missing after page refresh) ──
 $('connect-drive-btn').addEventListener('click', async () => {
-  // If we already have a token from sign-in, use it directly
-  if (driveAccessToken) {
-    $('drive-connect-prompt').style.display = 'none';
-    $('drive-dot').className = 'status-dot green';
-    $('drive-status').textContent = 'Drive connected';
-    await loadDriveFiles();
-    return;
-  }
-  $('connect-drive-btn').textContent = 'Connecting…';
-  $('connect-drive-btn').disabled = true;
-  try {
-    const result = await signInWithPopup(auth, driveProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    driveAccessToken = credential?.accessToken || null;
-    if (driveAccessToken) {
-      $('drive-dot').className = 'status-dot green';
-      $('drive-status').textContent = 'Drive connected';
-      $('drive-connect-prompt').style.display = 'none';
-      await loadDriveFiles();
-    } else {
-      showToast('Could not get Drive access token — try signing out and back in', 'warning');
-      $('connect-drive-btn').textContent = 'Connect Drive';
-      $('connect-drive-btn').disabled = false;
-    }
-  } catch(e) {
-    showToast('Drive connection failed: ' + e.message, 'warning');
-    $('connect-drive-btn').textContent = 'Connect Drive';
-    $('connect-drive-btn').disabled = false;
-  }
+  await signInWithRedirect(auth, provider);
 });
 
 async function loadDriveFiles() {
