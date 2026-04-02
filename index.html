@@ -1537,9 +1537,7 @@ $('connect-drive-btn').addEventListener('click', async () => {
 async function loadDriveFiles() {
   const filesList = $('files-list');
   if (!driveAccessToken) {
-    $('drive-connect-prompt').style.display = 'flex';
-    $('drive-dot').className = 'status-dot amber';
-    $('drive-status').textContent = 'Drive not connected';
+    showDriveConnectPrompt('Connect Google Drive to access your uploads folder.');
     return;
   }
   $('drive-connect-prompt').style.display = 'none';
@@ -1548,66 +1546,132 @@ async function loadDriveFiles() {
   $('files-actions').style.display = 'none';
   filesList.innerHTML = '<div class="files-loading">Loading files from Drive…</div>';
   try {
-    // Find PawRecords folder first
-    const pawRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name,parents)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
-      { headers: { Authorization: `Bearer ${driveAccessToken}` } }
-    );
-    // Token expired — silently re-auth and retry once
-    if (pawRes.status === 401) {
-      try {
+    // Use saved folder ID if we have it (avoids re-searching every load)
+    let uploadsId = null;
+    try { uploadsId = localStorage.getItem('pr_uploads_folder_id'); } catch(e) {}
+
+    if (!uploadsId) {
+      // Search for PawRecords folder (case-insensitive via Drive API limitation — exact match only)
+      const pawRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
+        { headers: { Authorization: `Bearer ${driveAccessToken}` } }
+      );
+
+      // Token expired — show reconnect button (must be user-triggered, can't auto-popup)
+      if (pawRes.status === 401) {
         driveAccessToken = null;
         try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
-        filesList.innerHTML = '<div class="files-loading">Refreshing Drive connection…</div>';
-        const result = await signInWithPopup(auth, provider);
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        if (credential?.accessToken) {
-          driveAccessToken = credential.accessToken;
-          try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
-          // Retry now that we have a fresh token
-          return loadDriveFiles();
-        }
-      } catch(e) {
-        // Popup failed or was dismissed — show reconnect prompt
+        $('drive-dot').className = 'status-dot amber';
+        $('drive-status').textContent = 'Drive token expired';
+        showDriveConnectPrompt('Drive access token expired. Click to reconnect.');
+        return;
       }
-      driveAccessToken = null;
-      $('drive-dot').className = 'status-dot amber';
-      $('drive-status').textContent = 'Drive token expired';
-      $('drive-connect-prompt').style.display = 'flex';
-      filesList.innerHTML = '<div class="files-loading">Could not refresh Drive token — click Reconnect Drive.</div>';
-      return;
+      if (pawRes.status === 403) {
+        showDriveConnectPrompt('Drive API access denied (403). Make sure the Google Drive API is enabled in your Google Cloud project.');
+        return;
+      }
+      if (!pawRes.ok) {
+        showDriveConnectPrompt(`Drive API error ${pawRes.status} — sign out and back in to retry.`);
+        return;
+      }
+
+      const pawData = await pawRes.json();
+      const pawFolder = pawData.files?.[0];
+
+      if (!pawFolder) {
+        // Folder not found — let user pick it
+        showFolderNotFoundPrompt();
+        return;
+      }
+
+      // Find uploads subfolder
+      const folderRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name%3D'uploads'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+'${pawFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name)`,
+        { headers: { Authorization: `Bearer ${driveAccessToken}` } }
+      );
+      const folderData = await folderRes.json();
+      const uploadFolder = folderData.files?.[0];
+
+      if (!uploadFolder) {
+        // No uploads subfolder — use PawRecords root directly
+        uploadsId = pawFolder.id;
+        showToast('No "uploads" subfolder found — using PawRecords root folder', 'info');
+      } else {
+        uploadsId = uploadFolder.id;
+      }
+      // Cache folder ID so we don't search every load
+      try { localStorage.setItem('pr_uploads_folder_id', uploadsId); } catch(e) {}
     }
-    const pawData = await pawRes.json();
-    const pawFolder = pawData.files?.[0];
-    if (!pawFolder) {
-      filesList.innerHTML = '<div class="files-loading">Could not find PawRecords folder in My Drive. Check the folder name is exactly "PawRecords".</div>';
-      return;
-    }
-    // Find uploads folder inside PawRecords
-    const folderRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name%3D'uploads'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+'${pawFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name)`,
-      { headers: { Authorization: `Bearer ${driveAccessToken}` } }
-    );
-    const folderData = await folderRes.json();
-    const uploadFolder = folderData.files?.[0];
-    if (!uploadFolder) {
-      filesList.innerHTML = '<div class="files-loading">Found PawRecords but could not find uploads folder inside it.</div>';
-      return;
-    }
-    // List files in that folder
+
+    // List files
     const filesRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q='${uploadFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name,size,mimeType,modifiedTime)&pageSize=200&orderBy=name`,
+      `https://www.googleapis.com/drive/v3/files?q='${uploadsId}'+in+parents+and+trashed%3Dfalse&fields=files(id,name,size,mimeType,modifiedTime)&pageSize=200&orderBy=name`,
       { headers: { Authorization: `Bearer ${driveAccessToken}` } }
     );
+
+    if (filesRes.status === 401) {
+      // Cached folder ID but token expired
+      try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
+      driveAccessToken = null;
+      try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
+      showDriveConnectPrompt('Drive access token expired. Click to reconnect.');
+      return;
+    }
+
     const filesData = await filesRes.json();
     const driveFiles = filesData.files || [];
-    // Load processing status from Firestore
     const statusMap = await loadFileStatuses(driveFiles.map(f => f.id));
     renderFilesList(driveFiles, statusMap);
   } catch (err) {
     console.error('Drive load error:', err);
-    filesList.innerHTML = '<div class="files-loading">Error loading Drive files. Check console.</div>';
+    filesList.innerHTML = `<div class="files-loading" style="color:var(--red);">Drive error: ${escHtml(err.message)}<br><br><button class="btn-icon" onclick="loadDriveFiles()" style="margin-top:0.5rem;">Retry</button></div>`;
   }
+}
+
+function showDriveConnectPrompt(message) {
+  const prompt = $('drive-connect-prompt');
+  prompt.querySelector('p').textContent = message;
+  prompt.style.display = 'flex';
+  $('drive-dot').className = 'status-dot amber';
+}
+
+function showFolderNotFoundPrompt() {
+  const filesList = $('files-list');
+  filesList.innerHTML = `
+    <div class="files-connect-prompt" style="flex-direction:column;gap:0.75rem;">
+      <p style="color:var(--amber);">Could not find a "PawRecords" folder in your Drive.</p>
+      <p>Enter the name of your uploads folder:</p>
+      <div style="display:flex;gap:0.5rem;">
+        <input id="folder-name-input" type="text" value="PawRecords" 
+          style="flex:1;font-family:'JetBrains Mono',monospace;font-size:0.75rem;background:var(--bg);border:1.5px solid var(--border);border-radius:7px;padding:0.4rem 0.6rem;color:var(--ink);outline:none;">
+        <button class="btn-icon free-icon" id="folder-search-btn"><span class="free-dot"></span> Search</button>
+      </div>
+    </div>`;
+  $('folder-search-btn').addEventListener('click', async () => {
+    const name = $('folder-name-input').value.trim();
+    if (!name) return;
+    // Clear cached folder and retry with new name
+    try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
+    filesList.innerHTML = `<div class="files-loading">Searching for "${escHtml(name)}"…</div>`;
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name%3D'${encodeURIComponent(name)}'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
+        { headers: { Authorization: `Bearer ${driveAccessToken}` } }
+      );
+      const data = await res.json();
+      const folder = data.files?.[0];
+      if (!folder) {
+        showFolderNotFoundPrompt();
+        $('folder-name-input').value = name;
+        showToast(`No folder named "${name}" found`, 'warning');
+        return;
+      }
+      try { localStorage.setItem('pr_uploads_folder_id', folder.id); } catch(e) {}
+      loadDriveFiles();
+    } catch(e) {
+      showToast('Search failed: ' + e.message, 'warning');
+    }
+  });
 }
 
 async function loadFileStatuses(driveFileIds) {
@@ -1880,6 +1944,12 @@ async function startProcessingQueue(files) {
 
   for (const file of files) {
     if (processingStop) break;
+    // Warn if file is already complete
+    const existingDoc = await getDoc(doc(db, 'files', file.id));
+    if (existingDoc.exists() && existingDoc.data().status === 'complete') {
+      const reprocess = confirm(`"${file.name}" has already been processed.\n\nReprocess it anyway? This will add to your API costs.`);
+      if (!reprocess) { done++; updateProgress(done, total, `Skipped: ${file.name}`); continue; }
+    }
     updateProgress(done, total, `Processing: ${file.name}`);
     updateFileBadge(file.id, 'processing');
     try {
@@ -2086,8 +2156,6 @@ async function processFile(file) {
   $('flags-count').textContent = flagCount;
   if (flagCount > 0) $('flags-btn').style.display = 'inline-flex';
 
-  // Token cost tracking (rough: 8k tokens per file)
-  updateSessionCost(8000);
 }
 
 // ── DRIVE FILE FETCH ──
@@ -2589,6 +2657,10 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     throw new Error(err?.error?.message || `API ${res.status}`);
   }
   const data = await res.json();
+  // Track actual token usage from API response
+  if (data.usage) {
+    updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+  }
   const raw = data.content.map(b => b.text || '').join('').trim();
   try {
     return JSON.parse(raw.replace(/^```json\n?|^```\n?|```$/gm, '').trim());
@@ -2999,7 +3071,6 @@ async function sendMessage() {
     typingEl.remove();
     appendMsg('assistant', response);
     convHistory.push({ role: 'assistant', content: response });
-    updateSessionCost((text.length + response.length) / 4);
     if (convHistory.length >= 2) $('save-session-btn').style.display = 'inline-flex';
     extractJournalFromConversation(text, response); // async, non-blocking
   } catch (err) {
@@ -3085,6 +3156,7 @@ Existing journal:\n${journalContext}\nUser: ${userMsg}\nAssistant: ${assistantMs
     });
     if (!res.ok) return;
     const data = await res.json();
+    if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
     const parsed = JSON.parse(data.content.map(b=>b.text||'').join('').trim().replace(/```json|```/g,'').trim());
     applyJournalExtraction(parsed, today);
   } catch(e) { console.warn('Journal extraction (non-critical):', e.message); }
@@ -3149,7 +3221,6 @@ Conversation:\n${convHistory.map(m=>`${m.role}: ${m.content}`).join('\n\n').slic
     }
     pendingJournalItems = [];
     await loadJournalSidebar();
-    updateSessionCost(2000);
     showToast(`Session saved — ${(extracted.highlights||[]).length} highlights, ${allItems.length} journal entries`,'journal');
   } catch(err) {
     console.error('Save session error:', err);
@@ -3639,8 +3710,19 @@ function saveCostSettings() {
 }
 
 // Override updateSessionCost to use configurable thresholds and track all-time
-function updateSessionCost(tokensUsed) {
-  const cost = (tokensUsed / 1000000) * 3.0; // blended Sonnet/Haiku estimate
+function updateSessionCost(inputTokens, outputTokens) {
+  // Actual Anthropic pricing for claude-sonnet-4:
+  // Input: $3/M, Output: $15/M
+  // Haiku: Input: $0.25/M, Output: $1.25/M (tracked separately via same fn)
+  // We receive total tokens — assume ~80% input, ~20% output as typical split
+  // when called with just one arg (legacy); when called with split use exact pricing
+  let cost;
+  if (outputTokens !== undefined) {
+    cost = (inputTokens / 1000000) * 3.0 + (outputTokens / 1000000) * 15.0;
+  } else {
+    // Single arg — use weighted blend: 80% input rate + 20% output rate = $6/M effective
+    cost = (inputTokens / 1000000) * 6.0;
+  }
   sessionCost += cost;
   allTimeCost += cost;
   saveCostSettings();
@@ -3843,6 +3925,7 @@ ${context || '(No records loaded yet — records will appear after files are pro
     });
     if (res.ok) {
       const data = await res.json();
+      if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
       return data.content.map(b => b.text || '').join('').trim();
     }
     const err = await res.json().catch(() => ({}));
