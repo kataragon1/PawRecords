@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐾</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paw Records</title>
 <style>
@@ -355,6 +356,17 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #abnormal-banner.show{display:flex;}
 #abnormal-banner-text{font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--red);flex:1;line-height:1.5;}
 #abnormal-banner-close{background:none;border:none;cursor:pointer;color:var(--red);font-size:0.85rem;padding:0.1rem 0.3rem;opacity:0.6;transition:opacity 0.15s;flex-shrink:0;}
+/* ── CONTEXT MENU ── */
+#ctx-menu{display:none;position:fixed;z-index:1000;background:white;border:1px solid var(--border);border-radius:9px;box-shadow:0 4px 20px rgba(42,37,32,0.15);padding:0.3rem 0;min-width:180px;animation:fadeUp 0.1s ease;}
+#ctx-menu.open{display:block;}
+.ctx-item{display:flex;align-items:center;gap:0.5rem;padding:0.42rem 0.85rem;font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--ink-dim);cursor:pointer;transition:background 0.1s;white-space:nowrap;}
+.ctx-item:hover{background:var(--surface);color:var(--ink);}
+.ctx-item.danger{color:var(--red);}
+.ctx-item.danger:hover{background:var(--red-bg);}
+.ctx-item.disabled{opacity:0.35;cursor:not-allowed;pointer-events:none;}
+.ctx-sep{height:1px;background:var(--surface2);margin:0.25rem 0;}
+.ctx-label{padding:0.3rem 0.85rem 0.1rem;font-family:'JetBrains Mono',monospace;font-size:0.57rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);}
+
 #abnormal-banner-close:hover{opacity:1;}
 
 /* ── FLOWSHEET MODAL ── */
@@ -549,7 +561,6 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <button class="btn-icon cost-icon" id="save-session-btn" style="display:none" title="Save session highlights and journal entries to Firestore">
           <span class="cost-dot"></span> Save Session
         </button>
-        <button class="btn-icon" id="apikey-btn" title="Set Anthropic API key">🔑 API Key</button>
         <button class="btn-icon danger" id="signout-btn">Sign Out</button>
       </div>
     </div>
@@ -581,9 +592,9 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <h2>Good to see you,<br><em>let's talk pets.</em></h2>
         <p id="welcome-subtitle">Ask about medications, lab trends, visit history, or anything on your mind. Your records are loaded and ready.</p>
         <div class="chat-welcome-hints">
-          <div class="chat-hint" data-prompt="How has Mocha's BUN been trending over her recent visits?">How has Mocha's BUN been trending over her recent visits?</div>
-          <div class="chat-hint" data-prompt="What's Evie currently on for medications?">What's Evie currently on for medications?</div>
-          <div class="chat-hint" data-prompt="Summarize Latte's visit history for the past year.">Summarize Latte's visit history for the past year.</div>
+          <div class="chat-hint" data-prompt="What are the most recent lab results and are any values abnormal?">What are the most recent lab results and are any values abnormal?</div>
+          <div class="chat-hint" data-prompt="Summarize current medications and supplements for all cats.">Summarize current medications and supplements for all cats.</div>
+          <div class="chat-hint" data-prompt="What diagnoses and conditions have been noted across all visits?">What diagnoses and conditions have been noted across all visits?</div>
         </div>
       </div>
     </div>
@@ -633,6 +644,12 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </div>
     <div id="flowsheet-modal-body"></div>
   </div>
+</div>
+
+<!-- ══ CONTEXT MENU ══ -->
+<div id="ctx-menu">
+  <div id="ctx-label" class="ctx-label"></div>
+  <div id="ctx-items"></div>
 </div>
 
 <!-- ══ FLAGS MODAL ══ -->
@@ -782,7 +799,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit }
+import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
 // ── CONFIG ──
@@ -799,7 +816,7 @@ const firebaseConfig = {
 // Authorized emails — only these can sign in
 const AUTHORIZED_EMAILS = [
   'kataragon@gmail.com',
-  'mystafer@gmail.com'
+  'mystafer@gmail.com',
 ];
 
 // ── INIT ──
@@ -939,6 +956,13 @@ async function loadInitialData() {
   }
 }
 
+async function reloadSidebars(which = 'all') {
+  if (which === 'all' || which === 'records') await loadRecordsSidebar();
+  if (which === 'all' || which === 'labs') await loadLabsSidebar();
+  if (which === 'all' || which === 'journal') await loadJournalSidebar();
+}
+
+
 async function updatePetList() {
   try {
     const snap = await getDocs(collection(db, 'visits'));
@@ -947,7 +971,7 @@ async function updatePetList() {
       const list = pets.length === 1 ? pets[0]
         : pets.slice(0, -1).join(', ') + ' & ' + pets[pets.length - 1];
       $('welcome-subtitle').textContent =
-        `Ask about medications, lab trends, visit history, or anything on your mind. Records loaded for ${list}.`;
+        `Ask about medications, lab trends, visit history, or anything on your mind.\n\nRecords loaded for ${list}.`;
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
   } catch(e) { /* non-critical, leave defaults */ }
@@ -1008,7 +1032,8 @@ function renderRecordsTree(tree) {
         ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
         ve.querySelector('.visit-entry-type').onclick = () => openVisit(v);
         ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
-        ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteVisit(v); };
+        ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
+        attachVisitCtxMenu(ve, v);
         dg.appendChild(ve);
       }
       vlist.appendChild(dg);
@@ -1055,7 +1080,6 @@ async function deleteVisit(v) {
   if (!v.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
   if (!confirm(`Delete this record?\n${v.cat} · ${v.date} · ${v.docType || 'Visit'}\n\nThis cannot be undone.`)) return;
   try {
-    const { deleteDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
     await deleteDoc(doc(db, 'visits', v.id));
     showToast('Record deleted', 'warning', null);
     loadRecordsSidebar();
@@ -1146,6 +1170,7 @@ function renderLabsSidebar() {
       <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
     row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
     row.addEventListener('click', () => openFlowsheetModal(flowsheetCat));
+    attachLabCtxMenu(row, e, flowsheetCat);
     container.appendChild(row);
   }
 
@@ -1259,6 +1284,7 @@ function buildFlowsheetTable(cat, container) {
           const matchingVisit = { cat, date: entry.visitDate || date, driveFileIds: entry.driveFileId ? [entry.driveFileId] : [], sourceFiles: entry.sourceFile ? [entry.sourceFile] : [], narrative: `${test}: ${displayVal}${entry.unit?' '+entry.unit:''}${entry.refLow!=null?'\nRef: '+entry.refLow+'–'+entry.refHigh:''}${abn?' ['+abn+']':''}` };
           openVisit(matchingVisit);
         });
+        attachLabCtxMenu(td, entry, cat);
       }
       row.appendChild(td);
     }
@@ -1361,9 +1387,10 @@ function renderJournalSidebar(bycat) {
           ee.addEventListener('mouseenter', () => { actions.style.display = 'flex'; });
           ee.addEventListener('mouseleave', () => { actions.style.display = 'none'; });
           actions.querySelector('[title="Edit"]').addEventListener('click', e => { e.stopPropagation(); openJournalEdit(item); });
-          actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); deleteJournalEntry(item); });
+          actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); confirmDeleteJournalEntry(item); });
           ee.appendChild(textWrap);
           ee.appendChild(actions);
+          attachJournalCtxMenu(ee, item, cat, listName);
           lb.appendChild(ee);
         }
       }
@@ -1446,7 +1473,6 @@ async function deleteJournalEntry(item) {
   if (!item.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
   if (!confirm(`Delete: ${item.cat} / ${item.list}: ${item.text}?`)) return;
   try {
-    const { deleteDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
     await deleteDoc(doc(db, 'journal', item.id));
     showToast('Journal entry deleted', 'warning');
     loadJournalSidebar();
@@ -1622,12 +1648,18 @@ function renderFilesList(driveFiles, statusMap) {
       <div class="file-item-meta">
         <span>${size}</span>
         <span class="file-cats" id="cats-${file.id}"></span>
-        ${status === 'complete' ? `<button class="file-verify-btn" data-file-id="${file.id}" style="background:none;border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.35rem;cursor:pointer;margin-left:auto;transition:all 0.15s;" title="Re-verify this file for missing data">verify</button>` : ''}
+        ${status === 'complete' ? `<button class="file-verify-btn" data-file-id="${file.id}" style="background:none;border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.35rem;cursor:pointer;transition:all 0.15s;" title="Re-verify this file">verify</button>` : ''}
+        <button class="file-delete-btn" data-file-id="${file.id}" style="background:none;border:1px solid transparent;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.3rem;cursor:pointer;transition:all 0.15s;opacity:0;" title="Delete imported records for this file">✕</button>
         <a href="https://drive.google.com/file/d/${file.id}/view" target="_blank"
-           style="color:var(--accent);text-decoration:none;${status !== 'complete' ? 'margin-left:auto;' : ''}" onclick="event.stopPropagation()">
+           style="color:var(--accent);text-decoration:none;margin-left:auto;" onclick="event.stopPropagation()">
           open ↗
         </a>
       </div>`;
+
+    // Show delete button on hover
+    item.addEventListener('mouseenter', () => { const d = item.querySelector('.file-delete-btn'); if (d) d.style.opacity = '1'; });
+    item.addEventListener('mouseleave', () => { const d = item.querySelector('.file-delete-btn'); if (d) d.style.opacity = '0'; });
+
     // Checkbox selection
     const cb = item.querySelector('.file-item-checkbox');
     cb.addEventListener('change', () => {
@@ -1635,19 +1667,31 @@ function renderFilesList(driveFiles, statusMap) {
       updateProcessButtons();
     });
     item.addEventListener('click', e => {
-      if (e.target === cb || e.target.tagName === 'A' || e.target.classList.contains('file-verify-btn')) return;
+      if (e.target === cb || e.target.tagName === 'A' ||
+          e.target.classList.contains('file-verify-btn') ||
+          e.target.classList.contains('file-delete-btn')) return;
       cb.checked = !cb.checked;
       item.classList.toggle('selected', cb.checked);
       updateProcessButtons();
     });
+
     // Wire verify button
     const verifyBtn = item.querySelector('.file-verify-btn');
     if (verifyBtn) {
-      verifyBtn.addEventListener('click', e => {
+      verifyBtn.addEventListener('click', e => { e.stopPropagation(); verifyFile(file); });
+    }
+
+    // Wire delete button
+    const deleteBtn = item.querySelector('.file-delete-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async e => {
         e.stopPropagation();
-        verifyFile(file);
+        await confirmDeleteFileRecords(file);
       });
     }
+
+    // Context menu
+    attachFileCtxMenu(item, file, status);
     filesList.appendChild(item);
   }
 
@@ -1713,11 +1757,13 @@ $('process-modal-close').addEventListener('click', () => $('process-modal').clas
 $('process-modal-cancel').addEventListener('click', () => $('process-modal').classList.remove('open'));
 
 function estimateCost(files) {
-  // Rough: ~2000 tokens input + ~500 output per file, sonnet pricing ~$3/$15 per M
-  // Multi-pass: narrative + lab + PCR = ~3 passes per file
-  const tokensPerFile = 6000;
+  // One combined pass per file: ~6k input tokens + ~2k output = ~8k tokens at Sonnet pricing
+  // Sonnet: $3/M input + $15/M output → ~$0.054 per 8k tokens is actually correct
+  // For batch API: 50% discount applies
+  const tokensPerFile = 8000;
   const totalTokens = files.length * tokensPerFile;
-  const cost = (totalTokens / 1000000) * 9; // blended input/output
+  const ratePerM = files.length >= 5 ? 4.5 : 9; // batch = 50% off
+  const cost = (totalTokens / 1000000) * ratePerM;
   return { cost, totalTokens };
 }
 
@@ -1837,9 +1883,7 @@ async function startProcessingQueue(files) {
   $('progress-current').textContent = `${done - failed} succeeded · ${failed} failed`;
 
   // Reload sidebars with new data
-  await loadRecordsSidebar();
-  await loadLabsSidebar();
-  await loadJournalSidebar();
+  await reloadSidebars('all');
   updateProcessButtons();
 
   const msg = processingStop
@@ -1947,72 +1991,57 @@ async function processFile(file) {
     if (result.flags?.length) allFlags.push(...result.flags);
   }
 
-  // Write visits to Firestore
+  // Write all results to Firestore using batch writes
+  const fsBatch = writeBatch(db);
+  let batchCount = 0;
+
   for (const visit of allVisits) {
     if (!visit.cat || visit.cat === 'SKIP') continue;
-    const visitRef = doc(collection(db, 'visits'));
-    await setDoc(visitRef, {
-      cat: visit.cat,
-      date: visit.date || 'unknown',
-      clinic: visit.clinic || null,
-      doctor: visit.doctor || null,
+    const ref = doc(collection(db, 'visits'));
+    fsBatch.set(ref, {
+      cat: visit.cat, date: visit.date || 'unknown',
+      clinic: visit.clinic || null, doctor: visit.doctor || null,
       chiefComplaint: visit.chiefComplaint || null,
-      diagnoses: visit.diagnoses || [],
-      medications: visit.medications || [],
-      procedures: visit.procedures || [],
-      narrative: visit.narrative || '',
-      sourceFiles: [file.name],
-      driveFileIds: [file.id],
-      sourceFileId: file.id,
-      visitCluster: `${visit.date || 'unknown'}_${(visit.clinic || 'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
-      confidence: visit.confidence || 0.8,
-      flags: visit.flags || [],
+      diagnoses: visit.diagnoses || [], medications: visit.medications || [],
+      procedures: visit.procedures || [], narrative: visit.narrative || '',
+      sourceFiles: [file.name], driveFileIds: [file.id], sourceFileId: file.id,
+      visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
+      confidence: visit.confidence || 0.8, flags: visit.flags || [],
       createdAt: new Date().toISOString()
     });
     if (visit.cat) allCats.add(visit.cat);
     if (visit.date) allDates.add(visit.date);
+    batchCount++;
   }
 
-  // Write labs to Firestore
   for (const lab of allLabs) {
     if (!lab.test || lab.value === undefined || lab.value === null) continue;
     const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
     if (!cat) continue;
-    const labRef = doc(collection(db, 'labs'));
-    await setDoc(labRef, {
-      cat,
-      visitDate: lab.visitDate || lab.date || null,
-      resultDate: lab.resultDate || lab.date || lab.visitDate || null,
-      labName: lab.labName || null,
-      test: lab.test,
-      value: lab.value,
-      unit: lab.unit || null,
-      refLow: lab.refLow ?? null,
-      refHigh: lab.refHigh ?? null,
-      abnormal: lab.abnormal || null,
-      sourceFile: file.name,
-      driveFileId: file.id,
-      visitCluster: lab.visitCluster || null,
+    const ref = doc(collection(db, 'labs'));
+    fsBatch.set(ref, {
+      cat, test: lab.test, value: lab.value, unit: lab.unit || null,
+      refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
+      resultDate: lab.resultDate || null, visitDate: lab.visitDate || null,
+      labName: lab.labName || null, sourceFile: file.name, driveFileId: file.id,
       createdAt: new Date().toISOString()
     });
+    batchCount++;
   }
 
-  // Write flags to Firestore
   for (const flag of allFlags) {
-    const flagRef = doc(collection(db, 'flags'));
-    await setDoc(flagRef, {
-      fileId: file.id,
-      filename: file.name,
-      type: flag.type || 'unclear_structure',
-      description: flag.description || '',
-      bestGuess: flag.bestGuess || null,
-      options: flag.options || ['View original'],
-      resolved: false,
-      resolvedAt: null,
-      resolution: null,
+    const ref = doc(collection(db, 'flags'));
+    fsBatch.set(ref, {
+      fileId: file.id, filename: file.name, type: flag.type || 'unclear_structure',
+      description: flag.description || '', bestGuess: flag.bestGuess || null,
+      options: ['Accept guess', 'Enter manually', 'View original'],
+      resolved: false, resolvedAt: null, resolution: null,
       createdAt: new Date().toISOString()
     });
+    batchCount++;
   }
+
+  if (batchCount > 0) await fsBatch.commit();
 
   // Final file status write
   const finalStatus = allFlags.length > 0 ? 'flagged' : 'complete';
@@ -2138,82 +2167,80 @@ async function verifyFile(file) {
   if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
   if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
 
-  const btn = document.querySelector(`[data-file-id="${file.id}"].file-verify-btn`) ||
-    document.querySelector(`.file-verify-btn[data-file-id="${file.id}"]`);
+  const btn = document.querySelector(`.file-verify-btn[data-file-id="${file.id}"]`);
   if (btn) { btn.textContent = 'verifying…'; btn.disabled = true; }
 
   try {
-    // Fetch and extract text
     const blob = await fetchDriveFileBlob(file.id);
     let rawText = '';
     const ext = file.name.split('.').pop().toLowerCase();
-    if (ext === 'pdf') {
-      rawText = await extractPdfText(blob);
-    } else {
-      rawText = await blob.text();
-    }
+    if (ext === 'pdf') rawText = await extractPdfText(blob);
+    else rawText = await blob.text();
+
     if (!rawText || rawText.trim().length < 50) {
       showToast(`${file.name.slice(0,30)}: too short to verify`, 'warning');
       if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
       return;
     }
 
-    // Re-run extraction
-    const chunks = rawText.length > 12000 ? [rawText.slice(0, 12000)] : [rawText];
-    const newContent = await runCombinedPass(file, chunks[0]);
+    // Re-run extraction with proper chunk object
+    const chunk = { text: rawText, isImage: false };
+    const newResult = await runCombinedPass(file, chunk);
 
     // Get existing Firestore records for this file
-    const q = query(collection(db, 'visits'), where('sourceFileId', '==', file.id));
-    const snap = await getDocs(q);
+    const snap = await getDocs(query(collection(db, 'visits'), where('sourceFileId', '==', file.id)));
     let existingText = '';
     snap.forEach(d => {
       const v = d.data();
-      existingText += `${v.date||''} ${v.cat||''} ${v.docType||''}: ${v.narrative||''}\n\n`;
+      existingText += `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nDiagnoses: ${(v.diagnoses||[]).join(', ')}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}\n\n`;
     });
 
     if (!existingText) {
-      showToast(`${file.name.slice(0,30)}: no existing records to compare`, 'warning');
+      showToast(`${file.name.slice(0,30)}: no existing records found — try reprocessing`, 'warning');
       if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
       return;
     }
 
-    // Diff
-    const diffPrompt = `Compare these two veterinary document versions. Find ONLY clinical data in Document B missing from Document A — lab values, diagnoses, medications, procedures, dated visits. Ignore contact info, service reminders, boilerplate, billing.
+    // Build new content summary for diff
+    const newText = (newResult?.visits||[]).map(v =>
+      `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nDiagnoses: ${(v.diagnoses||[]).join(', ')}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}`
+    ).join('\n\n') || rawText.slice(0, 4000);
+
+    const diffPrompt = `Compare these two veterinary records. Find ONLY clinical data in Document B missing from Document A — lab values, diagnoses, medications, procedures. Ignore boilerplate, billing, admin.
 If nothing clinical is missing respond exactly: NOTHING_NEW
 
 Document A (existing records):
-${existingText.slice(0, 5000)}
+${existingText.slice(0, 4000)}
 
 Document B (fresh extraction):
-${(newContent?.narrative || rawText).slice(0, 5000)}`;
+${newText.slice(0, 4000)}`;
 
     const diffResult = await callExtractionClaude([{ role: 'user', content: diffPrompt }], 1000);
-    const hasNew = diffResult && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
+    const hasNew = diffResult && typeof diffResult === 'string' && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
 
     if (!hasNew) {
       showToast(`✓ ${file.name.slice(0,30)}: verified complete`, 'journal');
     } else {
-      // Show results in popup
       $('popup-title').textContent = `Verify: ${file.name}`;
       const body = $('popup-body');
       body.innerHTML = '';
       const note = document.createElement('div');
       note.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--amber);margin-bottom:0.75rem;line-height:1.6;';
-      note.textContent = '⚠ Missing clinical data found — review and merge if valid:';
+      note.textContent = '⚠ Missing clinical data found:';
       body.appendChild(note);
       const pre = document.createElement('pre');
       pre.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--ink-dim);background:var(--surface);border-radius:6px;padding:0.75rem;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;margin-bottom:0.75rem;line-height:1.6;';
-      pre.textContent = diffResult.trim();
+      pre.textContent = typeof diffResult === 'string' ? diffResult.trim() : JSON.stringify(diffResult, null, 2);
       body.appendChild(pre);
-      const mergeBtn = document.createElement('button');
-      mergeBtn.className = 'btn-icon free-icon';
-      mergeBtn.innerHTML = '<span class="free-dot"></span> Flag for Review';
-      mergeBtn.onclick = async () => {
-        // Write to flags collection for manual review
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:0.5rem;';
+      const flagBtn = document.createElement('button');
+      flagBtn.className = 'btn-icon free-icon';
+      flagBtn.innerHTML = '<span class="free-dot"></span> Flag for Review';
+      flagBtn.onclick = async () => {
         await setDoc(doc(collection(db, 'flags')), {
-          fileId: file.id, filename: file.name,
-          type: 'verify_missing_data',
-          description: diffResult.trim().slice(0, 500),
+          fileId: file.id, filename: file.name, type: 'verify_missing_data',
+          description: (typeof diffResult === 'string' ? diffResult : JSON.stringify(diffResult)).slice(0, 500),
           options: ['Reprocess file', 'Mark as complete', 'Ignore'],
           resolved: false, createdAt: new Date().toISOString()
         });
@@ -2223,7 +2250,8 @@ ${(newContent?.narrative || rawText).slice(0, 5000)}`;
         showToast('Flagged for review ✓', 'journal');
         $('record-popup').classList.remove('open');
       };
-      body.appendChild(mergeBtn);
+      btns.appendChild(flagBtn);
+      body.appendChild(btns);
       $('popup-search-input').value = '';
       $('popup-search-count').textContent = '';
       $('record-popup').classList.add('open');
@@ -2232,11 +2260,239 @@ ${(newContent?.narrative || rawText).slice(0, 5000)}`;
     console.error('Verify error:', err);
     showToast(`Verify failed: ${err.message.slice(0,60)}`, 'warning');
   }
-
   if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
 }
 
+// ══════════════════════════════════════════════
+// CONTEXT MENU ENGINE
+// ══════════════════════════════════════════════
+
+let ctxTarget = null;
+
+function showCtxMenu(e, label, items) {
+  e.preventDefault();
+  e.stopPropagation();
+  const menu = $('ctx-menu');
+  const labelEl = $('ctx-label');
+  const itemsEl = $('ctx-items');
+
+  labelEl.textContent = label;
+  labelEl.style.display = label ? 'block' : 'none';
+  itemsEl.innerHTML = '';
+
+  for (const item of items) {
+    if (item === 'sep') {
+      const sep = document.createElement('div');
+      sep.className = 'ctx-sep';
+      itemsEl.appendChild(sep);
+      continue;
+    }
+    const el = document.createElement('div');
+    el.className = 'ctx-item' + (item.danger ? ' danger' : '') + (item.disabled ? ' disabled' : '');
+    el.textContent = item.label;
+    if (!item.disabled) {
+      el.addEventListener('click', () => {
+        hideCtxMenu();
+        item.action();
+      });
+    }
+    itemsEl.appendChild(el);
+  }
+
+  // Position near cursor, keep on screen
+  menu.classList.add('open');
+  const mw = menu.offsetWidth || 200;
+  const mh = menu.offsetHeight || 150;
+  let x = e.clientX;
+  let y = e.clientY;
+  if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
+  if (y + mh > window.innerHeight - 8) y = window.innerHeight - mh - 8;
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+
+function hideCtxMenu() {
+  $('ctx-menu').classList.remove('open');
+  ctxTarget = null;
+}
+
+document.addEventListener('click', () => hideCtxMenu());
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideCtxMenu(); });
+$('ctx-menu').addEventListener('click', e => e.stopPropagation());
+
+// ── FILE ITEM CONTEXT MENU ──
+function attachFileCtxMenu(item, file, status) {
+  item.addEventListener('contextmenu', async e => {
+    ctxTarget = file;
+    const items = [];
+
+    if (status !== 'complete' && status !== 'processing') {
+      items.push({ label: '▶ Process this file', action: () => openProcessModal([file]) });
+    }
+    if (status === 'complete' || status === 'flagged') {
+      items.push({ label: '⟳ Reprocess', action: () => openProcessModal([file]) });
+      items.push({ label: '✓ Verify extraction', action: () => verifyFile(file) });
+    }
+    items.push('sep');
+    items.push({
+      label: '↗ Open in Drive',
+      action: () => window.open(`https://drive.google.com/file/d/${file.id}/view`, '_blank')
+    });
+
+    if (status === 'complete' || status === 'flagged' || status === 'failed') {
+      items.push('sep');
+      items.push({
+        label: '🗑 Delete imported records',
+        danger: true,
+        action: () => confirmDeleteFileRecords(file)
+      });
+    }
+
+    if (status !== 'unprocessed') {
+      items.push({
+        label: 'Mark as unprocessed',
+        action: async () => {
+          await writeFileStatus(file.id, file.name, 'unprocessed');
+          updateFileBadge(file.id, 'unprocessed');
+          item.dataset.status = 'unprocessed';
+          updateProcessButtons();
+        }
+      });
+    }
+
+    showCtxMenu(e, file.name.slice(0, 30), items);
+  });
+}
+
+async function confirmDeleteFileRecords(file) {
+  // Query what would be affected first
+  const [visitSnap, labSnap, flagSnap] = await Promise.all([
+    getDocs(query(collection(db, 'visits'), where('driveFileIds', 'array-contains', file.id))),
+    getDocs(query(collection(db, 'labs'), where('driveFileId', '==', file.id))),
+    getDocs(query(collection(db, 'flags'), where('fileId', '==', file.id)))
+  ]);
+
+  const visits = visitSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const toDelete = visits.filter(v => (v.driveFileIds||[]).length <= 1);
+  const toUnlink = visits.filter(v => (v.driveFileIds||[]).length > 1);
+  const labCount = labSnap.docs.length;
+  const flagCount = flagSnap.docs.length;
+
+  let msg = `Delete records imported from "${file.name}"?\n\n`;
+  if (toDelete.length) msg += `• ${toDelete.length} visit(s) will be deleted\n`;
+  if (toUnlink.length) msg += `• ${toUnlink.length} visit(s) will be unlinked (referenced by other files)\n`;
+  if (labCount) msg += `• ${labCount} lab result(s) will be deleted\n`;
+  if (flagCount) msg += `• ${flagCount} flag(s) will be deleted\n`;
+  msg += `\nThe file stays in Google Drive.`;
+
+  if (!confirm(msg)) return;
+
+
+  // Delete visits with only this source
+  for (const v of toDelete) await deleteDoc(doc(db, 'visits', v.id));
+
+  // Unlink visits that have other sources
+  for (const v of toUnlink) {
+    await updateDoc(doc(db, 'visits', v.id), {
+      driveFileIds: arrayRemove(file.id),
+      sourceFiles: (v.sourceFiles||[]).filter(f => f !== file.name)
+    });
+  }
+
+  // Delete labs and flags
+  for (const d of labSnap.docs) await deleteDoc(d.ref);
+  for (const d of flagSnap.docs) await deleteDoc(d.ref);
+
+  // Reset file status
+  await writeFileStatus(file.id, file.name, 'unprocessed');
+  updateFileBadge(file.id, 'unprocessed');
+
+  await reloadSidebars('records');
+  await reloadSidebars('labs');
+  updateProcessButtons();
+
+  showToast(`Deleted: ${toDelete.length} visits, ${labCount} labs ✓`, 'journal');
+}
+
+// ── VISIT CONTEXT MENU ──
+function attachVisitCtxMenu(el, visit) {
+  el.addEventListener('contextmenu', e => {
+    ctxTarget = visit;
+    showCtxMenu(e, `${visit.cat} · ${formatDate(visit.date)}`, [
+      { label: '✏ Edit', action: () => openVisitEdit(visit) },
+      { label: '↗ Open source in Drive', disabled: !visit.driveFileIds?.[0],
+        action: () => window.open(`https://drive.google.com/file/d/${visit.driveFileIds[0]}/view`, '_blank') },
+      'sep',
+      { label: '🗑 Delete visit', danger: true, action: () => confirmDeleteVisit(visit) }
+    ]);
+  });
+}
+
+async function confirmDeleteVisit(visit) {
+  if (!confirm(`Delete this visit record?\n${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + visit.clinic : ''}\n\nThis cannot be undone.`)) return;
+  await deleteDoc(doc(db, 'visits', visit.id));
+  await loadRecordsSidebar();
+  showToast('Visit deleted ✓', 'journal');
+}
+
+// ── LAB CONTEXT MENU ──
+function attachLabCtxMenu(el, entry, cat) {
+  el.addEventListener('contextmenu', e => {
+    ctxTarget = entry;
+    showCtxMenu(e, `${entry.test} · ${entry.resultDate || ''}`, [
+      {
+        label: '🗑 Delete this result',
+        danger: true,
+        action: () => confirmDeleteLab(entry, cat)
+      },
+      {
+        label: '🗑 Delete all from this date',
+        danger: true,
+        action: () => confirmDeleteLabsByDate(entry.resultDate || entry.visitDate, cat)
+      }
+    ]);
+  });
+}
+
+async function confirmDeleteLab(entry, cat) {
+  if (!confirm(`Delete ${entry.test} result for ${cat} on ${entry.resultDate}?`)) return;
+  const snap = await getDocs(query(collection(db, 'labs'),
+    where('cat', '==', cat), where('test', '==', entry.test), where('resultDate', '==', entry.resultDate)));
+  for (const d of snap.docs) await deleteDoc(d.ref);
+  await loadLabsSidebar();
+  showToast(`Deleted ${entry.test} ✓`, 'journal');
+}
+
+async function confirmDeleteLabsByDate(date, cat) {
+  if (!confirm(`Delete ALL lab results for ${cat} on ${date}?`)) return;
+  const snap = await getDocs(query(collection(db, 'labs'),
+    where('cat', '==', cat), where('resultDate', '==', date)));
+  for (const d of snap.docs) await deleteDoc(d.ref);
+  await loadLabsSidebar();
+  showToast(`Deleted all labs for ${cat} on ${date} ✓`, 'journal');
+}
+
+// ── JOURNAL ENTRY CONTEXT MENU ──
+function attachJournalCtxMenu(el, item, cat, listName) {
+  el.addEventListener('contextmenu', e => {
+    ctxTarget = item;
+    showCtxMenu(e, `${cat} · ${listName}`, [
+      { label: '✏ Edit', action: () => openJournalEdit(item) },
+      'sep',
+      { label: '🗑 Delete entry', danger: true, action: () => confirmDeleteJournalEntry(item) }
+    ]);
+  });
+}
+
+async function confirmDeleteJournalEntry(item) {
+  if (!confirm(`Delete journal entry?\n"${item.text}"`)) return;
+  await deleteDoc(doc(db, 'journal', item.id));
+  await loadJournalSidebar();
+  showToast('Journal entry deleted ✓', 'journal');
+}
+
 // ── FIRESTORE HELPERS ──
+
 async function writeFileStatus(fileId, filename, status, extra = {}) {
   const ref = doc(db, 'files', fileId);
   await setDoc(ref, {
@@ -3100,8 +3356,8 @@ async function processBatchResults(batchId) {
     await setDoc(doc(db, 'batches', batchId), { status: 'complete', completedAt: new Date().toISOString() }, { merge: true });
 
     // Reload sidebars
-    await loadRecordsSidebar();
-    await loadLabsSidebar();
+    await reloadSidebars('records');
+    await reloadSidebars('labs');
 
     // Update flags button
     const flagCount = parseInt($('flags-count').textContent || '0') + flagged;
@@ -3119,63 +3375,66 @@ async function processBatchResults(batchId) {
 async function writeBatchResultToFirestore(fileId, filename, parsed) {
   const allCats = new Set(parsed.cats || []);
   const allDates = new Set(parsed.dates || []);
+  const batch = writeBatch(db);
+  let writeCount = 0;
 
   for (const visit of (parsed.visits || [])) {
     if (!visit.cat || visit.cat === 'SKIP') continue;
-    await setDoc(doc(collection(db, 'visits')), {
+    const ref = doc(collection(db, 'visits'));
+    batch.set(ref, {
       cat: visit.cat, date: visit.date || 'unknown',
       clinic: visit.clinic || null, doctor: visit.doctor || null,
       chiefComplaint: visit.chiefComplaint || null,
       diagnoses: visit.diagnoses || [], medications: visit.medications || [],
       procedures: visit.procedures || [], narrative: visit.narrative || '',
-      sourceFiles: [filename], driveFileIds: [fileId],
-      sourceFileId: fileId,
+      sourceFiles: [filename], driveFileIds: [fileId], sourceFileId: fileId,
       visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
       confidence: visit.confidence || 0.8, flags: visit.flags || [],
       createdAt: new Date().toISOString()
     });
     allCats.add(visit.cat);
     if (visit.date) allDates.add(visit.date);
+    writeCount++;
+    // Firestore batch limit is 500 — flush and start new batch
+    if (writeCount % 400 === 0) { await batch.commit(); }
   }
 
   for (const lab of [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology'}))]) {
     if (!lab.test || lab.value === undefined || lab.value === null) continue;
     const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
     if (!cat) continue;
-    await setDoc(doc(collection(db, 'labs')), {
+    const ref = doc(collection(db, 'labs'));
+    batch.set(ref, {
       cat, test: lab.test, value: lab.value, unit: lab.unit || null,
       refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
       resultDate: lab.resultDate || null, visitDate: lab.visitDate || null,
       labName: lab.labName || null, sourceFile: filename, driveFileId: fileId,
       createdAt: new Date().toISOString()
     });
+    writeCount++;
+    if (writeCount % 400 === 0) { await batch.commit(); }
   }
 
   for (const flag of (parsed.flags || [])) {
-    await setDoc(doc(collection(db, 'flags')), {
+    const ref = doc(collection(db, 'flags'));
+    batch.set(ref, {
       fileId, filename, type: flag.type || 'unclear_structure',
       description: flag.description || '', bestGuess: flag.bestGuess || null,
       options: ['Accept guess', 'Enter manually', 'View original'],
       resolved: false, resolvedAt: null, resolution: null,
       createdAt: new Date().toISOString()
     });
+    writeCount++;
   }
+
+  await batch.commit();
 
   const finalStatus = (parsed.flags || []).length > 0 ? 'flagged' : 'complete';
   await writeFileStatus(fileId, filename, finalStatus, {
     cats: [...allCats], datesCovered: [...allDates].sort(),
-    extractionPasses: ['combined_batch'],
-    processedAt: new Date().toISOString()
+    extractionPasses: ['combined_batch'], processedAt: new Date().toISOString()
   });
 }
-
-function showBatchBanner(batchId, total, processed) {
-  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
-  $('batch-banner-text').textContent = `Batch processing — ${processed}/${total} files complete (${pct}%) · ID: ${batchId.slice(-8)}`;
-  $('batch-banner').classList.add('show');
-}
-
-// Check for pending batches on load
 async function checkPendingBatches() {
   if (!apiKey || !currentUser) return;
   try {
