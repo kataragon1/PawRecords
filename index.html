@@ -998,8 +998,17 @@ function renderRecordsTree(tree) {
       for (const v of visits) {
         const ve = document.createElement('div');
         ve.className = 'visit-entry';
-        ve.innerHTML = `<span class="visit-entry-type">${v.clinic || v.docType || 'Visit'}</span>`;
-        ve.onclick = () => openVisit(v);
+        ve.style.cssText = 'position:relative;';
+        ve.innerHTML = `<span class="visit-entry-type">${escHtml(v.clinic || v.docType || 'Visit')}</span>
+          <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
+            <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
+            <button class="visit-action-btn" title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--red);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="delete">🗑</button>
+          </span>`;
+        ve.addEventListener('mouseenter', () => { ve.querySelector('.visit-entry-actions').style.display = 'flex'; });
+        ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
+        ve.querySelector('.visit-entry-type').onclick = () => openVisit(v);
+        ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
+        ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); deleteVisit(v); };
         dg.appendChild(ve);
       }
       vlist.appendChild(dg);
@@ -1014,11 +1023,52 @@ function renderRecordsTree(tree) {
   }
 }
 
+function openVisitEdit(v) {
+  // Simple edit: open popup with editable textarea
+  const content = v.narrative || v.text || '';
+  const title = `Edit — ${v.cat} · ${v.date}`;
+  $('popup-title').textContent = title;
+  const body = $('popup-body');
+  body.innerHTML = '';
+  const ta = document.createElement('textarea');
+  ta.value = content;
+  ta.style.cssText = 'width:100%;height:300px;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.6rem;resize:vertical;outline:none;color:var(--ink);line-height:1.6;';
+  body.appendChild(ta);
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-icon free-icon';
+  saveBtn.style.cssText = 'margin-top:0.75rem;';
+  saveBtn.innerHTML = '<span class="free-dot"></span> Save Changes';
+  saveBtn.onclick = async () => {
+    if (!v.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+    try {
+      await setDoc(doc(db, 'visits', v.id), { ...v, narrative: ta.value }, { merge: true });
+      showToast('Visit updated ✓', 'journal');
+      $('record-popup').classList.remove('open');
+      loadRecordsSidebar();
+    } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
+  };
+  body.appendChild(saveBtn);
+  $('record-popup').classList.add('open');
+}
+
+async function deleteVisit(v) {
+  if (!v.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
+  if (!confirm(`Delete this record?\n${v.cat} · ${v.date} · ${v.docType || 'Visit'}\n\nThis cannot be undone.`)) return;
+  try {
+    const { deleteDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    await deleteDoc(doc(db, 'visits', v.id));
+    showToast('Record deleted', 'warning', null);
+    loadRecordsSidebar();
+  } catch(err) { showToast('Delete failed: ' + err.message, 'warning'); }
+}
+
 // ── LABS SIDEBAR + FLOWSHEET ──
 const TEST_ORDER = ['BUN','Creatinine','SDMA','Albumin','Globulin','Total Protein',
   'ALT','ALP','Glucose','Phosphorus','Potassium','Sodium','Chloride',
   'T4','Folate','Cobalamin','TLI','PLI',
-  'WBC','RBC','Hematocrit','Hemoglobin','Platelets','USG'];
+  'WBC','RBC','Hematocrit','Hemoglobin','Platelets','USG',
+  'FeLV','FIV','Giardia','Clostridium','Coronavirus','Tritrichomonas',
+  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm'];
 
 let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
 let flowsheetCat = null;
@@ -1182,7 +1232,16 @@ function buildFlowsheetTable(cat, container) {
         td.textContent = '—';
         td.style.color = 'var(--border)';
       } else {
-        const abn = (entry.abnormal||'').toUpperCase();
+        const abn = (() => {
+          const stored = (entry.abnormal||'').toUpperCase();
+          if (stored) return stored;
+          // Compute from ref range if not stored
+          if (typeof entry.value === 'number' && entry.refLow != null && entry.refHigh != null) {
+            if (entry.value > entry.refHigh) return 'HIGH';
+            if (entry.value < entry.refLow) return 'LOW';
+          }
+          return '';
+        })();
         const displayVal = typeof entry.value === 'number'
           ? (entry.value % 1 === 0 ? entry.value.toString() : entry.value < 0.1 ? entry.value.toFixed(3) : entry.value < 10 ? entry.value.toFixed(2) : entry.value.toFixed(1))
           : String(entry.value || '');
@@ -1217,7 +1276,7 @@ async function loadJournalSidebar() {
     const snap = await getDocs(q);
     const bycat = {};
     snap.forEach(d => {
-      const j = d.data();
+      const j = { id: d.id, ...d.data() };
       if (!bycat[j.cat]) bycat[j.cat] = {};
       if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
       bycat[j.cat][j.list].push(j);
@@ -1292,7 +1351,19 @@ function renderJournalSidebar(bycat) {
         for (const item of grpItems) {
           const ee = document.createElement('div');
           ee.className = 'journal-entry-full';
-          ee.innerHTML = `<div class="journal-entry-text-full">${escHtml((item.text||'').slice(0,44))}${(item.text||'').length>44?'…':''}</div><div class="journal-entry-date-full">${item.startDate||''}${item.endDate?' → '+item.endDate:''}</div>`;
+          ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
+          const textWrap = document.createElement('div');
+          textWrap.style.cssText = 'flex:1;min-width:0;';
+          textWrap.innerHTML = `<div class="journal-entry-text-full">${escHtml((item.text||'').slice(0,44))}${(item.text||'').length>44?'…':''}</div><div class="journal-entry-date-full">${item.startDate||''}${item.endDate?' → '+item.endDate:''}</div>`;
+          const actions = document.createElement('span');
+          actions.style.cssText = 'display:none;gap:0.15rem;flex-shrink:0;margin-top:0.1rem;';
+          actions.innerHTML = `<button title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem;border-radius:3px;line-height:1;">✏</button><button title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--red);padding:0.1rem;border-radius:3px;line-height:1;">🗑</button>`;
+          ee.addEventListener('mouseenter', () => { actions.style.display = 'flex'; });
+          ee.addEventListener('mouseleave', () => { actions.style.display = 'none'; });
+          actions.querySelector('[title="Edit"]').addEventListener('click', e => { e.stopPropagation(); openJournalEdit(item); });
+          actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); deleteJournalEntry(item); });
+          ee.appendChild(textWrap);
+          ee.appendChild(actions);
           lb.appendChild(ee);
         }
       }
@@ -1301,6 +1372,85 @@ function renderJournalSidebar(bycat) {
     sec.appendChild(body);
     container.appendChild(sec);
   }
+}
+
+
+// ── JOURNAL EDIT / DELETE ──
+function openJournalEdit(item) {
+  $('popup-title').textContent = `Edit Journal — ${item.cat} · ${item.list}`;
+  const body = $('popup-body');
+  body.innerHTML = '';
+  const fields = [
+    { label: 'Text', key: 'text', type: 'textarea', value: item.text || '' },
+    { label: 'Status', key: 'status', type: 'select', options: ['current','past','plan','maybe'], value: item.status || 'current' },
+    { label: 'Start Date', key: 'startDate', type: 'text', value: item.startDate || '' },
+    { label: 'End Date', key: 'endDate', type: 'text', value: item.endDate || '' },
+    { label: 'Dose / Detail', key: 'dose', type: 'text', value: item.dose || '' },
+  ];
+  const form = document.createElement('div');
+  form.style.cssText = 'display:flex;flex-direction:column;gap:0.75rem;';
+  const inputs = {};
+  for (const f of fields) {
+    const wrap = document.createElement('div');
+    const lbl = document.createElement('label');
+    lbl.textContent = f.label;
+    lbl.style.cssText = 'display:block;font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.25rem;';
+    wrap.appendChild(lbl);
+    let el;
+    if (f.type === 'textarea') {
+      el = document.createElement('textarea');
+      el.rows = 3;
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;outline:none;color:var(--ink);line-height:1.5;';
+    } else if (f.type === 'select') {
+      el = document.createElement('select');
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
+      for (const opt of f.options) {
+        const o = document.createElement('option');
+        o.value = opt; o.textContent = opt;
+        if (opt === f.value) o.selected = true;
+        el.appendChild(o);
+      }
+    } else {
+      el = document.createElement('input');
+      el.type = 'text';
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;outline:none;color:var(--ink);background:var(--bg);';
+    }
+    el.value = f.value;
+    inputs[f.key] = el;
+    wrap.appendChild(el);
+    form.appendChild(wrap);
+  }
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-icon free-icon';
+  saveBtn.style.cssText = 'margin-top:0.5rem;';
+  saveBtn.innerHTML = '<span class="free-dot"></span> Save Changes';
+  saveBtn.onclick = async () => {
+    if (!item.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+    try {
+      const updates = {};
+      for (const f of fields) updates[f.key] = inputs[f.key].value || null;
+      await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
+      showToast('Journal entry updated', 'journal');
+      $('record-popup').classList.remove('open');
+      loadJournalSidebar();
+    } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
+  };
+  form.appendChild(saveBtn);
+  body.appendChild(form);
+  $('popup-search-input').value = '';
+  $('popup-search-count').textContent = '';
+  $('record-popup').classList.add('open');
+}
+
+async function deleteJournalEntry(item) {
+  if (!item.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
+  if (!confirm(`Delete: ${item.cat} / ${item.list}: ${item.text}?`)) return;
+  try {
+    const { deleteDoc } = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js');
+    await deleteDoc(doc(db, 'journal', item.id));
+    showToast('Journal entry deleted', 'warning');
+    loadJournalSidebar();
+  } catch(err) { showToast('Delete failed: ' + err.message, 'warning'); }
 }
 
 // ── SIDEBAR TABS ──
@@ -1472,8 +1622,9 @@ function renderFilesList(driveFiles, statusMap) {
       <div class="file-item-meta">
         <span>${size}</span>
         <span class="file-cats" id="cats-${file.id}"></span>
+        ${status === 'complete' ? `<button class="file-verify-btn" data-file-id="${file.id}" style="background:none;border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.35rem;cursor:pointer;margin-left:auto;transition:all 0.15s;" title="Re-verify this file for missing data">verify</button>` : ''}
         <a href="https://drive.google.com/file/d/${file.id}/view" target="_blank"
-           style="color:var(--accent);text-decoration:none;margin-left:auto;" onclick="event.stopPropagation()">
+           style="color:var(--accent);text-decoration:none;${status !== 'complete' ? 'margin-left:auto;' : ''}" onclick="event.stopPropagation()">
           open ↗
         </a>
       </div>`;
@@ -1484,11 +1635,19 @@ function renderFilesList(driveFiles, statusMap) {
       updateProcessButtons();
     });
     item.addEventListener('click', e => {
-      if (e.target === cb || e.target.tagName === 'A') return;
+      if (e.target === cb || e.target.tagName === 'A' || e.target.classList.contains('file-verify-btn')) return;
       cb.checked = !cb.checked;
       item.classList.toggle('selected', cb.checked);
       updateProcessButtons();
     });
+    // Wire verify button
+    const verifyBtn = item.querySelector('.file-verify-btn');
+    if (verifyBtn) {
+      verifyBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        verifyFile(file);
+      });
+    }
     filesList.appendChild(item);
   }
 
@@ -1804,6 +1963,7 @@ async function processFile(file) {
       narrative: visit.narrative || '',
       sourceFiles: [file.name],
       driveFileIds: [file.id],
+      sourceFileId: file.id,
       visitCluster: `${visit.date || 'unknown'}_${(visit.clinic || 'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
       confidence: visit.confidence || 0.8,
       flags: visit.flags || [],
@@ -1970,6 +2130,110 @@ async function processExcelFile(file) {
     resolved: false, resolvedAt: null, resolution: null,
     createdAt: new Date().toISOString()
   });
+}
+
+// ── VERIFY FILE ──
+// Re-extracts a completed file and diffs against existing Firestore records
+async function verifyFile(file) {
+  if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
+  if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+
+  const btn = document.querySelector(`[data-file-id="${file.id}"].file-verify-btn`) ||
+    document.querySelector(`.file-verify-btn[data-file-id="${file.id}"]`);
+  if (btn) { btn.textContent = 'verifying…'; btn.disabled = true; }
+
+  try {
+    // Fetch and extract text
+    const blob = await fetchDriveFileBlob(file.id);
+    let rawText = '';
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'pdf') {
+      rawText = await extractPdfText(blob);
+    } else {
+      rawText = await blob.text();
+    }
+    if (!rawText || rawText.trim().length < 50) {
+      showToast(`${file.name.slice(0,30)}: too short to verify`, 'warning');
+      if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
+      return;
+    }
+
+    // Re-run extraction
+    const chunks = rawText.length > 12000 ? [rawText.slice(0, 12000)] : [rawText];
+    const newContent = await runCombinedPass(file, chunks[0]);
+
+    // Get existing Firestore records for this file
+    const q = query(collection(db, 'visits'), where('sourceFileId', '==', file.id));
+    const snap = await getDocs(q);
+    let existingText = '';
+    snap.forEach(d => {
+      const v = d.data();
+      existingText += `${v.date||''} ${v.cat||''} ${v.docType||''}: ${v.narrative||''}\n\n`;
+    });
+
+    if (!existingText) {
+      showToast(`${file.name.slice(0,30)}: no existing records to compare`, 'warning');
+      if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
+      return;
+    }
+
+    // Diff
+    const diffPrompt = `Compare these two veterinary document versions. Find ONLY clinical data in Document B missing from Document A — lab values, diagnoses, medications, procedures, dated visits. Ignore contact info, service reminders, boilerplate, billing.
+If nothing clinical is missing respond exactly: NOTHING_NEW
+
+Document A (existing records):
+${existingText.slice(0, 5000)}
+
+Document B (fresh extraction):
+${(newContent?.narrative || rawText).slice(0, 5000)}`;
+
+    const diffResult = await callExtractionClaude([{ role: 'user', content: diffPrompt }], 1000);
+    const hasNew = diffResult && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
+
+    if (!hasNew) {
+      showToast(`✓ ${file.name.slice(0,30)}: verified complete`, 'journal');
+    } else {
+      // Show results in popup
+      $('popup-title').textContent = `Verify: ${file.name}`;
+      const body = $('popup-body');
+      body.innerHTML = '';
+      const note = document.createElement('div');
+      note.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--amber);margin-bottom:0.75rem;line-height:1.6;';
+      note.textContent = '⚠ Missing clinical data found — review and merge if valid:';
+      body.appendChild(note);
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--ink-dim);background:var(--surface);border-radius:6px;padding:0.75rem;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;margin-bottom:0.75rem;line-height:1.6;';
+      pre.textContent = diffResult.trim();
+      body.appendChild(pre);
+      const mergeBtn = document.createElement('button');
+      mergeBtn.className = 'btn-icon free-icon';
+      mergeBtn.innerHTML = '<span class="free-dot"></span> Flag for Review';
+      mergeBtn.onclick = async () => {
+        // Write to flags collection for manual review
+        await setDoc(doc(collection(db, 'flags')), {
+          fileId: file.id, filename: file.name,
+          type: 'verify_missing_data',
+          description: diffResult.trim().slice(0, 500),
+          options: ['Reprocess file', 'Mark as complete', 'Ignore'],
+          resolved: false, createdAt: new Date().toISOString()
+        });
+        const fc = parseInt($('flags-count').textContent || '0') + 1;
+        $('flags-count').textContent = fc;
+        $('flags-btn').style.display = 'inline-flex';
+        showToast('Flagged for review ✓', 'journal');
+        $('record-popup').classList.remove('open');
+      };
+      body.appendChild(mergeBtn);
+      $('popup-search-input').value = '';
+      $('popup-search-count').textContent = '';
+      $('record-popup').classList.add('open');
+    }
+  } catch(err) {
+    console.error('Verify error:', err);
+    showToast(`Verify failed: ${err.message.slice(0,60)}`, 'warning');
+  }
+
+  if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
 }
 
 // ── FIRESTORE HELPERS ──
@@ -2463,9 +2727,29 @@ async function sendMessage() {
     const msg = err.message || '';
     const isRate = msg.toLowerCase().includes('rate') || msg.includes('429') || msg.toLowerCase().includes('credit');
     if (isRate) {
-      appendMsg('assistant', '⏸ Rate limit reached. Wait a moment then resend your message.');
-      convHistory.pop();
-      $('user-input').value = text;
+      convHistory.pop(); // remove unsent user message from history
+      appendMsg('assistant', '⏸ Rate limit reached — your message was not sent.');
+      // Show inline retry bar
+      const retryBar = document.createElement('div');
+      retryBar.style.cssText = 'display:flex;gap:0.5rem;padding:0.5rem 1.25rem;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;align-items:center;';
+      const preview = text.length > 60 ? text.slice(0,60) + '…' : text;
+      retryBar.innerHTML = `<span style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview)}</span>`;
+      const continueBtn = document.createElement('button');
+      continueBtn.className = 'btn-icon free-icon';
+      continueBtn.innerHTML = '<span class="free-dot"></span> Retry';
+      continueBtn.addEventListener('click', () => {
+        retryBar.remove();
+        $('user-input').value = text;
+        $('user-input').dispatchEvent(new Event('input'));
+        $('user-input').focus();
+      });
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'btn-icon';
+      dismissBtn.textContent = 'Dismiss';
+      dismissBtn.addEventListener('click', () => retryBar.remove());
+      retryBar.appendChild(continueBtn);
+      retryBar.appendChild(dismissBtn);
+      $('chat-body').after(retryBar);
     } else {
       appendMsg('assistant', `Sorry, I hit an error: ${msg}`);
     }
@@ -2489,8 +2773,14 @@ function appendMsg(role, text) {
 
 // ── JOURNAL — Claude-powered (Haiku, background) ──
 
+// Client-side pre-filter — only call API if message mentions a cat AND a medical keyword
+const JOURNAL_CATS_RE = /\b(mocha|evie|latte)\b/i;
+const JOURNAL_MED_RE = /\b(prednisolone|gabapentin|cerenia|convenia|tylosin|metronidazole|panacur|cyclosporine|mirtazapine|omeprazole|zofran|famotidine|miralax|buprenex|b12|cobalamin|visbiome|animalbiome|boulardii|psyllium|propectalin|fish oil|salmon oil|instinct|ultamino|hydrolyzed|hills|purina|royal canin|blue buffalo|wellness|probiotics?|supplement|vitamin|omega|fiber|pumpkin|appetite|antibiotic|steroid|dose|dosage|started|stopped|switched|discontinued|no longer|giving her|she.s on|back on|restarted|tried|prescribed)\b/i;
+
 async function extractJournalFromConversation(userMsg, assistantMsg) {
   if (!apiKey) return;
+  // Only call API if message has a cat name + medical keyword — saves tokens on casual chat
+  if (!JOURNAL_CATS_RE.test(userMsg) || !JOURNAL_MED_RE.test(userMsg + ' ' + assistantMsg)) return;
   try {
     const jSnap = await getDocs(collection(db, 'journal'));
     const journalLines = [];
@@ -2839,6 +3129,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       diagnoses: visit.diagnoses || [], medications: visit.medications || [],
       procedures: visit.procedures || [], narrative: visit.narrative || '',
       sourceFiles: [filename], driveFileIds: [fileId],
+      sourceFileId: fileId,
       visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
       confidence: visit.confidence || 0.8, flags: visit.flags || [],
       createdAt: new Date().toISOString()
