@@ -650,7 +650,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
@@ -686,7 +686,7 @@ driveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
 // ── STATE ──
 let currentUser = null;
 let apiKey = (() => { try { return localStorage.getItem('pr_apikey') || ''; } catch(e) { return ''; } })(); // pre-auth fallback; overwritten by loadApiKey() after sign-in
-let driveAccessToken = null;
+let driveAccessToken = (() => { try { return sessionStorage.getItem('pr_drive_token') || null; } catch(e) { return null; } })();
 let sessionCost = 0;
 let convHistory = [];
 let pendingJournalItems = []; // queued during session, saved in batch
@@ -748,26 +748,37 @@ function updateSessionCost(tokensUsed) {
 }
 
 // ── AUTH ──
-// redirectResultPromise resolves before onAuthStateChanged proceeds,
-// guaranteeing driveAccessToken is populated before loadDriveFiles runs.
-const redirectResultPromise = getRedirectResult(auth).then(result => {
-  if (result) {
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) driveAccessToken = credential.accessToken;
-  }
-  return result;
-}).catch(err => { console.warn('getRedirectResult:', err.message); return null; });
-
-$('signin-btn').addEventListener('click', () => {
+$('signin-btn').addEventListener('click', async () => {
   $('signin-btn').disabled = true;
   $('signin-error').classList.remove('show');
   setLoading('Signing in with Google…');
-  signInWithRedirect(auth, provider);
+  try {
+    const result = await signInWithPopup(auth, provider);
+    if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(result.user.email)) {
+      await signOut(auth);
+      show('signin');
+      $('signin-btn').disabled = false;
+      $('signin-error').textContent = `Access denied for ${result.user.email}.`;
+      $('signin-error').classList.add('show');
+      return;
+    }
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      driveAccessToken = credential.accessToken;
+      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+    }
+  } catch (err) {
+    show('signin');
+    $('signin-btn').disabled = false;
+    $('signin-error').textContent = err.message || 'Sign in failed.';
+    $('signin-error').classList.add('show');
+  }
 });
 
 $('signout-btn').addEventListener('click', async () => {
   await signOut(auth);
   sessionCost = 0; convHistory = []; pendingJournalItems = []; driveAccessToken = null;
+  try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
   show('signin');
   $('signin-btn').disabled = false;
 });
@@ -782,7 +793,6 @@ onAuthStateChanged(auth, async user => {
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
-    await redirectResultPromise; // ensures Drive token is captured before we proceed
     await loadInitialData();
     show('app');
     await loadDriveFiles();
@@ -1054,9 +1064,23 @@ function filterFiles(filter) {
   });
 }
 
-// ── DRIVE CONNECTION (fallback if token missing after page refresh) ──
+// ── DRIVE CONNECTION (fallback if token expired) ──
 $('connect-drive-btn').addEventListener('click', async () => {
-  await signInWithRedirect(auth, provider);
+  $('connect-drive-btn').disabled = true;
+  $('connect-drive-btn').textContent = 'Connecting…';
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      driveAccessToken = credential.accessToken;
+      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+      await loadDriveFiles();
+    }
+  } catch(e) {
+    showToast('Reconnect failed: ' + e.message, 'warning');
+  }
+  $('connect-drive-btn').disabled = false;
+  $('connect-drive-btn').textContent = 'Reconnect Drive';
 });
 
 async function loadDriveFiles() {
