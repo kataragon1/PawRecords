@@ -593,7 +593,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <p id="welcome-subtitle">Ask about medications, lab trends, visit history, or anything on your mind. Your records are loaded and ready.</p>
         <div class="chat-welcome-hints">
           <div class="chat-hint" data-prompt="What are the most recent lab results and are any values abnormal?">What are the most recent lab results and are any values abnormal?</div>
-          <div class="chat-hint" data-prompt="Summarize current medications and supplements for all cats.">Summarize current medications and supplements for all cats.</div>
+          <div class="chat-hint" data-prompt="Summarize current medications and supplements for all pets.">Summarize current medications and supplements for all pets.</div>
           <div class="chat-hint" data-prompt="What diagnoses and conditions have been noted across all visits?">What diagnoses and conditions have been noted across all visits?</div>
         </div>
       </div>
@@ -602,7 +602,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <!-- Chat input -->
     <div class="chat-input-wrap">
       <div class="input-row">
-        <textarea id="user-input" rows="1" placeholder="Ask anything about Mocha, Evie, or Latte…"></textarea>
+        <textarea id="user-input" rows="1" placeholder="Ask anything about your pets…"></textarea>
         <button id="send-btn" disabled title="Send (costs tokens)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -2011,6 +2011,24 @@ async function processFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   const mime = file.mimeType || '';
 
+  // Check for cached extraction from a previous write-failed attempt
+  // This lets us retry the write without paying for re-extraction
+  try {
+    const cached = await getDoc(doc(db, 'extractions', file.id));
+    if (cached.exists() && cached.data().result && !cached.data().committed) {
+      const data = JSON.parse(cached.data().result);
+      if (data.allVisits || data.allLabs) {
+        showToast(`${file.name.slice(0,25)}: using cached extraction — no API cost`, 'journal');
+        // Reconstruct and write from cache
+        const allCats = new Set(data.cats || []);
+        const allDates = new Set(data.dates || []);
+        // Re-run the write section directly
+        await writeExtractionToFirestore(file, data.allVisits||[], data.allLabs||[], data.allFlags||[], allCats, allDates, data.passes||[]);
+        return;
+      }
+    }
+  } catch(e) { /* no cache, proceed normally */ }
+
   // Mark as processing in Firestore
   await writeFileStatus(file.id, file.name, 'processing');
 
@@ -2073,9 +2091,18 @@ async function processFile(file) {
   for (const chunk of chunks) {
     if (processingStop) break;
 
-    // ── SINGLE COMBINED PASS (narrative + labs + PCR in one call) ──
+    // ── SINGLE COMBINED PASS ──
     const result = await runCombinedPass(file, chunk);
-    if (!result) continue;
+    if (!result) {
+      console.warn(`${file.name}: extraction returned null`);
+      continue;
+    }
+    if (result.skip) {
+      console.log(`${file.name}: skipped (invoice/no clinical content)`);
+      continue;
+    }
+
+    console.log(`${file.name}: extracted visits=${result.visits?.length||0} labs=${result.labs?.length||0} pcr=${result.pcr?.length||0} flags=${result.flags?.length||0}`);
 
     (result.cats || []).forEach(c => allCats.add(c));
     (result.dates || []).forEach(d => allDates.add(d));
@@ -2085,57 +2112,81 @@ async function processFile(file) {
     if (result.flags?.length) allFlags.push(...result.flags);
   }
 
-  // Write all results to Firestore using batch writes
-  const fsBatch = writeBatch(db);
-  let batchCount = 0;
 
-  for (const visit of allVisits) {
-    if (!visit.cat || visit.cat === 'SKIP') continue;
-    const ref = doc(collection(db, 'visits'));
-    fsBatch.set(ref, {
-      cat: visit.cat, date: visit.date || 'unknown',
-      clinic: visit.clinic || null, doctor: visit.doctor || null,
-      chiefComplaint: visit.chiefComplaint || null,
-      diagnoses: visit.diagnoses || [], medications: visit.medications || [],
-      procedures: visit.procedures || [], narrative: visit.narrative || '',
-      sourceFiles: [file.name], driveFileIds: [file.id], sourceFileId: file.id,
-      visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
-      confidence: visit.confidence || 0.8, flags: visit.flags || [],
+  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes);
+}
+
+async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes) {
+  // Save raw extraction result to Firestore immediately — free, enables write-only retry
+  const extractionCache = { allVisits, allLabs, allFlags, cats: [...allCats], dates: [...allDates], passes: [...new Set(passes)] };
+  try {
+    await setDoc(doc(db, 'extractions', file.id), {
+      fileId: file.id, filename: file.name,
+      result: JSON.stringify(extractionCache).slice(0, 900000), // Firestore 1MB limit
       createdAt: new Date().toISOString()
     });
-    if (visit.cat) allCats.add(visit.cat);
-    if (visit.date) allDates.add(visit.date);
-    batchCount++;
-  }
+  } catch(e) { console.warn('Extraction cache write failed (non-critical):', e.message); }
 
-  for (const lab of allLabs) {
-    if (!lab.test || lab.value === undefined || lab.value === null) continue;
-    const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
-    if (!cat) continue;
-    const ref = doc(collection(db, 'labs'));
-    fsBatch.set(ref, {
-      cat, test: lab.test, value: lab.value, unit: lab.unit || null,
-      refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
-      resultDate: lab.resultDate || null, visitDate: lab.visitDate || null,
-      labName: lab.labName || null, sourceFile: file.name, driveFileId: file.id,
-      createdAt: new Date().toISOString()
+  // Write to Firestore using batch — catch errors and mark file as write-failed
+  // so user can retry the write without re-extracting (no extra API cost)
+  try {
+    const fsBatch = writeBatch(db);
+
+    for (const visit of allVisits) {
+      if (!visit.cat || visit.cat === 'SKIP') continue;
+      fsBatch.set(doc(collection(db, 'visits')), {
+        cat: visit.cat, date: visit.date || 'unknown',
+        clinic: visit.clinic || null, doctor: visit.doctor || null,
+        chiefComplaint: visit.chiefComplaint || null,
+        diagnoses: visit.diagnoses || [], medications: visit.medications || [],
+        procedures: visit.procedures || [], narrative: visit.narrative || '',
+        sourceFiles: [file.name], driveFileIds: [file.id], sourceFileId: file.id,
+        visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
+        confidence: visit.confidence || 0.8, flags: visit.flags || [],
+        createdAt: new Date().toISOString()
+      });
+      if (visit.cat) allCats.add(visit.cat);
+      if (visit.date) allDates.add(visit.date);
+    }
+
+    for (const lab of allLabs) {
+      if (!lab.test || lab.value === undefined || lab.value === null) continue;
+      const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
+      if (!cat) continue;
+      fsBatch.set(doc(collection(db, 'labs')), {
+        cat, test: lab.test, value: lab.value, unit: lab.unit || null,
+        refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
+        resultDate: lab.resultDate || null, visitDate: lab.visitDate || null,
+        labName: lab.labName || null, sourceFile: file.name, driveFileId: file.id,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    for (const flag of allFlags) {
+      fsBatch.set(doc(collection(db, 'flags')), {
+        fileId: file.id, filename: file.name, type: flag.type || 'unclear_structure',
+        description: flag.description || '', bestGuess: flag.bestGuess || null,
+        options: ['Accept guess', 'Enter manually', 'View original'],
+        resolved: false, resolvedAt: null, resolution: null,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    await fsBatch.commit();
+
+    // Success — clean up extraction cache
+    try { await setDoc(doc(db, 'extractions', file.id), { committed: true }, { merge: true }); } catch(e) {}
+
+  } catch(batchErr) {
+    console.error('Batch write failed:', batchErr.message);
+    // Mark as write-failed so user knows to retry the write (not re-extract)
+    await writeFileStatus(file.id, file.name, 'failed', {
+      error: 'Write failed — extraction cached. Click reprocess to retry write only.',
+      extractionCached: true
     });
-    batchCount++;
+    showToast(`Write failed for ${file.name.slice(0,25)} — extraction saved, click reprocess to retry`, 'warning');
+    return;
   }
-
-  for (const flag of allFlags) {
-    const ref = doc(collection(db, 'flags'));
-    fsBatch.set(ref, {
-      fileId: file.id, filename: file.name, type: flag.type || 'unclear_structure',
-      description: flag.description || '', bestGuess: flag.bestGuess || null,
-      options: ['Accept guess', 'Enter manually', 'View original'],
-      resolved: false, resolvedAt: null, resolution: null,
-      createdAt: new Date().toISOString()
-    });
-    batchCount++;
-  }
-
-  if (batchCount > 0) await fsBatch.commit();
 
   // Final file status write
   const finalStatus = allFlags.length > 0 ? 'flagged' : 'complete';
@@ -3904,7 +3955,7 @@ async function buildChatContext(userMessage) {
 
 // ── CLAUDE CHAT API ──
 async function callClaude(history, context) {
-  const system = `You are a veterinary care assistant for cats Mocha, Evie, and Latte, belonging to Katherine Coleman.
+  const system = `You are a veterinary care assistant for pets Mocha, Evie, and Latte, belonging to Katherine Coleman.
 You have access to their complete medical records, lab results, and care journal below.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
 If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
