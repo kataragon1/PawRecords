@@ -1553,6 +1553,30 @@ async function loadDriveFiles() {
       `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name,parents)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${driveAccessToken}` } }
     );
+    // Token expired — silently re-auth and retry once
+    if (pawRes.status === 401) {
+      try {
+        driveAccessToken = null;
+        try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
+        filesList.innerHTML = '<div class="files-loading">Refreshing Drive connection…</div>';
+        const result = await signInWithPopup(auth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          driveAccessToken = credential.accessToken;
+          try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+          // Retry now that we have a fresh token
+          return loadDriveFiles();
+        }
+      } catch(e) {
+        // Popup failed or was dismissed — show reconnect prompt
+      }
+      driveAccessToken = null;
+      $('drive-dot').className = 'status-dot amber';
+      $('drive-status').textContent = 'Drive token expired';
+      $('drive-connect-prompt').style.display = 'flex';
+      filesList.innerHTML = '<div class="files-loading">Could not refresh Drive token — click Reconnect Drive.</div>';
+      return;
+    }
     const pawData = await pawRes.json();
     const pawFolder = pawData.files?.[0];
     if (!pawFolder) {
