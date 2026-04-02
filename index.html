@@ -679,10 +679,6 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
-// Drive uses the same provider — token captured at sign-in, or re-prompted if needed
-const driveProvider = new GoogleAuthProvider();
-driveProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
-
 // ── STATE ──
 let currentUser = null;
 let apiKey = (() => { try { return localStorage.getItem('pr_apikey') || ''; } catch(e) { return ''; } })(); // pre-auth fallback; overwritten by loadApiKey() after sign-in
@@ -1069,16 +1065,26 @@ $('connect-drive-btn').addEventListener('click', async () => {
   $('connect-drive-btn').disabled = true;
   $('connect-drive-btn').textContent = 'Connecting…';
   try {
+    // Force account picker so Google issues a fresh access token with Drive scope
+    provider.setCustomParameters({ prompt: 'select_account' });
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
       try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+      $('drive-connect-prompt').style.display = 'none';
+      $('drive-dot').className = 'status-dot green';
+      $('drive-status').textContent = 'Drive connected';
       await loadDriveFiles();
+      showToast('Drive reconnected ✓', 'journal');
+    } else {
+      showToast('No Drive token returned — try again', 'warning');
     }
   } catch(e) {
     showToast('Reconnect failed: ' + e.message, 'warning');
   }
+  // Reset prompt for normal future sign-ins
+  provider.setCustomParameters({});
   $('connect-drive-btn').disabled = false;
   $('connect-drive-btn').textContent = 'Reconnect Drive';
 });
