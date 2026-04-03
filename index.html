@@ -921,9 +921,12 @@ onIdTokenChanged(auth, async user => {
     // Check users/allowed — single doc with an email array field
     try {
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+      console.log('[users] exists:', allowedDoc.exists(), 'data:', JSON.stringify(allowedDoc.data()));
+      console.log('[users] user.email:', user.email);
       const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
       const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
-      if (!allowedEmails.includes(user.email)) {
+      console.log('[users] allowedEmails:', allowedEmails, 'match:', allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase()));
+      if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
         await signOut(auth);
         show('signin');
         const errEl = $('signin-error');
