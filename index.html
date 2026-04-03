@@ -514,8 +514,8 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div class="files-toolbar" id="files-toolbar">
         <button class="filter-btn active" data-filter="all">All</button>
         <button class="filter-btn" data-filter="unprocessed">Unprocessed</button>
-        <button class="filter-btn" data-filter="flagged">Flagged</button>
-        <button class="filter-btn" data-filter="complete">Done</button>
+        <button class="filter-btn" data-filter="flagged">Needs review</button>
+        <button class="filter-btn" data-filter="done">Done</button>
       </div>
       <div class="files-actions" id="files-actions" style="display:none;">
         <button class="btn-icon cost-icon" id="process-selected-btn" style="display:none;">
@@ -556,7 +556,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div class="app-header-right">
         <button class="btn-icon free-icon" id="chat-search-btn" title="Search conversation (Ctrl+F)">🔍</button>
         <button class="btn-icon free-icon" id="flags-btn" style="display:none">
-          <span class="free-dot"></span> <span id="flags-count">0</span> Flagged
+          <span class="free-dot"></span> <span id="flags-count">0</span> Needs review
         </button>
         <button class="btn-icon cost-icon" id="save-session-btn" style="display:none" title="Save session highlights and journal entries to Firestore">
           <span class="cost-dot"></span> Save Session
@@ -656,7 +656,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <div id="flags-modal">
   <div class="flags-modal-box">
     <div class="flags-modal-header">
-      <span class="flags-modal-title">Flagged Items</span>
+      <span class="flags-modal-title">Items Needing Review</span>
       <button class="modal-close" id="flags-modal-close">✕</button>
     </div>
     <div class="flags-modal-body" id="flags-modal-body"></div>
@@ -803,6 +803,10 @@ import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayR
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
 // ── CONFIG ──
+
+// Security rules: see firestore.rules in this repo.
+// User management: Firestore → users/allowed → email array.
+
 const firebaseConfig = {
   apiKey: "AIzaSyBECkOIkB_rbreDsTo44Kvwq0jL6f29cv0",
   authDomain: "pawrecords-1a8e6.firebaseapp.com",
@@ -814,10 +818,7 @@ const firebaseConfig = {
 };
 
 // Authorized emails — only these can sign in
-const AUTHORIZED_EMAILS = [
-  'kataragon@gmail.com',
-  'mystafer@gmail.com',
-];
+// Access control: Firestore Security Rules + users/allowed doc (email array field).
 
 // ── INIT ──
 const app = initializeApp(firebaseConfig);
@@ -833,6 +834,7 @@ let driveAccessToken = (() => { try { return sessionStorage.getItem('pr_drive_to
 let sessionCost = 0;
 let convHistory = [];
 let pendingJournalItems = []; // queued during session, saved in batch
+let APP_PETS = []; // populated from visits collection on load — never hardcoded
 const mentionTally = {}; // {cat_term: count} for repeat-mention detection
 
 // ── HELPERS ──
@@ -882,29 +884,28 @@ function updateStatusBar() {
 
 // ── AUTH ──
 $('signin-btn').addEventListener('click', async () => {
-  $('signin-btn').disabled = true;
-  $('signin-error').classList.remove('show');
+  const btn = $('signin-btn');
+  if (btn) btn.disabled = true;
+  const errEl = $('signin-error');
+  if (errEl) errEl.classList.remove('show');
   setLoading('Signing in with Google…');
   try {
     const result = await signInWithPopup(auth, provider);
-    if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(result.user.email)) {
-      await signOut(auth);
-      show('signin');
-      $('signin-btn').disabled = false;
-      $('signin-error').textContent = `Access denied for ${result.user.email}.`;
-      $('signin-error').classList.add('show');
-      return;
-    }
+    // Access check is handled by onAuthStateChanged via users collection
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
       try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
     }
   } catch (err) {
+    // Suppress non-fatal Firebase popup/COOP warnings
+    if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') return;
     show('signin');
-    $('signin-btn').disabled = false;
-    $('signin-error').textContent = err.message || 'Sign in failed.';
-    $('signin-error').classList.add('show');
+    if ($('signin-btn')) $('signin-btn').disabled = false;
+    if ($('signin-error')) {
+      $('signin-error').textContent = err.message || 'Sign in failed.';
+      $('signin-error').classList.add('show');
+    }
   }
 });
 
@@ -918,8 +919,23 @@ $('signout-btn').addEventListener('click', async () => {
 
 onAuthStateChanged(auth, async user => {
   if (user) {
-    if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(user.email)) {
-      await signOut(auth); show('signin'); return;
+    // Check users/allowed — single doc with an email array field
+    try {
+      const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+      const allowedEmails = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
+      if (!allowedEmails.includes(user.email)) {
+        await signOut(auth);
+        show('signin');
+        const errEl = $('signin-error');
+        if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
+        return;
+      }
+    } catch(e) {
+      await signOut(auth);
+      show('signin');
+      const errEl = $('signin-error');
+      if (errEl) { errEl.textContent = 'Could not verify access. Check your connection and try again.'; errEl.classList.add('show'); }
+      return;
     }
     currentUser = user;
     setLoading('Loading your records…');
@@ -928,7 +944,7 @@ onAuthStateChanged(auth, async user => {
     await loadApiKey();
     await loadInitialData();
     show('app');
-    getPdfJs().catch(() => {}); // preload PDF.js in background so first file processes instantly
+    getPdfJs().catch(() => {}); // preload PDF.js in background
     await loadDriveFiles();
   } else {
     currentUser = null;
@@ -969,13 +985,21 @@ async function updatePetList() {
     const snap = await getDocs(collection(db, 'visits'));
     const pets = [...new Set(snap.docs.map(d => d.data().cat).filter(Boolean))].sort();
     if (pets.length) {
+      APP_PETS = pets; // update global — used by prompts, context builder, dropdowns
+      rebuildPetRegex();
       const list = pets.length === 1 ? pets[0]
         : pets.slice(0, -1).join(', ') + ' & ' + pets[pets.length - 1];
       $('welcome-subtitle').textContent =
         `Ask about medications, lab trends, visit history, or anything on your mind.\n\nRecords loaded for ${list}.`;
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
-  } catch(e) { /* non-critical, leave defaults */ }
+  } catch(e) { /* non-critical */ }
+}
+
+function rebuildPetRegex() {
+  if (!APP_PETS.length) return;
+  const escaped = APP_PETS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  JOURNAL_CATS_RE = new RegExp(`\\b(${escaped})\\b`, 'i');
 }
 
 // ── RECORDS SIDEBAR ──
@@ -1549,14 +1573,18 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 function filterFiles(filter) {
   document.querySelectorAll('.file-item').forEach(el => {
     const status = el.dataset.status;
-    el.style.display = (filter === 'all' || status === filter) ? 'flex' : 'none';
+    let show = false;
+    if (filter === 'all') show = true;
+    else if (filter === 'done') show = (status === 'complete' || status === 'flagged');
+    else show = (status === filter);
+    el.style.display = show ? 'flex' : 'none';
   });
 }
 
 // ── DRIVE CONNECTION (fallback if token expired) ──
 $('connect-drive-btn').addEventListener('click', async () => {
-  $('connect-drive-btn').disabled = true;
-  $('connect-drive-btn').textContent = 'Connecting…';
+  const btn = $('connect-drive-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
   try {
     // Force account picker so Google issues a fresh access token with Drive scope
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -1565,21 +1593,28 @@ $('connect-drive-btn').addEventListener('click', async () => {
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
       try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
-      $('drive-connect-prompt').style.display = 'none';
-      $('drive-dot').className = 'status-dot green';
-      $('drive-status').textContent = 'Drive connected';
+      const pr = $('drive-connect-prompt');
+      if (pr) pr.style.display = 'none';
+      const dot = $('drive-dot');
+      if (dot) dot.className = 'status-dot green';
+      const st = $('drive-status');
+      if (st) st.textContent = 'Drive connected';
       await loadDriveFiles();
       showToast('Drive reconnected ✓', 'journal');
     } else {
       showToast('No Drive token returned — try again', 'warning');
     }
   } catch(e) {
-    showToast('Reconnect failed: ' + e.message, 'warning');
+    // COOP popup warnings from Firebase are non-fatal — suppress them
+    if (e.code !== 'auth/cancelled-popup-request' && e.code !== 'auth/popup-closed-by-user') {
+      showToast('Reconnect failed: ' + e.message, 'warning');
+    }
+  } finally {
+    // Reset button — guard null in case DOM was replaced during the auth flow
+    provider.setCustomParameters({});
+    const btn2 = $('connect-drive-btn');
+    if (btn2) { btn2.disabled = false; btn2.textContent = 'Reconnect Drive'; }
   }
-  // Reset prompt for normal future sign-ins
-  provider.setCustomParameters({});
-  $('connect-drive-btn').disabled = false;
-  $('connect-drive-btn').textContent = 'Reconnect Drive';
 });
 
 async function loadDriveFiles() {
@@ -2296,8 +2331,11 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     return;
   }
 
-  // Final file status write
-  const finalStatus = allFlags.length > 0 ? 'flagged' : 'complete';
+  // Final file status write — only flag for issues that require user action to resolve.
+  // Low-confidence annotations and informational notes don't need the file marked flagged.
+  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped', 'excel_manual_review'];
+  const actionableFlags = allFlags.filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
+  const finalStatus = actionableFlags.length > 0 ? 'flagged' : 'complete';
   await writeFileStatus(file.id, file.name, finalStatus, {
     cats: [...allCats],
     datesCovered: [...allDates].sort(),
@@ -2310,8 +2348,9 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
   const catsEl = $(`cats-${file.id}`);
   if (catsEl && allCats.size) catsEl.textContent = [...allCats].join(', ');
 
-  // Update flags button in header
-  const flagCount = parseInt($('flags-count').textContent || '0') + allFlags.length;
+  // Update flags button — only count actionable flags needing user review
+  const newActionableCount = allFlags.filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type)).length;
+  const flagCount = parseInt($('flags-count').textContent || '0') + newActionableCount;
   $('flags-count').textContent = flagCount;
   if (flagCount > 0) $('flags-btn').style.display = 'inline-flex';
 
@@ -2758,16 +2797,17 @@ async function writeFileStatus(fileId, filename, status, extra = {}) {
 
 // ── CLAUDE EXTRACTION PASSES ──
 
-const SYSTEM_EXTRACTION = `You are a veterinary medical records parser. Extract structured data from vet records.
+function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records.
 Rules:
-- Cat names: Mocha, Evie, Latte (or detect new names)
+- Cat names: detect from document. Known pets in this account: ${APP_PETS.join(', ')||'unknown — detect from context'} (detect new pets too)
 - Invoices: extract ONLY meds dispensed, vaccines, prescription foods, procedures + dates. Discard all costs/billing. If none of those → respond {skip:true}
 - Bulk clinical summaries: IGNORE any summary/problem list header block at the top. Extract ONLY individual dated visit entries
 - Discard boilerplate: portal instructions, legal text, appointment reminders
 - Multi-cat files: produce separate records per cat
-- Every extraction must include confidence (0-1) and flags for uncertain items
-- Dates: YYYY-MM-DD format. If uncertain, your best guess with low confidence
-- Always respond with ONLY valid JSON, no markdown fences, no extra text`;
+- confidence (0-1) on each visit is required
+- flags array: ONLY include flags that require human review to resolve — missing visit date, unidentified cat, or genuinely ambiguous document type. Do NOT flag low-confidence individual lab values, marketing inserts, or minor formatting issues. Leave flags:[] for clean documents.
+- Dates: YYYY-MM-DD format. If uncertain, use your best guess and set confidence accordingly
+- Always respond with ONLY valid JSON, no markdown fences, no extra text`; }
 
 async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
@@ -2783,7 +2823,7 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514', // Sonnet for extraction quality — labs/meds need accuracy
       max_tokens: maxTokens,
-      system: SYSTEM_EXTRACTION,
+      system: getSystemExtraction(),
       messages
     })
   });
@@ -2873,7 +2913,7 @@ async function splitByDate(fullText) {
 }
 
 async function runCombinedPass(file, chunk) {
-  const prompt = `You are a veterinary medical records processor for cats Mocha, Evie, and Latte.
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}.
 Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
 CRITICAL — DATE ANCHORING:
@@ -3380,7 +3420,7 @@ function appendMsg(role, text) {
 // ── JOURNAL — Claude-powered (Haiku, background) ──
 
 // Client-side pre-filter — only call API if message mentions a cat AND a medical keyword
-const JOURNAL_CATS_RE = /\b(mocha|evie|latte)\b/i;
+let JOURNAL_CATS_RE = /\b(placeholder)\b/i; // rebuilt dynamically by rebuildPetRegex() after pets load
 const JOURNAL_MED_RE = /\b(prednisolone|gabapentin|cerenia|convenia|tylosin|metronidazole|panacur|cyclosporine|mirtazapine|omeprazole|zofran|famotidine|miralax|buprenex|b12|cobalamin|visbiome|animalbiome|boulardii|psyllium|propectalin|fish oil|salmon oil|instinct|ultamino|hydrolyzed|hills|purina|royal canin|blue buffalo|wellness|probiotics?|supplement|vitamin|omega|fiber|pumpkin|appetite|antibiotic|steroid|dose|dosage|started|stopped|switched|discontinued|no longer|giving her|she.s on|back on|restarted|tried|prescribed)\b/i;
 
 async function extractJournalFromConversation(userMsg, assistantMsg) {
@@ -3397,7 +3437,7 @@ async function extractJournalFromConversation(userMsg, assistantMsg) {
     const journalContext = journalLines.length ? journalLines.join('\n') : '(empty)';
     const today = new Date().toISOString().split('T')[0];
 
-    const prompt = `You are a veterinary care journal extractor for cats Mocha, Evie, and Latte.
+    const prompt = `You are a veterinary care journal extractor. Known pets: ${APP_PETS.join(', ')||'detect from context'}.
 Analyze this conversation and extract loggable care information.
 Return ONLY valid JSON, no markdown:
 {"entries":[{"cat":"Mocha|Evie|Latte","list":"Medications|Foods|Supplements|Symptoms|Plans|Procedures|Weight Log","status":"current|past|plan|maybe","text":"terse factual text","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD or null","updateOf":"existing entry text or null","updateNote":"what changed or null"}],"mentions":[{"cat":"cat or all","term":"item mentioned","context":"brief note"}]}
@@ -3426,7 +3466,7 @@ function applyJournalExtraction(data, date) {
     showToast(`Journal: ${e.cat} · ${e.text.slice(0,28)}${e.status==='maybe'?' (maybe)':e.status==='plan'?' (plan)':''}`, 'journal', undo);
   }
   for (const m of (data.mentions || [])) {
-    const cats = m.cat === 'all' ? ['Mocha','Evie','Latte'] : [m.cat];
+    const cats = m.cat === 'all' ? APP_PETS : [m.cat];
     for (const cat of cats) {
       const key = `${cat}_${(m.term||'').toLowerCase()}`;
       mentionTally[key] = (mentionTally[key]||0) + 1;
@@ -3524,7 +3564,7 @@ async function submitBatchJob(files) {
         params: {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 6000,
-          system: SYSTEM_EXTRACTION,
+          system: getSystemExtraction(),
           messages: [{
             role: 'user',
             content: buildBatchPrompt(file.name, text)
@@ -3588,7 +3628,7 @@ async function submitBatchJob(files) {
 }
 
 function buildBatchPrompt(filename, text) {
-  const prompt = `You are a veterinary medical records processor for cats Mocha, Evie, and Latte.
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}.
 Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
 CRITICAL — DATE ANCHORING:
@@ -3804,7 +3844,9 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
 
   await batch.commit();
 
-  const finalStatus = (parsed.flags || []).length > 0 ? 'flagged' : 'complete';
+  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped', 'excel_manual_review'];
+  const actionableFlagsBatch = (parsed.flags || []).filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
+  const finalStatus = actionableFlagsBatch.length > 0 ? 'flagged' : 'complete';
   await writeFileStatus(fileId, filename, finalStatus, {
     cats: [...allCats], datesCovered: [...allDates].sort(),
     extractionPasses: ['combined_batch'], processedAt: new Date().toISOString()
@@ -3831,143 +3873,265 @@ $('batch-banner-close').addEventListener('click', () => $('batch-banner').classL
 $('flags-btn').addEventListener('click', () => openFlagsModal());
 $('flags-modal-close').addEventListener('click', () => $('flags-modal').classList.remove('open'));
 
+// ── FLAG TYPE CONFIG ──
+// Describes each actionable flag type: what happened, what the user needs to do,
+// and how to apply the correction directly to Firestore records.
+const FLAG_CONFIG = {
+  no_date: {
+    label: 'Missing visit date',
+    icon: '📅',
+    explain: 'Claude could not find a visit date in this document. All records from this file were stored with an unknown date.',
+    actionLabel: 'Enter the correct date',
+    inputType: 'date',
+    inputPlaceholder: 'YYYY-MM-DD',
+    async apply(flag, value) {
+      // Update all visits and labs from this file to use the corrected date
+      const batch = writeBatch(db);
+      let count = 0;
+      const vsnap = await getDocs(query(collection(db, 'visits'), where('sourceFileId', '==', flag.fileId)));
+      vsnap.forEach(d => { if (!d.data().date || d.data().date === 'unknown') { batch.update(d.ref, { date: value }); count++; } });
+      const lsnap = await getDocs(query(collection(db, 'labs'), where('driveFileId', '==', flag.fileId)));
+      lsnap.forEach(d => { if (!d.data().resultDate || d.data().resultDate === 'unknown') { batch.update(d.ref, { resultDate: value, visitDate: value }); count++; } });
+      await batch.commit();
+      return `Updated ${count} record${count !== 1 ? 's' : ''} to date ${value}`;
+    }
+  },
+  no_cats: {
+    label: 'Cat not identified',
+    icon: '🐱',
+    explain: 'Claude could not identify which cat this document belongs to. Records may have been stored under "Unknown".',
+    actionLabel: 'Assign to cat',
+    inputType: 'select',
+    get inputOptions() { return APP_PETS.length ? APP_PETS : ['(no pets loaded yet)']; },
+    async apply(flag, value) {
+      const batch = writeBatch(db);
+      let count = 0;
+      const vsnap = await getDocs(query(collection(db, 'visits'), where('sourceFileId', '==', flag.fileId)));
+      vsnap.forEach(d => { if (!d.data().cat || d.data().cat === 'Unknown') { batch.update(d.ref, { cat: value }); count++; } });
+      const lsnap = await getDocs(query(collection(db, 'labs'), where('driveFileId', '==', flag.fileId)));
+      lsnap.forEach(d => { if (!d.data().cat || d.data().cat === 'Unknown') { batch.update(d.ref, { cat: value }); count++; } });
+      await batch.commit();
+      return `Assigned ${count} record${count !== 1 ? 's' : ''} to ${value}`;
+    }
+  },
+  unknown_type: {
+    label: 'Document type unclear',
+    icon: '📄',
+    explain: 'Claude could not determine what type of document this is. This may affect how it appears in the records sidebar.',
+    actionLabel: 'Set document type',
+    inputType: 'select',
+    inputOptions: ['Clinical Note', 'Lab Results', 'Imaging', 'Invoice', 'Vaccination', 'Discharge Summary', 'Referral', 'Other'],
+    async apply(flag, value) {
+      const batch = writeBatch(db);
+      let count = 0;
+      const vsnap = await getDocs(query(collection(db, 'visits'), where('sourceFileId', '==', flag.fileId)));
+      vsnap.forEach(d => { batch.update(d.ref, { docType: value }); count++; });
+      await batch.commit();
+      return `Set document type to "${value}" for ${count} record${count !== 1 ? 's' : ''}`;
+    }
+  },
+  chunk_skipped: {
+    label: 'Section skipped during processing',
+    icon: '⚠',
+    explain: 'Part of this file failed to process twice and was skipped. Some records from this file may be incomplete.',
+    actionLabel: null, // no direct fix — must reprocess
+    async apply() { return null; }
+  },
+  excel_manual_review: {
+    label: 'Excel file — manual review needed',
+    icon: '📊',
+    explain: 'Excel files cannot be auto-processed. Lab data from this file needs to be entered manually or exported to CSV first.',
+    actionLabel: null,
+    async apply() { return null; }
+  }
+};
+
 async function openFlagsModal() {
   $('flags-modal').classList.add('open');
-  $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div>Loading flags…</div></div>';
+  $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div>Loading…</div></div>';
   try {
     const snap = await getDocs(query(collection(db, 'flags'), orderBy('createdAt', 'desc')));
     const flags = [];
     snap.forEach(d => flags.push({ id: d.id, ...d.data() }));
 
     if (!flags.length) {
-      $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div class="sidebar-empty-icon">✓</div><div>No flagged items</div></div>';
+      $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div class="sidebar-empty-icon">✓</div><div>No items need review</div></div>';
       $('flags-summary').textContent = '';
       return;
     }
 
     const unresolved = flags.filter(f => !f.resolved).length;
-    $('flags-summary').textContent = `${unresolved} unresolved · ${flags.length} total`;
-    if (unresolved < flags.length) $('flags-reprocess-btn').style.display = 'inline-flex';
+    $('flags-summary').textContent = `${unresolved} need${unresolved === 1 ? 's' : ''} attention · ${flags.length} total`;
+    $('flags-reprocess-btn').style.display = 'none'; // hidden — corrections apply directly now
 
     $('flags-modal-body').innerHTML = '';
     for (const flag of flags) {
+      const config = FLAG_CONFIG[flag.type] || {
+        label: flag.type || 'Unknown issue',
+        icon: '⚠',
+        explain: flag.description || 'An issue was detected during processing.',
+        actionLabel: null,
+        async apply() { return null; }
+      };
+
       const el = document.createElement('div');
       el.className = 'flag-item' + (flag.resolved ? ' resolved' : '');
-      el.innerHTML = `
-        <div class="flag-item-header">
-          <span class="flag-filename" title="${escHtml(flag.filename)}">${escHtml(flag.filename)}</span>
-          <span class="flag-type ${flag.resolved ? 'resolved' : ''}">${flag.resolved ? 'resolved' : escHtml(flag.type || 'unknown')}</span>
-        </div>
-        <div class="flag-desc">${escHtml(flag.description || '')}</div>
-        ${flag.bestGuess ? `<div class="flag-best-guess">Best guess: ${escHtml(flag.bestGuess)}</div>` : ''}
-        <div class="flag-actions" id="flag-actions-${flag.id}"></div>`;
 
-      const actionsEl = el.querySelector(`#flag-actions-${flag.id}`);
+      // Header: filename + type badge
+      const header = document.createElement('div');
+      header.className = 'flag-item-header';
+      header.innerHTML = `
+        <span class="flag-filename" title="${escHtml(flag.filename)}">${escHtml(flag.filename)}</span>
+        <span class="flag-type ${flag.resolved ? 'resolved' : ''}">${config.icon} ${flag.resolved ? 'resolved' : escHtml(config.label)}</span>`;
+      el.appendChild(header);
+
+      // Explanation
+      const desc = document.createElement('div');
+      desc.className = 'flag-desc';
+      desc.textContent = config.explain;
+      if (flag.bestGuess) {
+        desc.textContent += ` Best guess: ${flag.bestGuess}.`;
+      }
+      el.appendChild(desc);
+
+      // Action area
+      const actions = document.createElement('div');
+      actions.className = 'flag-actions';
+      actions.id = `flag-actions-${flag.id}`;
 
       if (flag.resolved) {
-        actionsEl.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(flag.resolution || 'Resolved')}</span>`;
+        actions.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(flag.resolution || 'Resolved')}</span>`;
       } else {
-        // Accept best guess button
-        if (flag.bestGuess) {
-          const acceptBtn = document.createElement('button');
-          acceptBtn.className = 'btn-icon free-icon';
-          acceptBtn.style.fontSize = '0.62rem';
-          acceptBtn.innerHTML = '<span class="free-dot"></span> Accept guess';
-          acceptBtn.addEventListener('click', () => resolveFlag(flag.id, 'accepted_guess', flag.bestGuess, el, actionsEl));
-          actionsEl.appendChild(acceptBtn);
-        }
-
-        // Manual entry
-        const input = document.createElement('input');
-        input.className = 'flag-input';
-        input.placeholder = 'Enter value…';
-        input.type = 'text';
-        actionsEl.appendChild(input);
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'btn-icon free-icon';
-        saveBtn.style.fontSize = '0.62rem';
-        saveBtn.innerHTML = '<span class="free-dot"></span> Save';
-        saveBtn.addEventListener('click', () => {
-          const val = input.value.trim();
-          if (!val) return;
-          resolveFlag(flag.id, 'manual_entry', val, el, actionsEl);
-        });
-        actionsEl.appendChild(saveBtn);
-
-        // View in Drive
+        // View in Drive link (always shown if we have a fileId)
         if (flag.fileId) {
-          const viewBtn = document.createElement('a');
-          viewBtn.className = 'btn-icon';
-          viewBtn.style.cssText = 'font-size:0.62rem;text-decoration:none;';
-          viewBtn.href = `https://drive.google.com/file/d/${flag.fileId}/view`;
-          viewBtn.target = '_blank';
-          viewBtn.textContent = 'View original ↗';
-          actionsEl.appendChild(viewBtn);
+          const viewLink = document.createElement('a');
+          viewLink.className = 'btn-icon';
+          viewLink.style.cssText = 'font-size:0.62rem;text-decoration:none;';
+          viewLink.href = `https://drive.google.com/file/d/${flag.fileId}/view`;
+          viewLink.target = '_blank';
+          viewLink.textContent = 'View in Drive ↗';
+          actions.appendChild(viewLink);
         }
 
-        // Skip
-        const skipBtn = document.createElement('button');
-        skipBtn.className = 'btn-icon';
-        skipBtn.style.fontSize = '0.62rem';
-        skipBtn.textContent = 'Skip';
-        skipBtn.addEventListener('click', () => resolveFlag(flag.id, 'skipped', 'skipped', el, actionsEl));
-        actionsEl.appendChild(skipBtn);
+        if (config.actionLabel) {
+          // Input: date, text, or select
+          let input;
+          if (config.inputType === 'select') {
+            input = document.createElement('select');
+            input.className = 'flag-input';
+            input.style.cursor = 'pointer';
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = ''; defaultOpt.textContent = 'Choose…'; defaultOpt.disabled = true; defaultOpt.selected = true;
+            input.appendChild(defaultOpt);
+            (config.inputOptions || []).forEach(opt => {
+              const o = document.createElement('option');
+              o.value = opt; o.textContent = opt;
+              input.appendChild(o);
+            });
+          } else {
+            input = document.createElement('input');
+            input.className = 'flag-input';
+            input.type = config.inputType || 'text';
+            input.placeholder = config.inputPlaceholder || 'Enter value…';
+            if (flag.bestGuess && config.inputType === 'date') input.value = flag.bestGuess;
+          }
+          actions.appendChild(input);
+
+          // Apply button
+          const applyBtn = document.createElement('button');
+          applyBtn.className = 'btn-icon free-icon';
+          applyBtn.style.fontSize = '0.62rem';
+          applyBtn.innerHTML = '<span class="free-dot"></span> Apply fix';
+          applyBtn.addEventListener('click', async () => {
+            const val = input.value?.trim?.() || input.value;
+            if (!val) { showToast('Please enter a value first', 'warning'); return; }
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying…';
+            try {
+              const resultMsg = await config.apply(flag, val);
+              await setDoc(doc(db, 'flags', flag.id), {
+                resolved: true,
+                resolution: resultMsg || `Set to: ${val}`,
+                resolvedValue: val,
+                resolvedAt: new Date().toISOString()
+              }, { merge: true });
+              el.classList.add('resolved');
+              actions.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(resultMsg || 'Fixed')}</span>`;
+              el.querySelector('.flag-type').className = 'flag-type resolved';
+              el.querySelector('.flag-type').textContent = 'resolved';
+              // Refresh sidebars so corrected data shows immediately
+              await reloadSidebars('all');
+              updateFlagSummary();
+              // Update file badge if all flags for this file are resolved
+              await updateFileFlagStatus(flag.fileId);
+              showToast(resultMsg || 'Fixed ✓', 'journal');
+            } catch(e) {
+              applyBtn.disabled = false;
+              applyBtn.innerHTML = '<span class="free-dot"></span> Apply fix';
+              showToast('Could not apply fix: ' + e.message, 'warning');
+            }
+          });
+          actions.appendChild(applyBtn);
+        }
+
+        // Dismiss button (for things that can't be auto-fixed, or user wants to ignore)
+        const dismissBtn = document.createElement('button');
+        dismissBtn.className = 'btn-icon';
+        dismissBtn.style.fontSize = '0.62rem';
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.addEventListener('click', async () => {
+          await setDoc(doc(db, 'flags', flag.id), {
+            resolved: true, resolution: 'dismissed', resolvedAt: new Date().toISOString()
+          }, { merge: true });
+          el.classList.add('resolved');
+          actions.innerHTML = `<span class="flag-resolved-note">✓ dismissed</span>`;
+          el.querySelector('.flag-type').className = 'flag-type resolved';
+          el.querySelector('.flag-type').textContent = 'resolved';
+          updateFlagSummary();
+          await updateFileFlagStatus(flag.fileId);
+        });
+        actions.appendChild(dismissBtn);
       }
 
+      el.appendChild(actions);
       $('flags-modal-body').appendChild(el);
     }
   } catch(e) {
-    $('flags-modal-body').innerHTML = '<div style="padding:1rem;font-family:JetBrains Mono,monospace;font-size:0.7rem;color:var(--red);">Error loading flags: ' + escHtml(e.message) + '</div>';
+    $('flags-modal-body').innerHTML = `<div style="padding:1rem;font-family:JetBrains Mono,monospace;font-size:0.7rem;color:var(--red);">Error loading flags: ${escHtml(e.message)}</div>`;
   }
 }
 
-async function resolveFlag(flagId, resolution, value, itemEl, actionsEl) {
-  try {
-    await setDoc(doc(db, 'flags', flagId), {
-      resolved: true, resolution, resolvedValue: value,
-      resolvedAt: new Date().toISOString()
-    }, { merge: true });
-    itemEl.classList.add('resolved');
-    actionsEl.innerHTML = `<span class="flag-resolved-note">✓ ${escHtml(value)}</span>`;
-    itemEl.querySelector('.flag-type').className = 'flag-type resolved';
-    itemEl.querySelector('.flag-type').textContent = 'resolved';
-
-    // Update count
-    const remaining = $('flags-modal-body').querySelectorAll('.flag-item:not(.resolved)').length;
-    const total = $('flags-modal-body').querySelectorAll('.flag-item').length;
-    $('flags-summary').textContent = `${remaining} unresolved · ${total} total`;
-    if (remaining === 0) $('flags-count').textContent = '0';
-    $('flags-reprocess-btn').style.display = 'inline-flex';
-  } catch(e) {
-    showToast('Could not save resolution: ' + e.message, 'warning');
+function updateFlagSummary() {
+  const items = $('flags-modal-body').querySelectorAll('.flag-item');
+  const remaining = $('flags-modal-body').querySelectorAll('.flag-item:not(.resolved)').length;
+  $('flags-summary').textContent = remaining
+    ? `${remaining} need${remaining === 1 ? 's' : ''} attention · ${items.length} total`
+    : `All resolved · ${items.length} total`;
+  const btn = $('flags-btn');
+  if (remaining === 0) {
+    $('flags-count').textContent = '0';
+    if (btn) btn.style.display = 'none';
+  } else {
+    $('flags-count').textContent = remaining;
   }
 }
 
-// Reprocess flagged files with resolutions
-$('flags-reprocess-btn').addEventListener('click', async () => {
-  $('flags-modal').classList.remove('open');
+// After resolving all flags for a file, update its status badge to 'complete'
+async function updateFileFlagStatus(fileId) {
+  if (!fileId) return;
   try {
-    const snap = await getDocs(query(collection(db, 'flags'), where('resolved', '==', true)));
-    const resolvedFlags = [];
-    snap.forEach(d => resolvedFlags.push({ id: d.id, ...d.data() }));
-    if (!resolvedFlags.length) { showToast('No resolved flags to reprocess', 'info'); return; }
-
-    // Get unique file IDs
-    const fileIds = [...new Set(resolvedFlags.map(f => f.fileId).filter(Boolean))];
-    const files = (window._driveFiles || []).filter(f => fileIds.includes(f.id));
-
-    if (!files.length) { showToast('Could not find source files in Drive list', 'warning'); return; }
-    showToast(`Reprocessing ${files.length} files with resolutions…`, 'info');
-    if (files.length >= 5) {
-      submitBatchJob(files);
-    } else {
-      startProcessingQueue(files);
+    const snap = await getDocs(query(collection(db, 'flags'),
+      where('fileId', '==', fileId), where('resolved', '==', false)));
+    if (snap.empty) {
+      // No more unresolved flags — mark file complete
+      await setDoc(doc(db, 'files', fileId), { status: 'complete' }, { merge: true });
+      const badge = $(`badge-${fileId}`);
+      if (badge) { badge.className = 'file-status-badge complete'; badge.textContent = 'complete'; }
+      const item = document.querySelector(`[data-file-id="${fileId}"]`);
+      if (item) item.dataset.status = 'complete';
     }
-  } catch(e) {
-    showToast('Reprocess error: ' + e.message, 'warning');
-  }
-});
+  } catch(e) { console.warn('Could not update file flag status:', e); }
+}
 
 // ══════════════════════════════════════════════
 // LAYER 10 — COST TRACKING
@@ -4092,9 +4256,11 @@ function appendTyping() {
 
 // ── CONTEXT BUILDER ──
 async function buildChatContext(userMessage) {
-  const knownCats = ['Mocha', 'Evie', 'Latte'];
+  const knownCats = APP_PETS.length ? APP_PETS : [];
+  // If a cat name is mentioned in the message, scope to those; otherwise use all known pets
   const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
   const targetCats = mentioned.length ? mentioned : knownCats;
+  if (!targetCats.length) return ''; // pets not loaded yet — context will be empty this turn
   let context = '';
   try {
     for (const cat of targetCats) {
@@ -4149,7 +4315,7 @@ async function buildChatContext(userMessage) {
 
 // ── CLAUDE CHAT API ──
 async function callClaude(history, context) {
-  const system = `You are a veterinary care assistant for pets Mocha, Evie, and Latte, belonging to Katherine Coleman.
+  const system = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 You have access to their complete medical records, lab results, and care journal below.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
 If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
