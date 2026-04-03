@@ -916,29 +916,33 @@ $('signout-btn').addEventListener('click', async () => {
   $('signin-btn').disabled = false;
 });
 
-onIdTokenChanged(auth, async user => {
+onAuthStateChanged(auth, async user => {
   if (user) {
-    // Check users/allowed — single doc with an email array field
-    try {
-      const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
-      console.log('[users] exists:', allowedDoc.exists(), 'data:', JSON.stringify(allowedDoc.data()));
-      console.log('[users] user.email:', user.email);
-      const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
-      const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
-      console.log('[users] allowedEmails:', allowedEmails, 'match:', allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase()));
-      if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+    // Check users/allowed — retry if Firestore not yet online
+    let allowedDoc = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+        break; // success
+      } catch(e) {
+        if (e.code === 'unavailable' && attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
         await signOut(auth);
         show('signin');
         const errEl = $('signin-error');
-        if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
+        if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
         return;
       }
-    } catch(e) {
-      console.error('[users] catch:', e.code, e.message, e);
+    }
+    const rawEmail = allowedDoc?.exists() ? (allowedDoc.data().email || []) : [];
+    const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
+    if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Could not verify access: ${e.code || e.message}`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
       return;
     }
     currentUser = user;
