@@ -822,7 +822,7 @@ const firebaseConfig = {
 // ── INIT ──
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app, '(default)');
+const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
@@ -923,25 +923,15 @@ onAuthStateChanged(auth, async user => {
     try {
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
       if (!allowedDoc.exists()) throw new Error("users/allowed document missing");
-      const data = allowedDoc.data();
-      const allowedEmails = Array.isArray(data.email) ? data.email : [];
-      const isAllowed = allowedEmails.some(e => String(e).toLowerCase() === user.email.toLowerCase());
-      if (!isAllowed) {
+      const allowedEmails = Array.isArray(allowedDoc.data().email) ? allowedDoc.data().email : [];
+      if (!allowedEmails.some(e => String(e).toLowerCase() === user.email.toLowerCase())) {
         await signOut(auth);
         show('signin');
         const errEl = $('signin-error');
-        if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
+        if (errEl) { errEl.textContent = `Access denied for ${user.email}.`; errEl.classList.add('show'); }
         return;
       }
     } catch(e) {
-      // Connection error — don't sign out, just show message so user can retry
-      if (e.code === 'unavailable' || e.code === 'failed-precondition') {
-        show('signin');
-        const errEl = $('signin-error');
-        if (errEl) { errEl.textContent = `Database connection error. Please refresh the page.`; errEl.classList.add('show'); }
-        return;
-      }
-      // Any other error (access denied, missing doc) — sign out
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
