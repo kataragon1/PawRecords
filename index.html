@@ -858,6 +858,56 @@ function showToast(text, type = 'info', undoFn = null) {
   setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 4000);
 }
 
+// ── API KEY MODAL ──
+$('apikey-status').style.cursor = 'pointer';
+$('apikey-dot').style.cursor = 'pointer';
+$('apikey-status').addEventListener('click', () => openApiKeyModal());
+$('apikey-dot').addEventListener('click', () => openApiKeyModal());
+
+function openApiKeyModal() {
+  const input = $('apikey-input');
+  if (input) { input.value = apiKey || ''; input.type = 'password'; }
+  const toggle = $('apikey-toggle');
+  if (toggle) toggle.textContent = 'show';
+  $('apikey-status-msg').textContent = '';
+  $('apikey-modal').classList.add('open');
+  setTimeout(() => input?.focus(), 80);
+}
+
+$('apikey-modal-close').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
+$('apikey-cancel-btn').addEventListener('click', () => $('apikey-modal').classList.remove('open'));
+$('apikey-modal').addEventListener('click', e => { if (e.target === $('apikey-modal')) $('apikey-modal').classList.remove('open'); });
+
+$('apikey-toggle').addEventListener('click', () => {
+  const input = $('apikey-input');
+  const toggle = $('apikey-toggle');
+  if (input.type === 'password') { input.type = 'text'; toggle.textContent = 'hide'; }
+  else { input.type = 'password'; toggle.textContent = 'show'; }
+});
+
+$('apikey-save-btn').addEventListener('click', async () => {
+  const key = $('apikey-input').value.trim();
+  if (!key || !key.startsWith('sk-ant-')) {
+    $('apikey-status-msg').textContent = 'Invalid key — should start with sk-ant-';
+    $('apikey-status-msg').style.color = 'var(--red)';
+    return;
+  }
+  $('apikey-save-btn').disabled = true;
+  $('apikey-save-btn').textContent = 'Saving…';
+  apiKey = key;
+  await saveApiKey(key);
+  updateStatusBar();
+  $('apikey-modal').classList.remove('open');
+  $('apikey-save-btn').disabled = false;
+  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Save to Account';
+  showToast('API key saved ✓', 'journal');
+});
+
+$('apikey-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('apikey-save-btn').click();
+  if (e.key === 'Escape') $('apikey-modal').classList.remove('open');
+});
+
 function updateStatusBar() {
   // Firebase
   if (currentUser) {
@@ -2045,6 +2095,16 @@ function openProcessModal(files) {
 $('process-modal-confirm').addEventListener('click', () => {
   const files = window._pendingProcessFiles;
   if (!files?.length) return;
+  if (!apiKey) {
+    // Don't close modal — show error inline
+    const errEl = $('process-cost-estimate');
+    if (errEl) {
+      errEl.textContent = '⚠ API key required';
+      errEl.style.color = 'var(--red)';
+    }
+    showToast('Set your Anthropic API key first — click the key icon in the header', 'warning');
+    return;
+  }
   $('process-modal').classList.remove('open');
   if (files.length >= 5) {
     submitBatchJob(files);
