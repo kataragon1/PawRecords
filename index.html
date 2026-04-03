@@ -797,7 +797,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, onIdTokenChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
@@ -916,7 +916,7 @@ $('signout-btn').addEventListener('click', async () => {
   $('signin-btn').disabled = false;
 });
 
-onAuthStateChanged(auth, async user => {
+onIdTokenChanged(auth, async user => {
   if (user) {
     // Check users/allowed — single doc with an email array field
     try {
