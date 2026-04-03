@@ -920,6 +920,10 @@ $('signout-btn').addEventListener('click', async () => {
 onAuthStateChanged(auth, async user => {
   if (user) {
     // Check users/allowed — single doc with an email array field
+    // Force token refresh to ensure Firestore auth context is ready
+    try {
+      await user.getIdToken(true);
+    } catch(e) { /* non-critical — proceed anyway */ }
     try {
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
       console.log('[auth] allowedDoc exists:', allowedDoc.exists());
