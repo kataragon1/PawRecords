@@ -589,7 +589,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <!-- Chat body -->
     <div class="chat-body" id="chat-body">
       <div class="chat-welcome" id="chat-welcome">
-        <h2>Good to see you,<br><em>let's talk pets.</em></h2>
+        <h2>All your pets,<br><em>one place.</em></h2>
         <p id="welcome-subtitle">Ask about medications, lab trends, visit history, or anything on your mind. Your records are loaded and ready.</p>
         <div class="chat-welcome-hints">
           <div class="chat-hint" data-prompt="What are the most recent lab results and are any values abnormal?">What are the most recent lab results and are any values abnormal?</div>
@@ -2372,10 +2372,19 @@ async function processFile(file) {
   const allDates = new Set();
   const passes = [];
 
+  // Tracks patient context extracted from chunk 0 for injection into later chunks
+  let chunkContext = null; // { cat, date, clinic, doctor }
+
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
     if (processingStop) break;
     if (chunks.length > 1) $('progress-current').textContent = `${file.name}: chunk ${ci+1}/${chunks.length}`;
+
+    // Inject patient context into continuation chunks so the model never loses the patient anchor
+    if (ci > 0 && chunkContext) {
+      chunk._context = chunkContext;
+      chunk._isContinuation = true;
+    }
 
     // ── SINGLE COMBINED PASS ──
     const result = await runCombinedPass(file, chunk);
@@ -2417,8 +2426,26 @@ async function processFile(file) {
     if (result.labs?.length) { allLabs.push(...result.labs); passes.push('labs'); }
     if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: r.labName || 'PCR/Serology', labGroup: r.labGroup || 'PCR/Serology' }))); passes.push('pcr'); }
     if (result.flags?.length) allFlags.push(...result.flags);
+
+    // After chunk 0 succeeds, capture patient context for injection into later chunks
+    if (ci === 0 && !chunkContext) {
+      const v0 = result.visits?.[0];
+      const cat0 = v0?.cat || result.cats?.[0] || null;
+      const date0 = v0?.date || result.dates?.[0] || null;
+      if (cat0 || date0) {
+        chunkContext = {
+          cat: cat0,
+          date: date0,
+          clinic: v0?.clinic || null,
+          doctor: v0?.doctor || null
+        };
+      }
+    }
   }
 
+
+  // Normalize labGroup for any rows the model mis-classified
+  normalizeLabGroups(allLabs);
 
   await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes);
 }
@@ -3085,9 +3112,62 @@ async function splitByDate(fullText) {
   return splits.filter(s => s.trim().length > 100);
 }
 
+// ── LAB GROUP NORMALIZER ──
+// Hard-maps known test names to their correct panel regardless of what the model returned.
+// This is the safety net for PDF table extraction garbling the section headers.
+const UA_TESTS = new Set([
+  'specific gravity','usg','ph','urine protein','protein','urine glucose','glucose (urine)',
+  'ketones','blood','blood/hemoglobin','hemoglobin (urine)','bilirubin (urine)','bilirubin',
+  'urobilinogen','wbc (urine)','white blood cells','rbc (urine)','red blood cells',
+  'bacteria','epithelial cells','casts','crystals','mucus','color','clarity','collection',
+  'wbc sediment','rbc sediment','urine occult blood'
+]);
+const CBC_TESTS = new Set([
+  'rbc','hematocrit','hemoglobin','mcv','mch','mchc','wbc','platelets','neutrophils',
+  '% neutrophils','lymphocytes','% lymphocytes','monocytes','% monocytes','eosinophils',
+  '% eosinophils','basophils','% basophils','reticulocytes','% reticulocytes',
+  'reticulocyte hemoglobin','nrbc','band neutrophils'
+]);
+const ENDO_TESTS = new Set([
+  'total t4','t4','free t4','tsh','cortisol','acth','insulin','progesterone',
+  'tli','pli','folate','cobalamin','b12','vitamin b12'
+]);
+const BP_TESTS = new Set([
+  'systolic blood pressure','diastolic blood pressure','mean arterial pressure',
+  'blood pressure','systolic','diastolic'
+]);
+
+function normalizeLabGroups(labs) {
+  for (const lab of labs) {
+    const t = (lab.test || '').toLowerCase().trim();
+    if (UA_TESTS.has(t)) { lab.labGroup = 'Urinalysis'; continue; }
+    if (CBC_TESTS.has(t)) { lab.labGroup = 'CBC'; continue; }
+    if (ENDO_TESTS.has(t)) { lab.labGroup = 'Endocrinology'; continue; }
+    if (BP_TESTS.has(t)) { lab.labGroup = 'Blood Pressure'; continue; }
+    // If still unset, default to Chemistry (most common)
+    if (!lab.labGroup) lab.labGroup = 'Chemistry';
+  }
+}
+
 async function runCombinedPass(file, chunk) {
+  // Build context preamble for continuation chunks (pages 2+ of a split document)
+  // This prevents the model from inventing a patient name from random text fragments
+  const continuationHeader = (chunk._isContinuation && chunk._context)
+    ? `CONTINUATION CHUNK — This is a later section of the same document.
+Patient context already established:
+  Cat/Patient: ${chunk._context.cat || 'see earlier section'}
+  Visit date: ${chunk._context.date || 'see earlier section'}
+  Clinic: ${chunk._context.clinic || 'see earlier section'}
+  Doctor: ${chunk._context.doctor || 'see earlier section'}
+
+IMPORTANT: Do NOT create a new visit entry for this chunk. This chunk contains ONLY additional
+diagnostic results (labs, blood pressure, urinalysis, endocrinology) that belong to the visit
+above. Return visits:[] and put all findings into the labs array using the cat/date from context.
+`
+    : '';
+
   const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), not the owner, vet, or clinic name.
-Extract ALL clinical data from this document. Be exhaustive — never omit values.
+${continuationHeader}Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
 CRITICAL — DATE ANCHORING:
 This document has a single Record Date / Visit Date that applies to ALL content in it — the clinical note,
@@ -3115,7 +3195,13 @@ IMPORTANT — LAB GROUPING:
 Each lab result must include a "labGroup" field indicating which panel it belongs to.
 Use these exact group names: "CBC", "Chemistry", "Urinalysis", "Endocrinology", "PCR/Serology",
 "Blood Pressure", "Other". This is how panels are displayed grouped together in the UI.
-Urinalysis rows (USG, pH, dipstick, sediment) MUST all have labGroup:"Urinalysis".
+Urinalysis rows (USG/Specific Gravity, pH, Color, Clarity, Collection method, Protein, Glucose,
+Ketones, Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells,
+Casts, Crystals, Mucus) MUST ALL have labGroup:"Urinalysis" — no exceptions.
+CBC rows (RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes,
+Monocytes, Eosinophils, Basophils, Reticulocytes, Platelets) MUST ALL have labGroup:"CBC".
+Blood Pressure readings MUST have labGroup:"Blood Pressure".
+T4, TLI, PLI, Folate, Cobalamin, Cortisol MUST have labGroup:"Endocrinology".
 
 EXTRACT:
 - Cat name(s), visit date(s), clinic name, attending vet name
@@ -3820,8 +3906,14 @@ For values expressed as "<N" keep the string as the value.
 
 IMPORTANT — LAB GROUPING:
 Each lab result must include "labGroup": one of "CBC", "Chemistry", "Urinalysis", "Endocrinology",
-"PCR/Serology", "Blood Pressure", "Imaging", "Other". Urinalysis rows (USG/Specific Gravity, pH, dipstick,
-sediment) MUST all use labGroup:"Urinalysis".
+"PCR/Serology", "Blood Pressure", "Imaging", "Other".
+Urinalysis rows (Specific Gravity/USG, pH, Color, Clarity, Collection, Protein, Glucose, Ketones,
+Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells, Casts, Crystals,
+Mucus) MUST ALL use labGroup:"Urinalysis" — no exceptions.
+CBC rows (RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes,
+Monocytes, Eosinophils, Basophils, Reticulocytes, Platelets) MUST ALL use labGroup:"CBC".
+Blood Pressure readings MUST use labGroup:"Blood Pressure".
+T4, TLI, PLI, Folate, Cobalamin, Cortisol MUST use labGroup:"Endocrinology".
 
 EXTRACT everything: visits, chief complaint, diagnoses, medications (with dose/freq/route/continuing),
 supplements, foods (with kcal/cup and kcal/can), caloric targets, feeding plans, parasite prevention,
@@ -3916,6 +4008,11 @@ async function processBatchResults(batchId) {
             continue;
           }
 
+          // Normalize labGroups before writing
+          const batchLabs = [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology', labGroup:'PCR/Serology'}))];
+          normalizeLabGroups(batchLabs);
+          parsed._normalizedLabs = batchLabs;
+
           // Write to Firestore (same as realtime)
           await writeBatchResultToFirestore(fileId, filename, parsed);
           succeeded++;
@@ -3985,7 +4082,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
     if (writeCount % 400 === 0) { await batch.commit(); }
   }
 
-  for (const lab of [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology', labGroup:'PCR/Serology'}))]) {
+  for (const lab of (parsed._normalizedLabs || [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology', labGroup:'PCR/Serology'}))])) {
     if (!lab.test || lab.value === undefined || lab.value === null) continue;
     const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
     if (!cat) continue;
@@ -4556,14 +4653,16 @@ function formatSize(bytes) {
 updateStatusBar();
 
 // Load version from version.json
-fetch('/version.json')
-  .then(r => r.json())
-  .then(data => {
-    document.querySelectorAll('.app-version').forEach(el => {
-      el.textContent = 'v' + data.version;
-    });
-  })
-  .catch(() => {}); // non-critical
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('./version.json')
+    .then(r => r.json())
+    .then(data => {
+      document.querySelectorAll('.app-version').forEach(el => {
+        el.textContent = 'v' + data.version;
+      });
+    })
+    .catch(() => {});
+});
 </script>
 </body>
 </html>
