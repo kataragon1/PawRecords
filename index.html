@@ -822,7 +822,7 @@ const firebaseConfig = {
 // ── INIT ──
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app, '-default-');
+const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
@@ -921,7 +921,6 @@ onAuthStateChanged(auth, async user => {
     currentUser = user;
     setLoading('Verifying access…');
     try {
-      await user.getIdToken(true); // force token refresh before Firestore read
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
       if (!allowedDoc.exists()) throw new Error("users/allowed document missing");
       const data = allowedDoc.data();
