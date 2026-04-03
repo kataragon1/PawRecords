@@ -923,9 +923,11 @@ onAuthStateChanged(auth, async user => {
     try {
       await user.getIdToken(true); // force token refresh before Firestore read
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
-      const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
-      const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
-      if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+      if (!allowedDoc.exists()) throw new Error("users/allowed document missing");
+      const data = allowedDoc.data();
+      const allowedEmails = Array.isArray(data.email) ? data.email : [];
+      const isAllowed = allowedEmails.some(e => String(e).toLowerCase() === user.email.toLowerCase());
+      if (!isAllowed) {
         await signOut(auth);
         show('signin');
         const errEl = $('signin-error');
@@ -933,10 +935,18 @@ onAuthStateChanged(auth, async user => {
         return;
       }
     } catch(e) {
+      // Connection error — don't sign out, just show message so user can retry
+      if (e.code === 'unavailable' || e.code === 'failed-precondition') {
+        show('signin');
+        const errEl = $('signin-error');
+        if (errEl) { errEl.textContent = `Database connection error. Please refresh the page.`; errEl.classList.add('show'); }
+        return;
+      }
+      // Any other error (access denied, missing doc) — sign out
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Could not verify access: ${e.message}`; errEl.classList.add('show'); }
       return;
     }
     setLoading('Loading your records…');
@@ -945,8 +955,7 @@ onAuthStateChanged(auth, async user => {
     await loadApiKey();
     await loadInitialData();
     show('app');
-    getPdfJs().catch(() => {});
-    await loadDriveFiles();
+    getPdfJs().catch(() => {}); // preload PDF.js in background
   } else {
     currentUser = null;
     show('signin');
@@ -1611,6 +1620,11 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     $(`panel-${tab.dataset.tab}`).classList.add('active');
+    // Load Drive files on first click of Files tab
+    if (tab.dataset.tab === 'files' && !window._driveFilesLoaded) {
+      window._driveFilesLoaded = true;
+      loadDriveFiles();
+    }
   });
 });
 
