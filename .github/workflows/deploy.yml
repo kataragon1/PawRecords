@@ -1,16 +1,16 @@
-name: Deploy to GitHub Pages
+name: Bump version on deploy
 
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'index.html'
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
-  deploy:
+  bump-version:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,38 +18,24 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump patch version
-        id: version
+      - name: Bump patch version and inject
         run: |
-          # Read current version
+          # Read and increment version
           VERSION=$(cat version.txt | tr -d '[:space:]')
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
           PATCH=$(echo $VERSION | cut -d. -f3)
-          # Increment patch
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           echo $NEW_VERSION > version.txt
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Inject into index.html
+          sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" index.html
           echo "Bumped $VERSION → $NEW_VERSION"
 
-      - name: Inject version into index.html
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          # Replace any vX.X.X pattern in the two known locations
-          sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$VERSION/g" index.html
-          echo "Injected v$VERSION into index.html"
-
-      - name: Commit version bump
+      - name: Commit back
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.txt index.html
-          git commit -m "chore: bump version to v${{ steps.version.outputs.version }} [skip ci]"
+          git diff --staged --quiet || git commit -m "v$(cat version.txt) [skip ci]"
           git push
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
-        # If you're using the simple "Deploy from branch" setup in Pages settings
-        # rather than the Actions deployment method, remove this step and the
-        # permissions block above — the git push above will trigger Pages automatically.
