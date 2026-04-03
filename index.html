@@ -934,10 +934,11 @@ onIdTokenChanged(auth, async user => {
         return;
       }
     } catch(e) {
+      console.error('[users] catch:', e.code, e.message, e);
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Could not verify access: ${e.code || e.message}`; errEl.classList.add('show'); }
       return;
     }
     currentUser = user;
