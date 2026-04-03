@@ -1,7 +1,7 @@
 name: Bump version on deploy
 
 on:
-  push:
+  workflow_dispatch:
     branches: [ main ]
     paths:
       - 'index.html'
