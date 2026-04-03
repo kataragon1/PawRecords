@@ -453,7 +453,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.5.0</p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;"><span class="app-version">…</span></p>
   </div>
 </div>
 
@@ -629,7 +629,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
       <div class="status-spacer"></div>
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.5.0</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);"><span class="app-version">…</span></div>
     </div>
   </div>
 </div>
@@ -1124,24 +1124,66 @@ function renderRecordsTree(tree) {
 }
 
 function openVisitEdit(v) {
-  // Simple edit: open popup with editable textarea
-  const content = v.narrative || v.text || '';
-  const title = `Edit — ${v.cat} · ${v.date}`;
-  $('popup-title').textContent = title;
+  $('popup-title').textContent = `Edit — ${v.cat} · ${v.date}`;
   const body = $('popup-body');
   body.innerHTML = '';
-  const ta = document.createElement('textarea');
-  ta.value = content;
-  ta.style.cssText = 'width:100%;height:300px;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.6rem;resize:vertical;outline:none;color:var(--ink);line-height:1.6;';
-  body.appendChild(ta);
+
+  const fld = (label, key, type = 'text', value = '') => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:0.65rem;';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.style.cssText = 'display:block;font-family:JetBrains Mono,monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.25rem;';
+    wrap.appendChild(lbl);
+    let el;
+    if (type === 'textarea') {
+      el = document.createElement('textarea');
+      el.rows = 6;
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;outline:none;color:var(--ink);line-height:1.6;';
+    } else if (type === 'select') {
+      el = document.createElement('select');
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
+      (APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte']).forEach(p => {
+        const o = document.createElement('option');
+        o.value = p; o.textContent = p;
+        if (p === value) o.selected = true;
+        el.appendChild(o);
+      });
+    } else {
+      el = document.createElement('input');
+      el.type = type;
+      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;outline:none;color:var(--ink);background:var(--bg);';
+    }
+    if (type !== 'select') el.value = value;
+    el.dataset.key = key;
+    wrap.appendChild(el);
+    return wrap;
+  };
+
+  const form = document.createElement('div');
+  form.appendChild(fld('Cat', 'cat', 'select', v.cat || ''));
+  form.appendChild(fld('Date', 'date', 'date', v.date || ''));
+  form.appendChild(fld('Clinic', 'clinic', 'text', v.clinic || ''));
+  form.appendChild(fld('Doctor', 'doctor', 'text', v.doctor || ''));
+  form.appendChild(fld('Chief Complaint', 'chiefComplaint', 'text', v.chiefComplaint || ''));
+  form.appendChild(fld('Diagnoses (comma separated)', 'diagnoses', 'text', (v.diagnoses||[]).join(', ')));
+  form.appendChild(fld('Narrative', 'narrative', 'textarea', v.narrative || ''));
+  body.appendChild(form);
+
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn-icon free-icon';
-  saveBtn.style.cssText = 'margin-top:0.75rem;';
+  saveBtn.style.cssText = 'margin-top:0.5rem;';
   saveBtn.innerHTML = '<span class="free-dot"></span> Save Changes';
   saveBtn.onclick = async () => {
     if (!v.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+    const updates = {};
+    form.querySelectorAll('[data-key]').forEach(el => {
+      const key = el.dataset.key;
+      if (key === 'diagnoses') updates[key] = el.value.split(',').map(s => s.trim()).filter(Boolean);
+      else updates[key] = el.value;
+    });
     try {
-      await setDoc(doc(db, 'visits', v.id), { ...v, narrative: ta.value }, { merge: true });
+      await setDoc(doc(db, 'visits', v.id), updates, { merge: true });
       showToast('Visit updated ✓', 'journal');
       $('record-popup').classList.remove('open');
       loadRecordsSidebar();
@@ -1193,6 +1235,7 @@ async function loadLabsSidebar() {
   try {
     const snap = await getDocs(query(collection(db, 'labs'), orderBy('resultDate', 'desc')));
     labDataCache = {};
+    invalidateFlowsheetCache(); // labs changed — rebuild flowsheet on next open
     snap.forEach(d => {
       const l = d.data();
       if (!l.cat || !l.test) return;
@@ -1332,6 +1375,10 @@ function renderLabsSidebar() {
 }
 
 // ── FLOWSHEET MODAL ──
+let _flowsheetCache = {}; // {cat: htmlElement} — rebuilt only when labDataCache changes
+
+function invalidateFlowsheetCache() { _flowsheetCache = {}; }
+
 function openFlowsheetModal(cat) {
   flowsheetCat = cat || flowsheetCat;
   // Populate cat selector
@@ -1346,7 +1393,13 @@ function openFlowsheetModal(cat) {
   $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
   const body = $('flowsheet-modal-body');
   body.innerHTML = '';
-  buildFlowsheetTable(flowsheetCat, body);
+  // Use cached table if available, otherwise build and cache
+  if (_flowsheetCache[flowsheetCat]) {
+    body.appendChild(_flowsheetCache[flowsheetCat].cloneNode(true));
+  } else {
+    buildFlowsheetTable(flowsheetCat, body);
+    if (body.firstChild) _flowsheetCache[flowsheetCat] = body.firstChild.cloneNode(true);
+  }
   $('flowsheet-modal').classList.add('open');
 }
 
@@ -1726,7 +1779,8 @@ $('connect-drive-btn').addEventListener('click', async () => {
 async function loadDriveFiles() {
   const filesList = $('files-list');
   if (!driveAccessToken) {
-    showDriveConnectPrompt('Connect Google Drive to access your uploads folder.');
+    window._driveFilesLoaded = false; // reset so tab click retries
+    showDriveConnectPrompt('Drive token expired. Sign out and back in to reconnect, or click below.');
     return;
   }
   $('drive-connect-prompt').style.display = 'none';
@@ -1819,9 +1873,12 @@ async function loadDriveFiles() {
 
 function showDriveConnectPrompt(message) {
   const prompt = $('drive-connect-prompt');
-  prompt.querySelector('p').textContent = message;
+  if (!prompt) return;
+  const p = prompt.querySelector('p');
+  if (p) p.textContent = message;
   prompt.style.display = 'flex';
-  $('drive-dot').className = 'status-dot amber';
+  const dot = $('drive-dot');
+  if (dot) dot.className = 'status-dot amber';
 }
 
 function showFolderNotFoundPrompt() {
@@ -4053,6 +4110,13 @@ const FLAG_CONFIG = {
     actionLabel: null, // no direct fix — must reprocess
     async apply() { return null; }
   },
+  verify_missing_data: {
+    label: 'Missing data found by verify',
+    icon: '🔍',
+    explain: 'The verify function found clinical data in the source file that is not in the stored records. Review the diff below and reprocess if needed.',
+    actionLabel: null,
+    async apply() { return null; }
+  },
   excel_manual_review: {
     label: 'Excel file — manual review needed',
     icon: '📊',
@@ -4490,6 +4554,16 @@ function formatSize(bytes) {
 
 // Initialize API key status
 updateStatusBar();
+
+// Load version from version.json
+fetch('/version.json')
+  .then(r => r.json())
+  .then(data => {
+    document.querySelectorAll('.app-version').forEach(el => {
+      el.textContent = 'v' + data.version;
+    });
+  })
+  .catch(() => {}); // non-critical
 </script>
 </body>
 </html>
