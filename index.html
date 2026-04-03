@@ -918,47 +918,41 @@ $('signout-btn').addEventListener('click', async () => {
 
 onAuthStateChanged(auth, async user => {
   if (user) {
-    // Check users/allowed — retry if Firestore not yet online
-    let allowedDoc = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
-        break; // success
-      } catch(e) {
-        if (e.code === 'unavailable' && attempt < 2) {
-          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-          continue;
-        }
+    currentUser = user;
+    setLoading('Verifying access…');
+    try {
+      await user.getIdToken(true); // force token refresh before Firestore read
+      const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+      const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
+      const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
+      if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
         await signOut(auth);
         show('signin');
         const errEl = $('signin-error');
-        if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
+        if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
         return;
       }
-    }
-    const rawEmail = allowedDoc?.exists() ? (allowedDoc.data().email || []) : [];
-    const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
-    if (!allowedEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+    } catch(e) {
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
       return;
     }
-    currentUser = user;
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
     await loadInitialData();
     show('app');
-    getPdfJs().catch(() => {}); // preload PDF.js in background
+    getPdfJs().catch(() => {});
     await loadDriveFiles();
   } else {
     currentUser = null;
     show('signin');
   }
 });
+
 
 // ── LOAD INITIAL DATA ──
 async function loadInitialData() {
