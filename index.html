@@ -2207,7 +2207,7 @@ async function processFile(file) {
     (result.dates || []).forEach(d => allDates.add(d));
     if (result.visits?.length) { allVisits.push(...result.visits); passes.push('narrative'); }
     if (result.labs?.length) { allLabs.push(...result.labs); passes.push('labs'); }
-    if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: 'PCR/Serology' }))); passes.push('pcr'); }
+    if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: r.labName || 'PCR/Serology', labGroup: r.labGroup || 'PCR/Serology' }))); passes.push('pcr'); }
     if (result.flags?.length) allFlags.push(...result.flags);
   }
 
@@ -2226,6 +2226,11 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     });
   } catch(e) { console.warn('Extraction cache write failed (non-critical):', e.message); }
 
+  // Build a reliable date pool: result.dates + all visit dates — used as fallback for orphaned labs
+  const visitDates = allVisits.map(v => v.date).filter(Boolean);
+  const allKnownDates = [...new Set([...allDates, ...visitDates])].sort().reverse(); // most recent first
+  const primaryDate = allKnownDates[0] || null;
+
   // Write to Firestore using batch — catch errors and mark file as write-failed
   // so user can retry the write without re-extracting (no extra API cost)
   try {
@@ -2238,7 +2243,8 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         clinic: visit.clinic || null, doctor: visit.doctor || null,
         chiefComplaint: visit.chiefComplaint || null,
         diagnoses: visit.diagnoses || [], medications: visit.medications || [],
-        procedures: visit.procedures || [], narrative: visit.narrative || '',
+        procedures: visit.procedures || [], vitals: visit.vitals || null,
+        narrative: visit.narrative || '',
         sourceFiles: [file.name], driveFileIds: [file.id], sourceFileId: file.id,
         visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
         confidence: visit.confidence || 0.8, flags: visit.flags || [],
@@ -2252,8 +2258,8 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (!lab.test || lab.value === undefined || lab.value === null) continue;
       const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
       if (!cat) continue;
-      // If resultDate is missing, fall back to visitDate, then to the first known date from this file
-      const resolvedDate = lab.resultDate || lab.visitDate || (allDates.size ? [...allDates][0] : null);
+      // If resultDate is missing, fall back to visitDate, then to the most recent known date from this file
+      const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
       fsBatch.set(doc(collection(db, 'labs')), {
         cat, test: lab.test, value: lab.value, unit: lab.unit || null,
         refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
@@ -3022,14 +3028,24 @@ function openVisit(visit) {
   let content = '';
   if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
   if (visit.diagnoses?.length) content += `Diagnoses: ${visit.diagnoses.join(', ')}\n\n`;
+  if (visit.vitals && Object.keys(visit.vitals).length) {
+    const vparts = [];
+    if (visit.vitals.weight) vparts.push(`Weight: ${visit.vitals.weight}`);
+    if (visit.vitals.HR) vparts.push(`HR: ${visit.vitals.HR}`);
+    if (visit.vitals.RR) vparts.push(`RR: ${visit.vitals.RR}`);
+    if (visit.vitals.BCS) vparts.push(`BCS: ${visit.vitals.BCS}`);
+    if (visit.vitals.muscleConditionScore) vparts.push(`MCS: ${visit.vitals.muscleConditionScore}`);
+    if (visit.vitals.BP) vparts.push(`BP: ${visit.vitals.BP}`);
+    if (vparts.length) content += `Vitals: ${vparts.join(' · ')}\n\n`;
+  }
   if (visit.medications?.length) {
     content += `Medications:\n`;
-    for (const m of visit.medications) content += `  • ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}\n`;
+    for (const m of visit.medications) content += `  • ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}${m.continuing ? ' (continuing)' : ''}${m.dispensed ? ' (dispensed)' : ''}\n`;
     content += '\n';
   }
   if (visit.procedures?.length) {
     content += `Procedures:\n`;
-    for (const p of visit.procedures) content += `  • ${p.name}${p.findings ? ' — ' + p.findings : ''}\n`;
+    for (const p of visit.procedures) content += `  • ${p.name}${p.date && p.date !== visit.date ? ' (' + formatDate(p.date) + ')' : ''}${p.findings ? ' — ' + p.findings : ''}\n`;
     content += '\n';
   }
   if (visit.narrative) content += `\n${visit.narrative}`;
@@ -3729,6 +3745,11 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
   const batch = writeBatch(db);
   let writeCount = 0;
 
+  // Build reliable date pool from result.dates + all visit dates
+  const visitDates = (parsed.visits || []).map(v => v.date).filter(Boolean);
+  const allKnownDates = [...new Set([...allDates, ...visitDates])].sort().reverse();
+  const primaryDate = allKnownDates[0] || null;
+
   for (const visit of (parsed.visits || [])) {
     if (!visit.cat || visit.cat === 'SKIP') continue;
     const ref = doc(collection(db, 'visits'));
@@ -3737,7 +3758,8 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       clinic: visit.clinic || null, doctor: visit.doctor || null,
       chiefComplaint: visit.chiefComplaint || null,
       diagnoses: visit.diagnoses || [], medications: visit.medications || [],
-      procedures: visit.procedures || [], narrative: visit.narrative || '',
+      procedures: visit.procedures || [], vitals: visit.vitals || null,
+      narrative: visit.narrative || '',
       sourceFiles: [filename], driveFileIds: [fileId], sourceFileId: fileId,
       visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
       confidence: visit.confidence || 0.8, flags: visit.flags || [],
@@ -3754,7 +3776,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
     if (!lab.test || lab.value === undefined || lab.value === null) continue;
     const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
     if (!cat) continue;
-    const resolvedDate = lab.resultDate || lab.visitDate || (allDates.size ? [...allDates][0] : null);
+    const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
     const ref = doc(collection(db, 'labs'));
     batch.set(ref, {
       cat, test: lab.test, value: lab.value, unit: lab.unit || null,
