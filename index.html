@@ -453,7 +453,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.5.1</p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;">v0.5.0</p>
   </div>
 </div>
 
@@ -629,7 +629,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
       <div class="status-spacer"></div>
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.5.1</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);">v0.5.0</div>
     </div>
   </div>
 </div>
@@ -922,8 +922,11 @@ onAuthStateChanged(auth, async user => {
     // Check users/allowed — single doc with an email array field
     try {
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+      console.log('[auth] db:', db._databaseId?.database, 'exists:', allowedDoc.exists());
+      if (allowedDoc.exists()) console.log('[auth] data:', JSON.stringify(allowedDoc.data()));
       const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
       const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
+      console.log('[auth] allowedEmails:', allowedEmails, 'user.email:', user.email, 'match:', allowedEmails.includes(user.email));
       if (!allowedEmails.includes(user.email)) {
         await signOut(auth);
         show('signin');
@@ -932,10 +935,11 @@ onAuthStateChanged(auth, async user => {
         return;
       }
     } catch(e) {
+      console.error('[auth] error:', e.code, e.message);
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Auth error: ${e.code || e.message}`; errEl.classList.add('show'); }
       return;
     }
     currentUser = user;
