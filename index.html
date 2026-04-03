@@ -810,7 +810,6 @@ import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayR
 const firebaseConfig = {
   apiKey: "AIzaSyBECkOIkB_rbreDsTo44Kvwq0jL6f29cv0",
   authDomain: "pawrecords-1a8e6.firebaseapp.com",
-  databaseURL: "https://pawrecords-1a8e6-default-rtdb.firebaseio.com",
   projectId: "pawrecords-1a8e6",
   storageBucket: "pawrecords-1a8e6.firebasestorage.app",
   messagingSenderId: "434841981751",
@@ -919,9 +918,25 @@ $('signout-btn').addEventListener('click', async () => {
 
 onAuthStateChanged(auth, async user => {
   if (user) {
-    // TODO: re-enable users collection check once Firestore connection is verified
-    // Temporarily allowing all authenticated Google users through
-    console.log('[auth] signed in as:', user.email);
+    // Check users/allowed — single doc with an email array field
+    try {
+      const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
+      const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
+      const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
+      if (!allowedEmails.includes(user.email)) {
+        await signOut(auth);
+        show('signin');
+        const errEl = $('signin-error');
+        if (errEl) { errEl.textContent = `Access denied for ${user.email}. Contact the app owner to request access.`; errEl.classList.add('show'); }
+        return;
+      }
+    } catch(e) {
+      await signOut(auth);
+      show('signin');
+      const errEl = $('signin-error');
+      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
+      return;
+    }
     currentUser = user;
     setLoading('Loading your records…');
     $('sidebar-user-email').textContent = user.email;
@@ -1097,12 +1112,29 @@ async function deleteVisit(v) {
 }
 
 // ── LABS SIDEBAR + FLOWSHEET ──
-const TEST_ORDER = ['BUN','Creatinine','SDMA','Albumin','Globulin','Total Protein',
-  'ALT','ALP','Glucose','Phosphorus','Potassium','Sodium','Chloride',
-  'T4','Folate','Cobalamin','TLI','PLI',
-  'WBC','RBC','Hematocrit','Hemoglobin','Platelets','USG',
+const TEST_ORDER = [
+  // CBC
+  'RBC','Hematocrit','Hemoglobin','MCV','MCH','MCHC','Reticulocytes','Reticulocyte Hemoglobin',
+  'WBC','Neutrophils','Lymphocytes','Monocytes','Eosinophils','Basophils','Platelets',
+  // Chemistry
+  'Glucose','BUN','Creatinine','SDMA','Cystatin B',
+  'Albumin','Globulin','Total Protein','Albumin: Globulin Ratio',
+  'ALT','AST','ALP','GGT','Bilirubin - Total','Bilirubin - Unconjugated','Bilirubin - Conjugated',
+  'Phosphorus','Calcium','Sodium','Potassium','Chloride','TCO2 (Bicarbonate)','Anion Gap','Na: K Ratio',
+  'Cholesterol','Amylase','Lipase','Creatine Kinase',
+  'Folate','Cobalamin','TLI','PLI',
+  // Urinalysis
+  'Specific Gravity','Color','Clarity','pH','Urine Protein','Glucose','Ketones',
+  'Blood / Hemoglobin','Bilirubin','Urobilinogen',
+  'White Blood Cells','Red Blood Cells','Bacteria','Epithelial Cells','Mucus','Casts','Crystals',
+  // Endocrinology
+  'Total T4','T4','TSH','Cortisol',
+  // PCR/Serology
   'FeLV','FIV','Giardia','Clostridium','Coronavirus','Tritrichomonas',
-  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm'];
+  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm',
+  // Blood Pressure
+  'Systolic Blood Pressure'
+];
 
 let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
 let flowsheetCat = null;
@@ -1119,6 +1151,39 @@ async function loadLabsSidebar() {
     });
     renderLabsSidebar();
   } catch (err) { console.error('Labs load error:', err); }
+}
+
+// Infer labGroup from test name when not stored — handles legacy records
+function inferLabGroup(test, labName) {
+  if (labName) {
+    const ln = labName.toLowerCase();
+    if (ln.includes('urinalysis') || ln.includes('urine') || ln.includes('ua')) return 'Urinalysis';
+    if (ln.includes('cbc') || ln.includes('hematology') || ln.includes('hemato')) return 'CBC';
+    if (ln.includes('chemistry') || ln.includes('chem') || ln.includes('biochem')) return 'Chemistry';
+    if (ln.includes('endocrin') || ln.includes('thyroid') || ln.includes('t4')) return 'Endocrinology';
+    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('felv') || ln.includes('fiv')) return 'PCR/Serology';
+    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return 'Blood Pressure';
+  }
+  const t = test.toLowerCase();
+  // CBC markers
+  if (['rbc','hematocrit','hemoglobin','mcv','mch','mchc','wbc','platelets','neutrophils','lymphocytes',
+       'monocytes','eosinophils','basophils','reticulocytes','reticulocyte hemoglobin'].some(k => t.includes(k))) return 'CBC';
+  // Urinalysis markers
+  if (['specific gravity','usg','urine','ph','dipstick','cast','crystal','bacteria','epithelial',
+       'clarity','color','mucus','urobilinogen','bilirubin (urine)','ketone','blood/hemoglobin'].some(k => t.includes(k))
+      || t === 'ph') return 'Urinalysis';
+  // Endocrinology
+  if (['t4','tsh','cortisol','insulin','acth','progesterone'].some(k => t.includes(k))) return 'Endocrinology';
+  // Blood pressure
+  if (t.includes('systolic') || t.includes('diastolic') || t.includes('blood pressure')) return 'Blood Pressure';
+  // PCR/Serology — including fecal/stool panels
+  if (['felv','fiv','giardia','toxoplasma','bartonella','heartworm','coronavirus','tritrichomonas',
+       'cryptosporidium','clostridium','campylobacter','salmonella','panleukopenia','herpes','calici',
+       'antigen','antibody','titer','pcr','serology','fecal','stool','culture'].some(k => t.includes(k))) return 'PCR/Serology';
+  // Imaging — should be in procedures but handle gracefully if extracted as labs
+  if (['ultrasound','radiograph','x-ray','xray','ct scan','mri','echo','echocardiogram'].some(k => t.includes(k))) return 'Imaging';
+  // Default chemistry
+  return 'Chemistry';
 }
 
 function renderLabsSidebar() {
@@ -1162,10 +1227,11 @@ function renderLabsSidebar() {
   const allTests = Object.keys(latest);
 
   // Group by labGroup, then within each group use TEST_ORDER for ordering
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Other'];
+  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of allTests) {
-    const g = latest[test].labGroup || 'Other';
+    const e = latest[test];
+    const g = e.labGroup || inferLabGroup(test, e.labName);
     if (!byGroup[g]) byGroup[g] = [];
     byGroup[g].push(test);
   }
@@ -1276,12 +1342,12 @@ function buildFlowsheetTable(cat, container) {
   table.appendChild(thead);
 
   // Body — grouped by labGroup
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Other'];
+  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of orderedTests) {
     // Find the most recent entry for this test to get its group
     const mostRecent = Object.values(lookup[test]).sort((a,b)=>(b.resultDate||'')>(a.resultDate||'')?1:-1)[0];
-    const g = mostRecent?.labGroup || 'Other';
+    const g = mostRecent?.labGroup || inferLabGroup(test, mostRecent?.labName);
     if (!byGroup[g]) byGroup[g] = [];
     byGroup[g].push(test);
   }
@@ -2784,7 +2850,7 @@ async function writeFileStatus(fileId, filename, status, extra = {}) {
 
 function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records.
 Rules:
-- Cat names: detect from document. Known pets in this account: ${APP_PETS.join(', ')||'unknown — detect from context'} (detect new pets too)
+- Pet/patient name: identify the ANIMAL PATIENT being examined — the subject of the visit, listed under 'Patient Name', 'Patient', or 'Name' in the patient details section. Known pets: ${APP_PETS.join(', ')||'detect from document'}. Do NOT use the owner name, attending vet name, referring vet name, clinic name, or any staff name as the cat name. If uncertain which name is the patient, use context (species, breed, age fields nearby confirm it).
 - Invoices: extract ONLY meds dispensed, vaccines, prescription foods, procedures + dates. Discard all costs/billing. If none of those → respond {skip:true}
 - Bulk clinical summaries: IGNORE any summary/problem list header block at the top. Extract ONLY individual dated visit entries
 - Discard boilerplate: portal instructions, legal text, appointment reminders
@@ -2898,7 +2964,7 @@ async function splitByDate(fullText) {
 }
 
 async function runCombinedPass(file, chunk) {
-  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}.
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), not the owner, vet, or clinic name.
 Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
 CRITICAL — DATE ANCHORING:
@@ -3613,7 +3679,7 @@ async function submitBatchJob(files) {
 }
 
 function buildBatchPrompt(filename, text) {
-  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}.
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), not the owner, vet, or clinic name.
 Extract ALL clinical data from this document. Be exhaustive — never omit values.
 
 CRITICAL — DATE ANCHORING:
@@ -3632,7 +3698,7 @@ For values expressed as "<N" keep the string as the value.
 
 IMPORTANT — LAB GROUPING:
 Each lab result must include "labGroup": one of "CBC", "Chemistry", "Urinalysis", "Endocrinology",
-"PCR/Serology", "Blood Pressure", "Other". Urinalysis rows (USG/Specific Gravity, pH, dipstick,
+"PCR/Serology", "Blood Pressure", "Imaging", "Other". Urinalysis rows (USG/Specific Gravity, pH, dipstick,
 sediment) MUST all use labGroup:"Urinalysis".
 
 EXTRACT everything: visits, chief complaint, diagnoses, medications (with dose/freq/route/continuing),
