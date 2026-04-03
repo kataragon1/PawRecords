@@ -823,7 +823,7 @@ const firebaseConfig = {
 // ── INIT ──
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = getFirestore(app, '-default-');
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.readonly');
 
@@ -920,19 +920,10 @@ $('signout-btn').addEventListener('click', async () => {
 onAuthStateChanged(auth, async user => {
   if (user) {
     // Check users/allowed — single doc with an email array field
-    // Force token refresh to ensure Firestore auth context is ready
-    try {
-      await user.getIdToken(true);
-    } catch(e) { /* non-critical — proceed anyway */ }
     try {
       const allowedDoc = await getDoc(doc(db, 'users', 'allowed'));
-      console.log('[auth] allowedDoc exists:', allowedDoc.exists());
-      if (allowedDoc.exists()) console.log('[auth] data:', JSON.stringify(allowedDoc.data()));
       const rawEmail = allowedDoc.exists() ? (allowedDoc.data().email || []) : [];
-      console.log('[auth] rawEmail:', rawEmail, 'type:', typeof rawEmail, 'isArray:', Array.isArray(rawEmail));
       const allowedEmails = Array.isArray(rawEmail) ? rawEmail : String(rawEmail).split(',').map(e => e.trim()).filter(Boolean);
-      console.log('[auth] allowedEmails:', allowedEmails, 'user.email:', user.email);
-      console.log('[auth] includes:', allowedEmails.includes(user.email));
       if (!allowedEmails.includes(user.email)) {
         await signOut(auth);
         show('signin');
@@ -941,11 +932,10 @@ onAuthStateChanged(auth, async user => {
         return;
       }
     } catch(e) {
-      console.error('[auth] caught error:', e.code, e.message);
       await signOut(auth);
       show('signin');
       const errEl = $('signin-error');
-      if (errEl) { errEl.textContent = `Could not verify access: ${e.message}`; errEl.classList.add('show'); }
+      if (errEl) { errEl.textContent = `Could not verify access. Check your connection and try again.`; errEl.classList.add('show'); }
       return;
     }
     currentUser = user;
