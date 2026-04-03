@@ -1,7 +1,7 @@
 name: Bump version on deploy
 
 on:
-  workflow_dispatch:
+  push:
     branches: [ main ]
     paths:
       - 'index.html'
@@ -18,24 +18,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump patch version and inject
+      - name: Bump patch version in version.json
         run: |
-          # Read and increment version
-          VERSION=$(cat version.txt | tr -d '[:space:]')
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
-          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          echo $NEW_VERSION > version.txt
+          VERSION=$(node -e "const v=require('./version.json').version.split('.');v[2]=parseInt(v[2])+1;console.log(v.join('.'))")
+          echo "{\"version\":\"$VERSION\"}" > version.json
+          echo "Bumped to $VERSION"
 
-          # Inject into index.html
-          sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" index.html
-          echo "Bumped $VERSION → $NEW_VERSION"
-
-      - name: Commit back
+      - name: Commit version.json only
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.txt index.html
-          git diff --staged --quiet || git commit -m "v$(cat version.txt) [skip ci]"
+          git add version.json
+          git diff --staged --quiet || git commit -m "v$(node -e "console.log(require('./version.json').version)") [skip ci]"
           git push
