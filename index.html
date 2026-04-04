@@ -886,7 +886,7 @@ const $ = id => document.getElementById(id);
 const show = s => { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); $(s).classList.add('active'); };
 const setLoading = label => { $('loading-label').textContent = label; show('loading'); };
 
-function showToast(text, type = 'info', undoFn = null) {
+function showToast(text, type = 'info', undoFn = null, duration = 4000) {
   const c = $('toast-container');
   const t = document.createElement('div');
   t.className = 'toast';
@@ -900,7 +900,7 @@ function showToast(text, type = 'info', undoFn = null) {
     t.appendChild(ub);
   }
   c.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 4000);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, duration);
 }
 
 // ── API KEY MODAL ──
@@ -1067,7 +1067,8 @@ async function loadInitialData() {
     await loadNotes();
     setLoading('Loading corrections…');
     await loadLabCorrections();
-    await loadLabGroups(); // pre-load all visits+labs into memory for search
+    await loadLabGroups();
+    await loadClinicAbbrev(); // pre-load all visits+labs into memory for search
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -1390,41 +1391,17 @@ async function loadLabsSidebar() {
   } catch (err) { console.error('Labs load error:', err); }
 }
 
-// Infer labGroup from test name when not stored — handles legacy records
-function inferLabGroup(test, labName) {
-  if (labName) {
-    const ln = labName.toLowerCase();
-    if (ln.includes('urinalysis') || ln.includes('urine') || ln.includes('ua')) return 'Urinalysis';
-    if (ln.includes('cbc') || ln.includes('hematology') || ln.includes('hemato')) return 'CBC';
-    if (ln.includes('chemistry') || ln.includes('chem') || ln.includes('biochem')) return 'Chemistry';
-    if (ln.includes('endocrin') || ln.includes('thyroid')) return 'Endocrinology';
-    // Note: don't match 't4' here — too broad, catches unrelated names
-    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('culture') ||
-        ln.includes('panel') || ln.includes('titer') || ln.includes('antigen') ||
-        ln.includes('antibody') || ln.includes('fecal') || ln.includes('stool') ||
-        ln.includes('gi ') || ln.includes('diarrhea') || ln.includes('parasite')) return 'PCR';
-    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return null;
-  }
-  const t = test.toLowerCase();
-  // CBC markers
-  if (['rbc','hematocrit','hemoglobin','mcv','mch','mchc','wbc','platelets','neutrophils','lymphocytes',
-       'monocytes','eosinophils','basophils','reticulocytes','reticulocyte hemoglobin'].some(k => t.includes(k))) return 'CBC';
-  // Urinalysis markers
-  if (['specific gravity','usg','urine','ph','dipstick','cast','crystal','bacteria','epithelial',
-       'clarity','color','mucus','urobilinogen','bilirubin (urine)','ketone','blood/hemoglobin'].some(k => t.includes(k))
-      || t === 'ph') return 'Urinalysis';
-  // Endocrinology
-  if (['t4','tsh','cortisol','insulin','acth','progesterone','tli','pli','folate','cobalamin'].some(k => t.includes(k))) return 'Endocrinology';
-  // BP — return null, strip from labs
+// Last-resort group inference for legacy records with no labGroup or labName.
+// For all new extractions, Claude sets labGroup from the panel header directly.
+function inferLabGroup(test) {
+  const t = (test || '').toLowerCase();
   if (t.includes('systolic') || t.includes('diastolic') || t.includes('blood pressure')) return null;
-  // PCR — including GI/fecal/parasite/diarrhea panels
-  if (['felv','fiv','giardia','toxoplasma','bartonella','heartworm','coronavirus','tritrichomonas',
-       'cryptosporidium','clostridium','campylobacter','salmonella','panleukopenia','herpes','calici',
-       'antigen','antibody','titer','pcr','serology','fecal','stool','culture',
-       'enteric','parasite','diarrhea panel'].some(k => t.includes(k))) return 'PCR';
-  // Imaging — should be in procedures but handle gracefully
-  if (['ultrasound','radiograph','x-ray','xray','ct scan','mri','echo','echocardiogram'].some(k => t.includes(k))) return 'Imaging';
-  return 'Chemistry';
+  if (['felv','fiv','giardia','clostridium','tritrichomonas','cryptosporidium',
+       'campylobacter','toxoplasma','bartonella','pcr','culture','titer'].some(k => t.includes(k))) return 'PCR';
+  if (['hematocrit','hemoglobin','platelets','neutrophils','lymphocytes',
+       'monocytes','eosinophils','basophils','reticulocytes'].some(k => t.includes(k))) return 'CBC';
+  if (['specific gravity','usg','urobilinogen','epithelial','cast','crystal'].some(k => t.includes(k))) return 'Urinalysis';
+  return null; // unknown — show as Other
 }
 
 // ── SHARED LAB ROW BUILDER ──
@@ -1493,7 +1470,7 @@ function renderLabsSidebar() {
   const allTests = Object.keys(latest);
 
   // Group by labGroup, then within each group use TEST_ORDER for ordering
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
+  const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of allTests) {
     const e = latest[test];
@@ -1507,8 +1484,8 @@ function renderLabsSidebar() {
     ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)).sort()
   ];
 
-  // Groups that collapse by default — show summary line, expand on click
-  const COLLAPSIBLE_GROUPS = new Set(['Urinalysis', 'PCR', 'Endocrinology', 'Imaging']);
+  // All groups collapse by default — click header to expand
+  const COLLAPSIBLE_GROUPS = new Set(GROUP_ORDER);
 
   for (const group of orderedGroups) {
     const testsInGroup = byGroup[group];
@@ -1574,7 +1551,10 @@ function renderLabsSidebar() {
       const rowsEl = document.createElement('div');
       rowsEl.style.display = 'none';
 
-      let collapsed = true;
+      let collapsed = false;
+      rowsEl.style.display = 'block';
+      arrow.style.transform = 'rotate(90deg)';
+      summaryEl.style.display = 'none';
       header.addEventListener('click', () => {
         collapsed = !collapsed;
         rowsEl.style.display = collapsed ? 'none' : 'block';
@@ -1589,20 +1569,6 @@ function renderLabsSidebar() {
         makeLabRow(test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, test));
       }
       container.appendChild(rowsEl);
-
-    } else {
-      // Expanded group — CBC/Chemistry styled as minimal dividers
-      const isDividerGroup = group === 'CBC' || group === 'Chemistry';
-      header.style.cssText = isDividerGroup
-        ? 'padding:0.2rem 0.75rem 0.1rem;font-family:JetBrains Mono,monospace;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--border);border-top:1px solid var(--surface2);margin-top:0.2rem;'
-        : 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border-top:1px solid var(--surface2);margin-top:0.25rem;';
-      header.textContent = group;
-      container.appendChild(header);
-
-      for (const test of ordered) {
-        const e = latest[test];
-        makeLabRow(test, e, container, () => openFlowsheetModal(flowsheetCat, test));
-      }
     }
   }
 
@@ -1703,7 +1669,7 @@ function buildFlowsheetTable(cat, container) {
   table.appendChild(thead);
 
   // Body — grouped by labGroup
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
+  const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of orderedTests) {
     // Find the most recent entry for this test to get its group
@@ -2486,7 +2452,7 @@ function renderFilesList(driveFiles, statusMap) {
       <div class="file-item-top">
         <span class="file-ext-badge">${escHtml(ext)}</span>
         <span class="file-name" title="${escHtml(file.name)}">${escHtml(file.name)}</span>
-        <span class="file-status-badge ${status}" id="badge-${file.id}">${status}</span>
+        <span class="file-status-badge ${status}" id="badge-${file.id}" ${status === 'flagged' ? `style="cursor:pointer;" title="Click to view flags" onclick="event.stopPropagation();openFlagsModal('${file.id}')"` : ''}>${status}</span>
       </div>
       <div class="file-item-meta">
         <span>${size}</span>
@@ -3439,8 +3405,16 @@ async function verifyFile(file) {
   if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
   if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
 
+  // Show a persistent "verifying" toast so there's visible feedback immediately
+  const verifyingToast = document.createElement('div');
+  verifyingToast.className = 'toast';
+  verifyingToast.innerHTML = `<div class="toast-dot amber"></div><div class="toast-text">🔍 Verifying ${file.name.slice(0,25)}…</div>`;
+  $('toast-container').appendChild(verifyingToast);
+
   const btn = document.querySelector(`.file-verify-btn[data-file-id="${file.id}"]`);
   if (btn) { btn.textContent = 'verifying…'; btn.disabled = true; }
+
+  const clearVerifying = () => { verifyingToast.remove(); if (btn) { btn.textContent = 'verify'; btn.disabled = false; } };
 
   try {
     const blob = await fetchDriveFileBlob(file.id);
@@ -3450,8 +3424,8 @@ async function verifyFile(file) {
     else rawText = await blob.text();
 
     if (!rawText || rawText.trim().length < 50) {
+      clearVerifying();
       showToast(`${file.name.slice(0,30)}: too short to verify`, 'warning');
-      if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
       return;
     }
 
@@ -3464,12 +3438,12 @@ async function verifyFile(file) {
     let existingText = '';
     snap.forEach(d => {
       const v = d.data();
-      existingText += `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nDiagnoses: ${(v.diagnoses||[]).join(', ')}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}\n\n`;
+      existingText += `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}\n\n`;
     });
 
     if (!existingText) {
+      clearVerifying();
       showToast(`${file.name.slice(0,30)}: no existing records found — try reprocessing`, 'warning');
-      if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
       return;
     }
 
@@ -3490,30 +3464,65 @@ ${newText.slice(0, 4000)}`;
     const diffResult = await callExtractionClaude([{ role: 'user', content: diffPrompt }], 1000);
     const hasNew = diffResult && typeof diffResult === 'string' && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
 
+    clearVerifying();
+
     if (!hasNew) {
-      showToast(`✓ ${file.name.slice(0,30)}: verified complete`, 'journal');
+      // Clean result — offer to mark complete if file is still flagged
+      const fileDoc = await getDoc(doc(db, 'files', file.id));
+      const currentStatus = fileDoc.exists() ? fileDoc.data().status : 'unknown';
+      if (currentStatus === 'flagged') {
+        showToast(`✓ ${file.name.slice(0,25)}: nothing missing — mark complete?`, 'journal', async () => {
+          const flagSnap = await getDocs(query(collection(db, 'flags'), where('fileId', '==', file.id), where('resolved', '==', false)));
+          const batch = writeBatch(db);
+          flagSnap.forEach(d => batch.update(d.ref, { resolved: true, resolution: 'verified clean', resolvedAt: new Date().toISOString() }));
+          await batch.commit();
+          await writeFileStatus(file.id, file.name, 'complete');
+          updateFileBadge(file.id, 'complete');
+          showToast('Marked complete ✓', 'journal');
+        }, 10000);
+        // Change undo button label to "Mark complete"
+        setTimeout(() => {
+          const ub = document.querySelector('.toast-undo');
+          if (ub) ub.textContent = 'Mark complete';
+        }, 50);
+      } else {
+        showToast(`✓ ${file.name.slice(0,30)}: extraction complete — nothing missing`, 'journal', null, 8000);
+      }
     } else {
       $('popup-title').textContent = `Verify: ${file.name}`;
+      popupRawText = typeof diffResult === 'string' ? diffResult.trim() : '';
+      popupMatches = []; popupMatchIdx = 0;
       const body = $('popup-body');
       body.innerHTML = '';
       const note = document.createElement('div');
       note.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--amber);margin-bottom:0.75rem;line-height:1.6;';
-      note.textContent = '⚠ Missing clinical data found:';
+      note.textContent = '⚠ Possible missing clinical data — review and decide:';
       body.appendChild(note);
       const pre = document.createElement('pre');
       pre.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--ink-dim);background:var(--surface);border-radius:6px;padding:0.75rem;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;margin-bottom:0.75rem;line-height:1.6;';
-      pre.textContent = typeof diffResult === 'string' ? diffResult.trim() : JSON.stringify(diffResult, null, 2);
+      pre.textContent = popupRawText;
       body.appendChild(pre);
       const btns = document.createElement('div');
-      btns.style.cssText = 'display:flex;gap:0.5rem;';
+      btns.style.cssText = 'display:flex;gap:0.5rem;flex-wrap:wrap;';
+
+      // Reprocess button
+      const reprocessBtn = document.createElement('button');
+      reprocessBtn.className = 'btn-icon cost-icon';
+      reprocessBtn.innerHTML = '<span class="cost-dot"></span> Reprocess file';
+      reprocessBtn.onclick = () => {
+        $('record-popup').classList.remove('open');
+        openProcessModal([file]);
+      };
+      btns.appendChild(reprocessBtn);
+
+      // Flag for review button
       const flagBtn = document.createElement('button');
       flagBtn.className = 'btn-icon free-icon';
-      flagBtn.innerHTML = '<span class="free-dot"></span> Flag for Review';
+      flagBtn.innerHTML = '<span class="free-dot"></span> Flag for review';
       flagBtn.onclick = async () => {
         await setDoc(doc(collection(db, 'flags')), {
           fileId: file.id, filename: file.name, type: 'verify_missing_data',
-          description: (typeof diffResult === 'string' ? diffResult : JSON.stringify(diffResult)).slice(0, 500),
-          options: ['Reprocess file', 'Mark as complete', 'Ignore'],
+          description: popupRawText.slice(0, 500),
           resolved: false, createdAt: new Date().toISOString()
         });
         const fc = parseInt($('flags-count').textContent || '0') + 1;
@@ -3523,16 +3532,24 @@ ${newText.slice(0, 4000)}`;
         $('record-popup').classList.remove('open');
       };
       btns.appendChild(flagBtn);
+
+      // Dismiss button
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'btn-icon';
+      dismissBtn.textContent = 'Looks fine';
+      dismissBtn.onclick = () => $('record-popup').classList.remove('open');
+      btns.appendChild(dismissBtn);
+
       body.appendChild(btns);
       $('popup-search-input').value = '';
       $('popup-search-count').textContent = '';
       $('record-popup').classList.add('open');
     }
   } catch(err) {
+    clearVerifying();
     console.error('Verify error:', err);
     showToast(`Verify failed: ${err.message.slice(0,60)}`, 'warning');
   }
-  if (btn) { btn.textContent = 'verify'; btn.disabled = false; }
 }
 
 // ══════════════════════════════════════════════
@@ -3604,6 +3621,24 @@ function attachFileCtxMenu(item, file, status) {
     if (status === 'complete' || status === 'flagged') {
       items.push({ label: '⟳ Reprocess', action: () => openProcessModal([file]) });
       items.push({ label: '✓ Verify extraction', action: () => verifyFile(file) });
+    }
+    if (status === 'flagged') {
+      items.push({ label: '🚩 View flags', action: () => openFlagsModal(file.id) });
+      items.push({
+        label: '✓ Mark as complete',
+        action: async () => {
+          // Dismiss all unresolved flags for this file and mark complete
+          const flagSnap = await getDocs(query(collection(db, 'flags'), where('fileId', '==', file.id), where('resolved', '==', false)));
+          const batch = writeBatch(db);
+          flagSnap.forEach(d => batch.update(d.ref, { resolved: true, resolution: 'manually marked complete', resolvedAt: new Date().toISOString() }));
+          await batch.commit();
+          await writeFileStatus(file.id, file.name, 'complete');
+          updateFileBadge(file.id, 'complete');
+          item.dataset.status = 'complete';
+          updateProcessButtons();
+          showToast('Marked complete ✓', 'journal');
+        }
+      });
     }
     items.push('sep');
     items.push({
@@ -3713,9 +3748,10 @@ async function confirmDeleteVisit(visit) {
 }
 
 // ── LAB CONTEXT MENU ──
-// ── LAB GROUPS ──
-// Loaded from Firestore — editable, not hardcoded
-let _labGroups = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
+// Lab groups — display ordering preference, seeded from common panel names.
+// Actual groups come from labGroup field set by Claude from the panel header.
+// New groups appear automatically; this list just controls ordering in the sidebar.
+let _labGroups = ['CBC', 'Chemistry', 'Urinalysis', 'GI Panel', 'T4', 'PCR', 'Imaging', 'Other'];
 
 async function loadLabGroups() {
   try {
@@ -4002,25 +4038,9 @@ async function splitByDate(fullText) {
 }
 
 // ── LAB GROUP NORMALIZER ──
-// Hard-maps known test names to their correct panel regardless of what the model returned.
-// This is the safety net for PDF table extraction garbling the section headers.
-const UA_TESTS = new Set([
-  'specific gravity','usg','ph','urine protein','protein','urine glucose','glucose (urine)',
-  'ketones','blood','blood/hemoglobin','hemoglobin (urine)','bilirubin (urine)','bilirubin',
-  'urobilinogen','wbc (urine)','white blood cells','rbc (urine)','red blood cells',
-  'bacteria','epithelial cells','casts','crystals','mucus','color','clarity','collection',
-  'wbc sediment','rbc sediment','urine occult blood'
-]);
-const CBC_TESTS = new Set([
-  'rbc','hematocrit','hemoglobin','mcv','mch','mchc','wbc','platelets','neutrophils',
-  '% neutrophils','lymphocytes','% lymphocytes','monocytes','% monocytes','eosinophils',
-  '% eosinophils','basophils','% basophils','reticulocytes','% reticulocytes',
-  'reticulocyte hemoglobin','nrbc','band neutrophils'
-]);
-const ENDO_TESTS = new Set([
-  'total t4','t4','free t4','tsh','cortisol','acth','insulin','progesterone',
-  'tli','pli','folate','cobalamin','b12','vitamin b12'
-]);
+// Groups come directly from the panel header in the source document (labName field).
+// labGroup is just a display alias — set to labName if missing.
+// User corrections handle any aliasing needed (e.g. "IDEXX Chemistry Panel" → "Chemistry").
 const BP_TESTS = new Set([
   'systolic blood pressure','diastolic blood pressure','mean arterial pressure',
   'blood pressure','systolic','diastolic'
@@ -4029,15 +4049,21 @@ const BP_TESTS = new Set([
 function normalizeLabGroups(labs) {
   for (const lab of labs) {
     const t = (lab.test || '').toLowerCase().trim();
-    // User corrections always win
+
+    // 1. User corrections always win
     if (_labCorrections[t]) { lab.labGroup = _labCorrections[t]; continue; }
-    // BP always stripped
+
+    // 2. BP always stripped — belongs in vitals
     if (BP_TESTS.has(t)) { lab._isBP = true; continue; }
-    // Only hard-correct Urinalysis and CBC where test names are unambiguous
-    if (UA_TESTS.has(t)) { lab.labGroup = 'Urinalysis'; continue; }
-    if (CBC_TESTS.has(t)) { lab.labGroup = 'CBC'; continue; }
-    // Everything else: keep Claude's assignment, infer only if missing
-    if (!lab.labGroup) lab.labGroup = inferLabGroup(lab.test, lab.labName) || 'Chemistry';
+
+    // 3. If labGroup already set by Claude, trust it
+    if (lab.labGroup) continue;
+
+    // 4. Use labName directly — it's the panel header from the source document
+    if (lab.labName) { lab.labGroup = lab.labName; continue; }
+
+    // 5. Last resort for legacy records with neither field
+    lab.labGroup = 'Other';
   }
 }
 
@@ -4089,21 +4115,12 @@ If qualifier says H/L/* but value appears within reference range, TRUST THE QUAL
 Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
 PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
 
-LAB GROUPING — labGroup field is required on every lab result:
-"CBC": RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes, Monocytes,
-  Eosinophils, Basophils, Reticulocytes, Platelets, and all differential %s
-"Chemistry": Glucose, BUN, Creatinine, SDMA, ALT, ALP, AST, GGT, Albumin, Globulin, Total Protein,
-  Phosphorus, Calcium, Sodium, Potassium, Chloride, TCO2, Anion Gap, Na:K Ratio, Cholesterol,
-  Bilirubin, Amylase, Lipase, Creatine Kinase, Cystatin B, BUN:Creatinine Ratio, and indices
-"Urinalysis": Specific Gravity/USG, pH, Color, Clarity, Collection method, Protein, Glucose,
-  Ketones, Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells,
-  Casts, Crystals, Mucus — ALL must be labGroup:"Urinalysis"
-"Endocrinology": T4, Free T4, TSH, TLI, PLI, Folate, Cobalamin, Cortisol, ACTH, Insulin
-"PCR": any PCR, culture, titer, antigen, antibody, or infectious disease test — including any
-  named GI, diarrhea, parasite, or enteric panel regardless of brand name (Texas GI Panel,
-  IDEXX GI Panel, BioPath Diarrhea Panel, etc.). When in doubt: if it's testing for a pathogen,
-  organism, or infectious agent → PCR.
-BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP field instead.
+LAB GROUPING — labGroup must equal the panel header exactly as printed on the lab report.
+Use the section heading from the document: "Chemistry", "CBC", "Urinalysis", "GI Panel",
+"Spec cPL", "T4", "Cobalamin/Folate", "FELV/FIV", etc. — whatever the lab called it.
+Do NOT invent category names. Do NOT use "Endocrinology" unless the report says that.
+If tests are listed without a panel header, use the closest section heading above them.
+BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP instead.
 
 MEDICATIONS:
 - Extract ALL medications that are prescribed, continuing, or recommended — not just dispensed ones
@@ -4221,7 +4238,9 @@ If an invoice has literally no clinical content at all (no meds, no vaccines, no
 }
 
 // ── VISIT DETAIL POPUP ──
-const CLINIC_ABBREV = {
+// ── CLINIC ABBREVIATIONS ──
+// Loaded from app_config/clinic_abbrev in Firestore — editable without code changes
+let _clinicAbbrev = {
   'morrisville cat hospital':'Morrisville','morrisville':'Morrisville',
   'grace park animal hospital':'Grace Park','grace park':'Grace Park',
   'truss vet':'TRUSS','truss':'TRUSS',
@@ -4234,10 +4253,23 @@ const CLINIC_ABBREV = {
   'town & country':'Town & Country','town and country':'Town & Country',
   'nc state':'NC State','north carolina state':'NC State',
 };
+
+async function loadClinicAbbrev() {
+  try {
+    const d = await getDoc(doc(db, 'app_config', 'clinic_abbrev'));
+    if (d.exists() && d.data().map) {
+      _clinicAbbrev = d.data().map;
+    } else {
+      // Seed Firestore with defaults on first run
+      await setDoc(doc(db, 'app_config', 'clinic_abbrev'), { map: _clinicAbbrev });
+    }
+  } catch(e) { console.warn('Clinic abbrev load failed (using defaults):', e.message); }
+}
+
 function abbreviateClinic(name) {
   if (!name) return '';
   const lower = name.toLowerCase();
-  for (const [key, abbr] of Object.entries(CLINIC_ABBREV)) {
+  for (const [key, abbr] of Object.entries(_clinicAbbrev)) {
     if (lower.includes(key)) return abbr;
   }
   return name.replace(/\b(animal hospital|veterinary|vet|clinic|hospital|care|pet)\b/gi,'').trim().split(/\s+/).slice(0,2).join(' ');
@@ -5501,15 +5533,9 @@ H or HIGH qualifier → abnormal:"HIGH", L or LOW → abnormal:"LOW", blank → 
 For values expressed as "<N" keep the string as the value.
 
 IMPORTANT — LAB GROUPING:
-Each lab result must include "labGroup": one of "CBC", "Chemistry", "Urinalysis", "Endocrinology",
-"PCR", "Imaging", "Other".
-Urinalysis rows (Specific Gravity/USG, pH, Color, Clarity, Collection, Protein, Glucose, Ketones,
-Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells, Casts, Crystals,
-Mucus) MUST ALL use labGroup:"Urinalysis" — no exceptions.
-CBC rows (RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes,
-Monocytes, Eosinophils, Basophils, Reticulocytes, Platelets) MUST ALL use labGroup:"CBC".
-PCR includes all PCR/culture/titer/antigen tests and named GI/diarrhea/parasite panels.
-T4, TLI, PLI, Folate, Cobalamin, Cortisol MUST use labGroup:"Endocrinology".
+Set labGroup to the panel header exactly as printed on the lab report — "Chemistry", "CBC",
+"Urinalysis", "GI Panel", "Spec cPL", "T4", "FELV/FIV", etc. Use the section heading from
+the document. Do NOT invent categories or use "Endocrinology" unless the report says that.
 BLOOD PRESSURE: Do NOT put in labs. Store in vitals.BP instead.
 
 EXTRACT everything: visits with synopsis, chief complaint, medications (name/dose/freq/route/continuing/supplement flag),
@@ -5894,13 +5920,19 @@ const FLAG_CONFIG = {
   }
 };
 
-async function openFlagsModal() {
+async function openFlagsModal(filterFileId = null) {
   $('flags-modal').classList.add('open');
   $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div>Loading…</div></div>';
   try {
-    const snap = await getDocs(query(collection(db, 'flags'), orderBy('createdAt', 'desc')));
-    const flags = [];
+    let q = query(collection(db, 'flags'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    let flags = [];
     snap.forEach(d => flags.push({ id: d.id, ...d.data() }));
+
+    // If opened from a specific file, show that file's flags first
+    if (filterFileId) {
+      flags = [...flags.filter(f => f.fileId === filterFileId), ...flags.filter(f => f.fileId !== filterFileId)];
+    }
 
     if (!flags.length) {
       $('flags-modal-body').innerHTML = '<div class="sidebar-empty" style="padding:2rem;"><div class="sidebar-empty-icon">✓</div><div>No items need review</div></div>';
@@ -5914,10 +5946,12 @@ async function openFlagsModal() {
 
     $('flags-modal-body').innerHTML = '';
     for (const flag of flags) {
+      const isKnown = !!FLAG_CONFIG[flag.type];
       const config = FLAG_CONFIG[flag.type] || {
-        label: flag.type || 'Unknown issue',
+        label: flag.type ? `Unknown flag: ${flag.type}` : 'Unknown issue',
         icon: '⚠',
-        explain: flag.description || 'An issue was detected during processing.',
+        explain: (flag.description || 'An issue was detected during a previous processing run. This may be from an older version of the app.') +
+                 (!isKnown ? ' You can safely dismiss this if the records look correct, or reprocess the file to re-evaluate.' : ''),
         actionLabel: null,
         async apply() { return null; }
       };
@@ -6022,27 +6056,43 @@ async function openFlagsModal() {
           actions.appendChild(applyBtn);
         }
 
-        // Dismiss button (for things that can't be auto-fixed, or user wants to ignore)
+        // Mark complete button — resolves this flag (and all others for this file) and marks file complete
         const dismissBtn = document.createElement('button');
-        dismissBtn.className = 'btn-icon';
+        dismissBtn.className = 'btn-icon free-icon';
         dismissBtn.style.fontSize = '0.62rem';
-        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.innerHTML = '<span class="free-dot"></span> Mark complete';
         dismissBtn.addEventListener('click', async () => {
-          await setDoc(doc(db, 'flags', flag.id), {
-            resolved: true, resolution: 'dismissed', resolvedAt: new Date().toISOString()
-          }, { merge: true });
+          // Resolve all flags for this file at once
+          const allFlagsSnap = await getDocs(query(collection(db, 'flags'),
+            where('fileId', '==', flag.fileId), where('resolved', '==', false)));
+          const batch = writeBatch(db);
+          allFlagsSnap.forEach(d => batch.update(d.ref, {
+            resolved: true, resolution: 'marked complete', resolvedAt: new Date().toISOString()
+          }));
+          await batch.commit();
+          // Mark all flag items in this modal as resolved
+          document.querySelectorAll('.flag-item').forEach(flagEl => {
+            const flagActions = flagEl.querySelector('.flag-actions');
+            if (flagActions && flagEl.querySelector(`.flag-filename`)?.title === flag.filename) {
+              flagEl.classList.add('resolved');
+              flagEl.querySelector('.flag-type').className = 'flag-type resolved';
+              flagEl.querySelector('.flag-type').textContent = 'resolved';
+              flagActions.innerHTML = `<span class="flag-resolved-note">✓ marked complete</span>`;
+            }
+          });
           el.classList.add('resolved');
-          actions.innerHTML = `<span class="flag-resolved-note">✓ dismissed</span>`;
+          actions.innerHTML = `<span class="flag-resolved-note">✓ marked complete</span>`;
           el.querySelector('.flag-type').className = 'flag-type resolved';
           el.querySelector('.flag-type').textContent = 'resolved';
           updateFlagSummary();
           await updateFileFlagStatus(flag.fileId);
+          showToast('Marked complete ✓', 'journal');
         });
         actions.appendChild(dismissBtn);
 
         // Reprocess button — for flags that require full re-extraction
         const REPROCESS_FLAG_TYPES = ['chunk_skipped', 'verify_missing_data', 'quality_warning'];
-        if (REPROCESS_FLAG_TYPES.includes(flag.type) && flag.fileId) {
+        if ((REPROCESS_FLAG_TYPES.includes(flag.type) || !isKnown) && flag.fileId) {
           const reprocessBtn = document.createElement('button');
           reprocessBtn.className = 'btn-icon cost-icon';
           reprocessBtn.style.fontSize = '0.62rem';
