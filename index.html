@@ -348,8 +348,6 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #notes-input:focus{border-color:var(--accent);}
 #notes-pin-toggle.active{background:var(--accent);color:white;border-color:var(--accent);}
 .notes-cat-chip{font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.4rem;border-radius:10px;border:1px solid var(--border);background:white;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;}
-.sort-btn.active{background:var(--accent)!important;color:white!important;border-color:var(--accent)!important;}
-.sort-btn:hover:not(.active){background:var(--surface);color:var(--ink)!important;}
 .journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
 .journal-entry-full:hover{background:var(--surface);}
 .journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -549,10 +547,6 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
           <span class="free-dot"></span> Upload files
         </button>
         <input type="file" id="upload-file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" style="display:none;">
-        <div style="flex:1;"></div>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);">Sort:</span>
-        <button class="sort-btn active" data-sort="name" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:none;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.4rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;">A–Z</button>
-        <button class="sort-btn" data-sort="date" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:none;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.4rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;">Recent</button>
       </div>
       <div id="upload-progress-bar" style="display:none;padding:0.35rem 0.75rem;background:var(--surface);border-bottom:1px solid var(--border);">
         <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);margin-bottom:0.25rem;" id="upload-progress-label">Uploading…</div>
@@ -2084,17 +2078,7 @@ $('upload-file-input').addEventListener('change', async (e) => {
   await uploadFilesToDrive(files);
 });
 
-// ── SORT BUTTONS ──
-document.querySelectorAll('.sort-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    _fileSort = btn.dataset.sort;
-    if (window._driveFiles && window._statusMap) {
-      renderFilesList(window._driveFiles, window._statusMap);
-    }
-  });
-});
+// ── SORT BUTTONS removed — sort now via column headers in file list ──
 
 async function loadDriveFiles() {
   const filesList = $('files-list');
@@ -2278,6 +2262,7 @@ async function loadFileStatuses(driveFileIds) {
 
 // ── FILE SORT STATE ──
 let _fileSort = 'name'; // 'name' | 'date'
+let _fileSortDir = 1;   // 1 = asc, -1 = desc
 
 // ── DRIVE UPLOAD ──
 async function uploadFilesToDrive(files) {
@@ -2381,17 +2366,14 @@ function renderFilesList(driveFiles, statusMap) {
     filesList.innerHTML = '<div class="files-loading">No files found in PawRecords/uploads.</div>';
     return;
   }
-  // Sort: respect user sort preference, with unprocessed/flagged first within each sort
-  const priority = { unprocessed: 0, flagged: 1, failed: 2, processing: 3, queued: 4, complete: 5 };
+  // Sort by name or date with direction
   const sorted = [...driveFiles].sort((a, b) => {
     if (_fileSort === 'date') {
-      // Most recent modified first
       const da = new Date(a.modifiedTime || 0).getTime();
       const db2 = new Date(b.modifiedTime || 0).getTime();
-      return db2 - da;
+      return (db2 - da) * _fileSortDir * -1; // default desc (newest first), flip with dir
     }
-    // Default: alphabetical by name
-    return a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name) * _fileSortDir;
   });
 
   // Store globally for pipeline access
@@ -2399,17 +2381,42 @@ function renderFilesList(driveFiles, statusMap) {
   window._statusMap = statusMap;
 
   filesList.innerHTML = '';
+
+  // Column header row with sort controls
+  const arrow = (col) => _fileSort === col ? (_fileSortDir === 1 ? ' ▲' : ' ▼') : '';
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;padding:0.3rem 0.75rem 0.3rem 1.5rem;border-bottom:1px solid var(--surface2);gap:0.5rem;background:var(--surface);position:sticky;top:0;z-index:1;';
+  hdr.innerHTML = `
+    <input type="checkbox" style="opacity:0;pointer-events:none;flex-shrink:0;">
+    <span id="sort-name-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='name'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex:1;user-select:none;" title="Sort by name">Name${arrow('name')}</span>
+    <span id="sort-date-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='date'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex-shrink:0;user-select:none;margin-left:auto;" title="Sort by date">Date${arrow('date')}</span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);flex-shrink:0;cursor:pointer;" id="select-all-link">select all</span>`;
+  filesList.appendChild(hdr);
+
+  // Wire sort headers
+  setTimeout(() => {
+    const nameBtn = $('sort-name-btn');
+    const dateBtn = $('sort-date-btn');
+    if (nameBtn) nameBtn.addEventListener('click', () => {
+      if (_fileSort === 'name') _fileSortDir *= -1; else { _fileSort = 'name'; _fileSortDir = 1; }
+      if (window._driveFiles && window._statusMap) renderFilesList(window._driveFiles, window._statusMap);
+    });
+    if (dateBtn) dateBtn.addEventListener('click', () => {
+      if (_fileSort === 'date') _fileSortDir *= -1; else { _fileSort = 'date'; _fileSortDir = -1; }
+      if (window._driveFiles && window._statusMap) renderFilesList(window._driveFiles, window._statusMap);
+    });
+  }, 0);
+
   const total = sorted.length;
   const unprocessed = sorted.filter(f => !statusMap[f.id] || statusMap[f.id] === 'unprocessed').length;
-  const summary = document.createElement('div');
-  summary.style.cssText = 'padding:0.5rem 0.75rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;color:var(--ink-muted);border-bottom:1px solid var(--surface2);display:flex;align-items:center;justify-content:space-between;';
-  summary.innerHTML = `<span>${total} files · ${unprocessed} unprocessed</span><span style="color:var(--accent);cursor:pointer;" id="select-all-link">select all</span>`;
-  filesList.appendChild(summary);
 
   for (const file of sorted) {
     const status = statusMap[file.id] || 'unprocessed';
     const ext = file.name.split('.').pop().toUpperCase();
     const size = formatSize(file.size);
+    const fileDate = file.modifiedTime
+      ? new Date(file.modifiedTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+      : '';
     const item = document.createElement('div');
     item.className = 'file-item';
     item.dataset.status = status;
@@ -2426,6 +2433,7 @@ function renderFilesList(driveFiles, statusMap) {
       </div>
       <div class="file-item-meta">
         <span>${size}</span>
+        ${fileDate ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);margin-left:auto;">${escHtml(fileDate)}</span>` : ''}
         <span class="file-cats" id="cats-${file.id}"></span>
         ${status === 'complete' ? `<button class="file-verify-btn" data-file-id="${file.id}" style="background:none;border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.35rem;cursor:pointer;transition:all 0.15s;" title="Re-verify this file">verify</button>` : ''}
         <button class="file-delete-btn" data-file-id="${file.id}" style="background:none;border:1px solid transparent;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);padding:0.1rem 0.3rem;cursor:pointer;transition:all 0.15s;opacity:0;" title="Delete imported records for this file">✕</button>
