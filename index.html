@@ -873,6 +873,11 @@ let pendingJournalItems = []; // queued during session, saved in batch
 let APP_PETS = []; // populated from visits collection on load — never hardcoded
 // mentionTracker and sessionActiveCat declared in journal section below
 
+// Popup state
+let popupRawText = '';
+let popupMatches = [];
+let popupMatchIdx = 0;
+
 // ── HELPERS ──
 const $ = id => document.getElementById(id);
 const show = s => { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); $(s).classList.add('active'); };
@@ -1155,7 +1160,6 @@ function renderRecordsTree(tree) {
         ve.addEventListener('click', (e) => {
           if (e.target.closest('[data-action]')) return;
           e.stopPropagation();
-          console.log('Visit click fired, visit:', v.cat, v.date, 'id:', v.id);
           try { openVisit(v); } catch(err) { showToast('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
         });
         ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
@@ -2483,8 +2487,10 @@ async function startProcessingQueue(files) {
     updateProgress(done, total, `Processing: ${file.name}`);
     updateFileBadge(file.id, 'processing');
     try {
-      await processFile(file);
-      updateFileBadge(file.id, 'complete');
+      const result = await processFile(file);
+      if (result !== 'skipped') {
+        updateFileBadge(file.id, 'complete');
+      }
       done++;
       updateProgress(done, total, done < total ? `Done: ${file.name}` : 'All complete!');
     } catch (err) {
@@ -2761,9 +2767,15 @@ async function processFile(file) {
     // ── CRITICAL: Cat not identified or unrecognized ──
     const extractedCats = [...allCats].filter(Boolean);
     const unknownCats = extractedCats.filter(c => knownCatSet.size > 0 && !knownCatSet.has(c.toLowerCase()));
-    if (!extractedCats.length || unknownCats.length) {
-      issues.push({ type: 'cat', label: 'Which cat is this record for?', current: extractedCats[0] || null });
+
+    if (!extractedCats.length) {
+      // Claude found nothing — always prompt
+      issues.push({ type: 'cat', label: 'Which cat is this record for?', current: null });
+    } else if (knownCatSet.size > 0 && unknownCats.length) {
+      // Known list exists and Claude found a name not in it — prompt to confirm or correct
+      issues.push({ type: 'cat', label: `Cat "${unknownCats[0]}" not in known list — confirm or correct:`, current: unknownCats[0] });
     }
+    // If APP_PETS is empty, trust Claude's extraction — no prompt needed
 
     // ── CRITICAL: Date missing ──
     const extractedDates = allVisits.map(v => v.date).filter(d => d && d !== 'unknown');
@@ -2885,7 +2897,7 @@ async function processFile(file) {
       if (corrections === null) {
         await writeFileStatus(file.id, file.name, 'unprocessed');
         updateFileBadge(file.id, 'unprocessed');
-        return;
+        return 'skipped';
       }
       if (corrections.cat) {
         for (const v of allVisits) v.cat = corrections.cat;
@@ -3693,7 +3705,12 @@ above. Return visits:[] and put all findings into the labs array using the cat/d
 `
     : '';
 
-  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), NOT the owner, vet, or clinic name.
+  const filenameLower = (file.name || '').toLowerCase();
+  const filenameHint = APP_PETS.length
+    ? APP_PETS.filter(p => filenameLower.includes(p.toLowerCase()))
+    : [];
+
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}${filenameHint.length ? ` — filename suggests this may be for: ${filenameHint.join(', ')}` : ''}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), NOT the owner, vet, or clinic name.
 ${continuationHeader}
 CRITICAL — DATE ANCHORING:
 All content in a document (clinical note, physical exam, assessments, AND all diagnostics including
@@ -3982,7 +3999,6 @@ function openVisit(visit) {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
   $('record-popup').classList.add('open');
-  console.log('record-popup opened, classList:', $('record-popup').className);
   setTimeout(() => $('popup-search-input').focus(), 80);
   } catch(e) {
     console.error('openVisit error:', e);
@@ -4172,10 +4188,19 @@ function promptClarification(filename, issues) {
         <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);margin-bottom:0.35rem;">${escHtml(issue.label)}</div>`;
 
       if (issue.type === 'cat') {
-        html += `<select id="clarify-cat" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;">
-          <option value="">Choose cat…</option>
-          ${(APP_PETS || []).map(p => `<option value="${escHtml(p)}"${issue.current?.toLowerCase()===p.toLowerCase()?' selected':''}>${escHtml(p)}</option>`).join('')}
-        </select>`;
+        // Use APP_PETS if available, otherwise fall back to a reasonable default set
+        // Also allow typing a new name for truly new pets
+        const catOptions = APP_PETS.length ? APP_PETS : [];
+        // Try to detect cat name from the document filename as a hint
+        const filenameCats = (filename || '').replace(/[_\-\.]/g,' ').split(' ')
+          .filter(w => w.length > 2 && w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase());
+
+        html += `<select id="clarify-cat" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;margin-bottom:0.4rem;">
+          <option value="">Choose existing cat…</option>
+          ${catOptions.map(p => `<option value="${escHtml(p)}"${issue.current?.toLowerCase()===p.toLowerCase()?' selected':''}>${escHtml(p)}</option>`).join('')}
+        </select>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);margin-bottom:0.25rem;">— or enter a new cat name —</div>
+        <input id="clarify-cat-new" type="text" placeholder="New cat name…" value="${escHtml(issue.current && !catOptions.some(p=>p.toLowerCase()===issue.current?.toLowerCase()) ? issue.current : '')}" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;">`;
       } else if (issue.type === 'date') {
         html += `<input id="clarify-date" type="date" value="${issue.current||''}" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;">`;
       } else if (issue.type === 'confirm') {
@@ -4213,8 +4238,12 @@ function promptClarification(filename, issues) {
     document.getElementById('clarify-confirm').onclick = () => {
       const corrections = {};
       const catEl = document.getElementById('clarify-cat');
+      const catNewEl = document.getElementById('clarify-cat-new');
       const dateEl = document.getElementById('clarify-date');
-      if (catEl?.value) corrections.cat = catEl.value;
+      if (catEl || catNewEl) {
+        const catVal = (catEl?.value) || (catNewEl?.value?.trim()) || '';
+        if (catVal) corrections.cat = catVal;
+      }
       if (dateEl?.value) corrections.date = dateEl.value;
       cleanup(corrections);
     };
