@@ -336,6 +336,28 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 .journal-pending-dismiss{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0.1rem 0.2rem;border-radius:3px;flex-shrink:0;transition:color 0.15s;}
 .journal-pending-dismiss:hover{color:var(--red);}
 .journal-group-label{padding:0.15rem 1rem 0.1rem 2.25rem;font-family:'JetBrains Mono',monospace;font-size:0.57rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);margin-top:0.2rem;}
+
+/* Notes panel */
+.notes-section-label{padding:0.3rem 0.75rem 0.15rem;font-family:'JetBrains Mono',monospace;font-size:0.57rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);}
+.note-item{display:flex;align-items:flex-start;gap:0.3rem;padding:0.3rem 0.75rem;border-bottom:1px solid var(--surface2);transition:background 0.12s;cursor:pointer;}
+.note-item:hover{background:var(--surface);}
+.note-item.pinned{background:rgba(124,111,91,0.04);}
+.note-pin-btn{background:none;border:none;cursor:pointer;font-size:0.7rem;padding:0.1rem;flex-shrink:0;opacity:0.35;transition:opacity 0.15s;line-height:1;margin-top:0.1rem;}
+.note-item.pinned .note-pin-btn{opacity:1;}
+.note-item:hover .note-pin-btn{opacity:0.7;}
+.note-item.pinned:hover .note-pin-btn{opacity:1;}
+.note-text{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);flex:1;line-height:1.5;word-break:break-word;}
+.note-item.pinned .note-text{color:var(--ink);}
+.note-cats{display:flex;gap:0.2rem;flex-wrap:wrap;margin-top:0.15rem;}
+.note-cat-tag{font-family:'JetBrains Mono',monospace;font-size:0.52rem;background:var(--surface2);color:var(--accent);border-radius:3px;padding:0 3px;line-height:1.5;}
+.note-delete-btn{background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.15rem;border-radius:3px;flex-shrink:0;opacity:0;transition:opacity 0.15s;line-height:1;}
+.note-item:hover .note-delete-btn{opacity:0.5;}
+.note-item:hover .note-delete-btn:hover{opacity:1;color:var(--red);}
+.note-count-warning{padding:0.2rem 0.75rem;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--amber);text-align:center;}
+#notes-input:focus{border-color:var(--accent);}
+#notes-pin-toggle.active{background:var(--accent);color:white;border-color:var(--accent);}
+.notes-cat-chip{font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.4rem;border-radius:10px;border:1px solid var(--border);background:white;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;}
+.notes-cat-chip.active{background:var(--accent);color:white;border-color:var(--accent);}
 .journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
 .journal-entry-full:hover{background:var(--surface);}
 .journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -479,6 +501,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div class="sidebar-tab active" data-tab="records">Records</div>
       <div class="sidebar-tab" data-tab="labs">Labs</div>
       <div class="sidebar-tab" data-tab="journal">Journal</div>
+      <div class="sidebar-tab" data-tab="notes">Notes</div>
       <div class="sidebar-tab" data-tab="files">Files</div>
     </div>
 
@@ -507,6 +530,19 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <div>Journal is empty.<br>Start chatting to build it.</div>
       </div>
       <div id="journal-tree"></div>
+    </div>
+
+    <!-- Notes Panel -->
+    <div class="sidebar-panel" id="panel-notes">
+      <div id="notes-add-row" style="padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:0.35rem;flex-shrink:0;">
+        <div style="display:flex;gap:0.35rem;align-items:center;">
+          <input id="notes-input" placeholder="Add a note…" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;transition:border-color 0.2s;">
+          <button id="notes-pin-toggle" title="Pin this note" style="background:none;border:1px solid var(--border);border-radius:6px;padding:0.25rem 0.4rem;font-size:0.75rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;line-height:1;">📌</button>
+          <button id="notes-add-btn" class="btn-icon free-icon" style="padding:0.25rem 0.5rem;font-size:0.62rem;"><span class="free-dot"></span> Add</button>
+        </div>
+        <div id="notes-cat-chips" style="display:flex;gap:0.25rem;flex-wrap:wrap;"></div>
+      </div>
+      <div id="notes-list" style="flex:1;overflow-y:auto;padding:0.25rem 0;"></div>
     </div>
 
     <!-- Files Panel -->
@@ -559,6 +595,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
           <span class="free-dot"></span> <span id="flags-count">0</span> Needs review
         </button>
         <button class="btn-icon cost-icon" id="save-session-btn" style="display:none" title="Save session highlights and journal entries to Firestore">
+          <span class="cost-dot"></span> Save Session
           <span class="cost-dot"></span> Save Session
         </button>
         <button class="btn-icon danger" id="signout-btn">Sign Out</button>
@@ -789,7 +826,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </div>
     <div class="modal-footer">
       <button class="btn-icon" id="apikey-cancel-btn">Cancel</button>
-      <button class="btn-icon cost-icon" id="apikey-save-btn"><span class="cost-dot"></span> Save to Account</button>
+      <button class="btn-icon free-icon" id="apikey-save-btn"><span class="free-dot"></span> Save to Account</button>
     </div>
   </div>
 </div>
@@ -834,7 +871,7 @@ let sessionCost = 0;
 let convHistory = [];
 let pendingJournalItems = []; // queued during session, saved in batch
 let APP_PETS = []; // populated from visits collection on load — never hardcoded
-const mentionTally = {}; // {cat_term: count} for repeat-mention detection
+// mentionTracker and sessionActiveCat declared in journal section below
 
 // ── HELPERS ──
 const $ = id => document.getElementById(id);
@@ -899,7 +936,7 @@ $('apikey-save-btn').addEventListener('click', async () => {
   updateStatusBar();
   $('apikey-modal').classList.remove('open');
   $('apikey-save-btn').disabled = false;
-  $('apikey-save-btn').innerHTML = '<span class="cost-dot"></span> Save to Account';
+  $('apikey-save-btn').innerHTML = '<span class="free-dot"></span> Save to Account';
   showToast('API key saved ✓', 'journal');
 });
 
@@ -964,6 +1001,8 @@ $('signin-btn').addEventListener('click', async () => {
 $('signout-btn').addEventListener('click', async () => {
   await signOut(auth);
   sessionCost = 0; convHistory = []; pendingJournalItems = []; driveAccessToken = null;
+  mentionTracker = {}; sessionActiveCat = null;
+  updateJournalBadge();
   try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
   show('signin');
   $('signin-btn').disabled = false;
@@ -1014,6 +1053,10 @@ async function loadInitialData() {
     await loadLabsSidebar();
     setLoading('Loading journal…');
     await loadJournalSidebar();
+    setLoading('Building search index…');
+    await ensureDataCache();
+    setLoading('Loading notes…');
+    await loadNotes(); // pre-load all visits+labs into memory for search
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -1039,7 +1082,7 @@ async function updatePetList() {
     const pets = [...new Set(snap.docs.map(d => d.data().cat).filter(Boolean))].sort();
     if (pets.length) {
       APP_PETS = pets; // update global — used by prompts, context builder, dropdowns
-      rebuildPetRegex();
+      if (window._renderNoteChips) window._renderNoteChips();
       const list = pets.length === 1 ? pets[0]
         : pets.slice(0, -1).join(', ') + ' & ' + pets[pets.length - 1];
       $('welcome-subtitle').textContent =
@@ -1047,12 +1090,6 @@ async function updatePetList() {
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
   } catch(e) { /* non-critical */ }
-}
-
-function rebuildPetRegex() {
-  if (!APP_PETS.length) return;
-  const escaped = APP_PETS.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  JOURNAL_CATS_RE = new RegExp(`\\b(${escaped})\\b`, 'i');
 }
 
 // ── RECORDS SIDEBAR ──
@@ -1101,7 +1138,11 @@ function renderRecordsTree(tree) {
         const ve = document.createElement('div');
         ve.className = 'visit-entry';
         ve.style.cssText = 'position:relative;';
-        ve.innerHTML = `<span class="visit-entry-type">${escHtml(v.clinic || v.docType || 'Visit')}</span>
+        const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
+        const synopsisPreview = v.synopsis ? v.synopsis.split('.')[0].slice(0, 55) : (v.chiefComplaint ? v.chiefComplaint.slice(0, 55) : '');
+        ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
+            <span style="color:var(--accent)">${escHtml(clinicDisplay)}</span>${synopsisPreview ? `<span style="color:var(--ink-muted)"> — ${escHtml(synopsisPreview)}${synopsisPreview.length >= 55 ? '…' : ''}</span>` : ''}
+          </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
             <button class="visit-action-btn" title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--red);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="delete">🗑</button>
@@ -1131,7 +1172,7 @@ function openVisitEdit(v) {
   const body = $('popup-body');
   body.innerHTML = '';
 
-  const fld = (label, key, type = 'text', value = '') => {
+  const fld = (label, key, type = 'text', value = '', rows = 6) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom:0.65rem;';
     const lbl = document.createElement('label');
@@ -1141,7 +1182,7 @@ function openVisitEdit(v) {
     let el;
     if (type === 'textarea') {
       el = document.createElement('textarea');
-      el.rows = 6;
+      el.rows = rows;
       el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;outline:none;color:var(--ink);line-height:1.6;';
     } else if (type === 'select') {
       el = document.createElement('select');
@@ -1169,8 +1210,82 @@ function openVisitEdit(v) {
   form.appendChild(fld('Clinic', 'clinic', 'text', v.clinic || ''));
   form.appendChild(fld('Doctor', 'doctor', 'text', v.doctor || ''));
   form.appendChild(fld('Chief Complaint', 'chiefComplaint', 'text', v.chiefComplaint || ''));
-  form.appendChild(fld('Diagnoses (comma separated)', 'diagnoses', 'text', (v.diagnoses||[]).join(', ')));
-  form.appendChild(fld('Narrative', 'narrative', 'textarea', v.narrative || ''));
+  form.appendChild(fld('Synopsis', 'synopsis', 'textarea', v.synopsis || '', 3));
+
+  // ── Medications sub-form ──
+  const medsWrap = document.createElement('div');
+  medsWrap.style.cssText = 'margin-bottom:0.65rem;';
+  const medsLbl = document.createElement('label');
+  medsLbl.textContent = 'Medications';
+  medsLbl.style.cssText = 'display:block;font-family:JetBrains Mono,monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.35rem;';
+  medsWrap.appendChild(medsLbl);
+
+  let editMeds = JSON.parse(JSON.stringify(v.medications || []));
+
+  const medsListEl = document.createElement('div');
+  medsListEl.style.cssText = 'display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.4rem;';
+
+  const renderMedsList = () => {
+    medsListEl.innerHTML = '';
+    editMeds.forEach((m, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:0.3rem;background:var(--surface);border-radius:6px;padding:0.3rem 0.5rem;';
+      const info = document.createElement('span');
+      info.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.62rem;color:var(--ink-dim);flex:1;';
+      info.textContent = `${m.name}${m.dose?' '+m.dose:''}${m.frequency?', '+m.frequency:''}${m.supplement?' (supp)':''}${m.continuing?' ✓':''}`;
+      const delBtn = document.createElement('button');
+      delBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0.1rem 0.2rem;border-radius:3px;transition:color 0.15s;';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Remove';
+      delBtn.onclick = () => { editMeds.splice(idx, 1); renderMedsList(); };
+      row.appendChild(info);
+      row.appendChild(delBtn);
+      medsListEl.appendChild(row);
+    });
+    if (!editMeds.length) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.6rem;color:var(--ink-muted);padding:0.2rem 0;';
+      empty.textContent = 'No medications';
+      medsListEl.appendChild(empty);
+    }
+  };
+  renderMedsList();
+
+  // Add medication row
+  const addMedRow = document.createElement('div');
+  addMedRow.style.cssText = 'display:flex;gap:0.25rem;flex-wrap:wrap;align-items:center;';
+  const mkInput = (ph, w) => {
+    const i = document.createElement('input');
+    i.placeholder = ph;
+    i.style.cssText = `font-family:JetBrains Mono,monospace;font-size:0.65rem;border:1px solid var(--border);border-radius:5px;padding:0.25rem 0.4rem;outline:none;color:var(--ink);background:var(--bg);width:${w};`;
+    return i;
+  };
+  const nameI = mkInput('Name*', '90px');
+  const doseI = mkInput('Dose', '60px');
+  const freqI = mkInput('Freq', '55px');
+  const suppChk = document.createElement('input'); suppChk.type = 'checkbox'; suppChk.title = 'Supplement';
+  const suppLbl = document.createElement('label');
+  suppLbl.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.58rem;color:var(--ink-muted);display:flex;align-items:center;gap:0.2rem;cursor:pointer;';
+  suppLbl.appendChild(suppChk); suppLbl.append('supp');
+  const addMedBtn = document.createElement('button');
+  addMedBtn.className = 'btn-icon free-icon';
+  addMedBtn.style.cssText = 'font-size:0.58rem;padding:0.2rem 0.45rem;';
+  addMedBtn.innerHTML = '+ Add';
+  addMedBtn.onclick = () => {
+    const name = nameI.value.trim();
+    if (!name) return;
+    editMeds.push({ name, dose: doseI.value.trim()||null, frequency: freqI.value.trim()||null, supplement: suppChk.checked, continuing: true, dispensed: false, route: null });
+    nameI.value = ''; doseI.value = ''; freqI.value = ''; suppChk.checked = false;
+    renderMedsList();
+  };
+  [nameI, doseI, freqI].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') addMedBtn.click(); }));
+  addMedRow.append(nameI, doseI, freqI, suppLbl, addMedBtn);
+
+  medsWrap.appendChild(medsListEl);
+  medsWrap.appendChild(addMedRow);
+  form.appendChild(medsWrap);
+
+  form.appendChild(fld('Narrative', 'narrative', 'textarea', v.narrative || '', 10));
   body.appendChild(form);
 
   const saveBtn = document.createElement('button');
@@ -1181,12 +1296,13 @@ function openVisitEdit(v) {
     if (!v.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
     const updates = {};
     form.querySelectorAll('[data-key]').forEach(el => {
-      const key = el.dataset.key;
-      if (key === 'diagnoses') updates[key] = el.value.split(',').map(s => s.trim()).filter(Boolean);
-      else updates[key] = el.value;
+      updates[el.dataset.key] = el.value;
     });
+    updates.medications = editMeds; // include medications from sub-form
     try {
       await setDoc(doc(db, 'visits', v.id), updates, { merge: true });
+      // Invalidate cache so search picks up the edit
+      _allVisitsCache = null;
       showToast('Visit updated ✓', 'journal');
       $('record-popup').classList.remove('open');
       loadRecordsSidebar();
@@ -1224,11 +1340,9 @@ const TEST_ORDER = [
   'White Blood Cells','Red Blood Cells','Bacteria','Epithelial Cells','Mucus','Casts','Crystals',
   // Endocrinology
   'Total T4','T4','TSH','Cortisol',
-  // PCR/Serology
+  // PCR
   'FeLV','FIV','Giardia','Clostridium','Coronavirus','Tritrichomonas',
-  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm',
-  // Blood Pressure
-  'Systolic Blood Pressure'
+  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm'
 ];
 
 let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
@@ -1257,8 +1371,10 @@ function inferLabGroup(test, labName) {
     if (ln.includes('cbc') || ln.includes('hematology') || ln.includes('hemato')) return 'CBC';
     if (ln.includes('chemistry') || ln.includes('chem') || ln.includes('biochem')) return 'Chemistry';
     if (ln.includes('endocrin') || ln.includes('thyroid') || ln.includes('t4')) return 'Endocrinology';
-    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('felv') || ln.includes('fiv')) return 'PCR/Serology';
-    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return 'Blood Pressure';
+    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('felv') || ln.includes('fiv') ||
+        ln.includes('gi panel') || ln.includes('diarrhea') || ln.includes('parasite') || ln.includes('fecal') ||
+        ln.includes('enteric') || ln.includes('stool')) return 'PCR';
+    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return null; // BP goes in vitals
   }
   const t = test.toLowerCase();
   // CBC markers
@@ -1269,16 +1385,16 @@ function inferLabGroup(test, labName) {
        'clarity','color','mucus','urobilinogen','bilirubin (urine)','ketone','blood/hemoglobin'].some(k => t.includes(k))
       || t === 'ph') return 'Urinalysis';
   // Endocrinology
-  if (['t4','tsh','cortisol','insulin','acth','progesterone'].some(k => t.includes(k))) return 'Endocrinology';
-  // Blood pressure
-  if (t.includes('systolic') || t.includes('diastolic') || t.includes('blood pressure')) return 'Blood Pressure';
-  // PCR/Serology — including fecal/stool panels
+  if (['t4','tsh','cortisol','insulin','acth','progesterone','tli','pli','folate','cobalamin'].some(k => t.includes(k))) return 'Endocrinology';
+  // BP — return null, strip from labs
+  if (t.includes('systolic') || t.includes('diastolic') || t.includes('blood pressure')) return null;
+  // PCR — including GI/fecal/parasite/diarrhea panels
   if (['felv','fiv','giardia','toxoplasma','bartonella','heartworm','coronavirus','tritrichomonas',
        'cryptosporidium','clostridium','campylobacter','salmonella','panleukopenia','herpes','calici',
-       'antigen','antibody','titer','pcr','serology','fecal','stool','culture'].some(k => t.includes(k))) return 'PCR/Serology';
-  // Imaging — should be in procedures but handle gracefully if extracted as labs
+       'antigen','antibody','titer','pcr','serology','fecal','stool','culture',
+       'enteric','parasite','diarrhea panel'].some(k => t.includes(k))) return 'PCR';
+  // Imaging — should be in procedures but handle gracefully
   if (['ultrasound','radiograph','x-ray','xray','ct scan','mri','echo','echocardiogram'].some(k => t.includes(k))) return 'Imaging';
-  // Default chemistry
   return 'Chemistry';
 }
 
@@ -1323,7 +1439,7 @@ function renderLabsSidebar() {
   const allTests = Object.keys(latest);
 
   // Group by labGroup, then within each group use TEST_ORDER for ordering
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Imaging', 'Other'];
+  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of allTests) {
     const e = latest[test];
@@ -1337,36 +1453,130 @@ function renderLabsSidebar() {
     ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)).sort()
   ];
 
-  for (const group of orderedGroups) {
-    // Group header
-    const header = document.createElement('div');
-    header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border-top:1px solid var(--surface2);margin-top:0.25rem;';
-    header.textContent = group;
-    container.appendChild(header);
+  // Groups that collapse by default — show summary line, expand on click
+  const COLLAPSIBLE_GROUPS = new Set(['Urinalysis', 'PCR', 'Endocrinology', 'Imaging']);
 
+  for (const group of orderedGroups) {
     const testsInGroup = byGroup[group];
     const ordered = [
       ...TEST_ORDER.filter(t => testsInGroup.includes(t)),
       ...testsInGroup.filter(t => !TEST_ORDER.includes(t)).sort()
     ];
+    const isCollapsible = COLLAPSIBLE_GROUPS.has(group);
 
-    for (const test of ordered) {
-      const e = latest[test];
-      const row = document.createElement('div');
-      row.className = 'lab-summary-row';
-      const abn = (e.abnormal||'').toUpperCase();
-      const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
-      const displayVal = typeof e.value === 'number'
-        ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
-        : String(e.value || '');
-      row.innerHTML = `
-        <span class="lab-test-name">${escHtml(test)}</span>
-        <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
-        <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
-      row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
-      row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
-      attachLabCtxMenu(row, e, flowsheetCat);
-      container.appendChild(row);
+    // Build summary text for collapsible groups
+    let summary = '';
+    if (group === 'Urinalysis') {
+      const usg = ordered.find(t => t.toLowerCase().includes('gravity') || t.toLowerCase() === 'usg');
+      const abnormals = ordered.filter(t => {
+        const abn = (latest[t].abnormal||'').toUpperCase();
+        return abn && abn !== 'NEG' && abn !== 'NEGATIVE' && abn !== 'NORMAL';
+      });
+      summary = usg ? `USG ${latest[usg].value}` : '';
+      if (abnormals.length) summary += (summary ? ' · ' : '') + abnormals.map(t => t.split(' ')[0]).join(', ') + ' ⚠';
+      else if (summary) summary += ' · normal';
+    } else if (group === 'PCR') {
+      const positives = ordered.filter(t => {
+        const v = String(latest[t].value||'').toUpperCase();
+        return v === 'POSITIVE' || v === 'DETECTED' || (latest[t].abnormal||'').toUpperCase() === 'HIGH';
+      });
+      summary = positives.length
+        ? `${positives.length} positive: ${positives.map(t => t.split(' ')[0]).join(', ')}`
+        : `${ordered.length} tests — all negative`;
+    } else if (group === 'Endocrinology') {
+      // Show key values inline: T4, TLI, PLI
+      const keyTests = ['Total T4','T4','TLI','PLI'].filter(k => ordered.includes(k));
+      summary = keyTests.map(k => {
+        const e = latest[k];
+        const abn = (e.abnormal||'').toUpperCase();
+        const val = typeof e.value === 'number' ? e.value.toFixed(1) : String(e.value||'');
+        return `${k} ${val}${abn && abn !== 'NEG' ? ' ⚠' : ''}`;
+      }).join(' · ') || `${ordered.length} tests`;
+    }
+
+    // Group header — clickable if collapsible
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;border-top:1px solid var(--surface2);margin-top:0.25rem;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
+
+    if (isCollapsible) {
+      const isCollapsed = true; // start collapsed
+      const arrow = document.createElement('span');
+      arrow.style.cssText = 'float:right;font-size:0.5rem;color:var(--ink-muted);transition:transform 0.15s;margin-top:0.1rem;';
+      arrow.textContent = '▶';
+      header.style.color = 'var(--ink-dim)';
+
+      const groupLabel = document.createElement('span');
+      groupLabel.textContent = group;
+
+      const summaryEl = document.createElement('span');
+      summaryEl.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.57rem;color:var(--ink-muted);font-weight:400;letter-spacing:0;text-transform:none;margin-left:0.4rem;';
+      summaryEl.textContent = summary;
+
+      header.appendChild(groupLabel);
+      header.appendChild(summaryEl);
+      header.appendChild(arrow);
+
+      // Build rows container — hidden by default
+      const rowsEl = document.createElement('div');
+      rowsEl.style.display = 'none';
+
+      let collapsed = true;
+      header.addEventListener('click', () => {
+        collapsed = !collapsed;
+        rowsEl.style.display = collapsed ? 'none' : 'block';
+        arrow.style.transform = collapsed ? '' : 'rotate(90deg)';
+        summaryEl.style.display = collapsed ? '' : 'none';
+      });
+
+      container.appendChild(header);
+
+      for (const test of ordered) {
+        const e = latest[test];
+        const row = document.createElement('div');
+        row.className = 'lab-summary-row';
+        const abn = (e.abnormal||'').toUpperCase();
+        const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
+        const displayVal = typeof e.value === 'number'
+          ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
+          : String(e.value || '');
+        row.innerHTML = `
+          <span class="lab-test-name">${escHtml(test)}</span>
+          <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
+          <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
+        row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
+        row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
+        attachLabCtxMenu(row, e, flowsheetCat);
+        rowsEl.appendChild(row);
+      }
+      container.appendChild(rowsEl);
+
+    } else {
+      // Expanded group — CBC/Chemistry styled as minimal dividers
+      const isDividerGroup = group === 'CBC' || group === 'Chemistry';
+      header.style.cssText = isDividerGroup
+        ? 'padding:0.2rem 0.75rem 0.1rem;font-family:JetBrains Mono,monospace;font-size:0.52rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--border);border-top:1px solid var(--surface2);margin-top:0.2rem;'
+        : 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);border-top:1px solid var(--surface2);margin-top:0.25rem;';
+      header.textContent = group;
+      container.appendChild(header);
+
+      for (const test of ordered) {
+        const e = latest[test];
+        const row = document.createElement('div');
+        row.className = 'lab-summary-row';
+        const abn = (e.abnormal||'').toUpperCase();
+        const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
+        const displayVal = typeof e.value === 'number'
+          ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
+          : String(e.value || '');
+        row.innerHTML = `
+          <span class="lab-test-name">${escHtml(test)}</span>
+          <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
+          <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
+        row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
+        row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
+        attachLabCtxMenu(row, e, flowsheetCat);
+        container.appendChild(row);
+      }
     }
   }
 
@@ -1467,7 +1677,7 @@ function buildFlowsheetTable(cat, container) {
   table.appendChild(thead);
 
   // Body — grouped by labGroup
-  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR/Serology', 'Blood Pressure', 'Imaging', 'Other'];
+  const GROUP_ORDER = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
   for (const test of orderedTests) {
     // Find the most recent entry for this test to get its group
@@ -1519,8 +1729,8 @@ function buildFlowsheetTable(cat, container) {
             ? (entry.value % 1 === 0 ? entry.value.toString() : entry.value < 0.1 ? entry.value.toFixed(3) : entry.value < 10 ? entry.value.toFixed(2) : entry.value.toFixed(1))
             : String(entry.value || '');
           td.textContent = displayVal;
-          if (abn === 'HIGH') td.style.cssText += 'color:var(--red);font-weight:600;';
-          else if (abn === 'LOW') td.style.cssText += 'color:var(--blue);font-weight:600;';
+          if (abn === 'HIGH') td.style.cssText += 'color:#b91c1c;background:#fee2e2;font-weight:600;border-radius:3px;';
+          else if (abn === 'LOW') td.style.cssText += 'color:#1d4ed8;background:#dbeafe;font-weight:600;border-radius:3px;';
           else if (abn === 'NEG' || abn === 'NEGATIVE') td.style.color = 'var(--ink-muted)';
           let tooltip = test;
           if (entry.unit) tooltip += ' (' + entry.unit + ')';
@@ -1574,9 +1784,22 @@ function renderJournalSidebar(bycat) {
     for (const item of pendingJournalItems) {
       const el = document.createElement('div');
       el.className = 'journal-pending-item';
-      el.innerHTML = `<span class="journal-pending-text" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,32))}${item.text.length>32?'…':''}</span><button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
+      const autoBadge = item._source === 'auto'
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;" title="${escHtml(item._autoNote||'auto-detected')}">auto</span>`
+        : item._needsResolution
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--blue-bg);color:var(--blue);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">resolve</span>`
+        : '';
+      const statusBadge = item.status === 'past'
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--surface2);color:var(--ink-muted);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">past</span>`
+        : item.status === 'plan'
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--blue-bg);color:var(--blue);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">plan</span>`
+        : item.status === 'maybe'
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">maybe</span>`
+        : '';
+      el.innerHTML = `<span class="journal-pending-text" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,28))}${item.text.length>28?'…':''}${autoBadge}${statusBadge}</span><button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
       el.querySelector('button').addEventListener('click', () => {
         pendingJournalItems = pendingJournalItems.filter(i => i !== item);
+        updateJournalBadge();
         loadJournalSidebar();
       });
       pending.appendChild(el);
@@ -2261,6 +2484,8 @@ async function startProcessingQueue(files) {
 
   // Reload sidebars with new data
   await reloadSidebars('all');
+  _allVisitsCache = null; // invalidate search cache — will reload on next chat message
+  _allLabsCache = null;
   updateProcessButtons();
 
   const msg = processingStop
@@ -2315,6 +2540,31 @@ async function processFile(file) {
   // Mark as processing in Firestore
   await writeFileStatus(file.id, file.name, 'processing');
 
+  // ── SHA-256 DEDUPLICATION ──
+  // Compute hash of the raw file blob and check against previously processed files
+  let fileHash = null;
+  try {
+    const blobForHash = await fetchDriveFileBlob(file.id);
+    const buf = await blobForHash.arrayBuffer();
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    fileHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+
+    // Check if we've seen this exact file before (different Drive file ID, same content)
+    const dupSnap = await getDocs(query(
+      collection(db, 'files'),
+      where('fileHash', '==', fileHash),
+      where('status', '==', 'complete')
+    ));
+    if (!dupSnap.empty && !dupSnap.docs.some(d => d.id === file.id)) {
+      const dupName = dupSnap.docs[0].data().filename || 'another file';
+      showToast(`${file.name.slice(0,30)}: exact duplicate of "${dupName.slice(0,25)}" — skipped`, 'warning');
+      await writeFileStatus(file.id, file.name, 'complete', {
+        fileHash, extractionPasses: ['exact_duplicate'], duplicateOf: dupSnap.docs[0].id
+      });
+      return;
+    }
+  } catch(e) { console.warn('Hash check failed (non-critical):', e.message); }
+
   let extractedText = null;
   let isImage = false;
   let imageBase64 = null;
@@ -2332,10 +2582,12 @@ async function processFile(file) {
     imageMediaType = blob.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
   } else if (ext === 'pdf' || mime === 'application/pdf') {
     // PDF: extract text via PDF.js
+    $('progress-current').textContent = `${file.name}: extracting text…`;
     const blob = await fetchDriveFileBlob(file.id);
     extractedText = await extractPdfText(blob);
     if (!extractedText || extractedText.trim().length < 50) {
       // Fallback: treat as image (scanned PDF) — render first page
+      $('progress-current').textContent = `${file.name}: rendering as image…`;
       imageBase64 = await pdfPageToBase64(blob);
       imageMediaType = 'image/png';
       isImage = true;
@@ -2394,6 +2646,7 @@ async function processFile(file) {
   const allCats = new Set();
   const allDates = new Set();
   const passes = [];
+  let isAmendment = false;
 
   // Tracks patient context extracted from chunk 0 for injection into later chunks
   let chunkContext = null; // { cat, date, clinic, doctor }
@@ -2447,8 +2700,9 @@ async function processFile(file) {
     (result.dates || []).forEach(d => allDates.add(d));
     if (result.visits?.length) { allVisits.push(...result.visits); passes.push('narrative'); }
     if (result.labs?.length) { allLabs.push(...result.labs); passes.push('labs'); }
-    if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: r.labName || 'PCR/Serology', labGroup: r.labGroup || 'PCR/Serology' }))); passes.push('pcr'); }
+    if (result.pcr?.length) { allLabs.push(...result.pcr.map(r => ({ ...r, labName: r.labName || 'PCR', labGroup: r.labGroup || 'PCR' }))); passes.push('pcr'); }
     if (result.flags?.length) allFlags.push(...result.flags);
+    if (result.isAmendment) isAmendment = true;
 
     // After chunk 0 succeeds, capture patient context for injection into later chunks
     if (ci === 0 && !chunkContext) {
@@ -2467,13 +2721,190 @@ async function processFile(file) {
   }
 
 
+  // ── REALTIME PRE-WRITE CHECKS ──
+  // Run before writing anything to Firestore. Critical issues pause for clarification,
+  // quality issues add flags but don't block writing.
+  {
+    const issues = [];         // blocks write until resolved
+    const qualityFlags = [];   // added to allFlags, don't block
+
+    const knownCatSet = new Set((APP_PETS || []).map(p => p.toLowerCase()));
+
+    // ── CRITICAL: Cat not identified or unrecognized ──
+    const extractedCats = [...allCats].filter(Boolean);
+    const unknownCats = extractedCats.filter(c => knownCatSet.size > 0 && !knownCatSet.has(c.toLowerCase()));
+    if (!extractedCats.length || unknownCats.length) {
+      issues.push({ type: 'cat', label: 'Which cat is this record for?', current: extractedCats[0] || null });
+    }
+
+    // ── CRITICAL: Date missing ──
+    const extractedDates = allVisits.map(v => v.date).filter(d => d && d !== 'unknown');
+    if (!extractedDates.length && allVisits.length > 0) {
+      issues.push({ type: 'date', label: 'What is the visit date?', current: null });
+    }
+
+    // ── CRITICAL: Low confidence — extraction unreliable ──
+    const lowConfVisits = allVisits.filter(v => (v.confidence || 0.8) < 0.6);
+    if (lowConfVisits.length) {
+      issues.push({
+        type: 'confirm',
+        label: `Claude has low confidence in this extraction (${Math.round((lowConfVisits[0].confidence||0)*100)}%). Review before importing?`,
+        detail: lowConfVisits[0].synopsis || lowConfVisits[0].chiefComplaint || 'No summary available'
+      });
+    }
+
+    // ── CRITICAL: Multiple cats in one file ──
+    if (extractedCats.length > 1 && knownCatSet.size > 0) {
+      issues.push({
+        type: 'multicat',
+        label: `Multiple cats found in this file: ${extractedCats.join(', ')}. Is this correct?`,
+        cats: extractedCats
+      });
+    }
+
+    // ── CRITICAL: Apparent duplicate visit ──
+    if (_allVisitsCache && allVisits.length > 0) {
+      for (const v of allVisits) {
+        const existing = _allVisitsCache.find(e =>
+          e.cat?.toLowerCase() === v.cat?.toLowerCase() &&
+          e.date === v.date &&
+          e.clinic?.toLowerCase() === v.clinic?.toLowerCase()
+        );
+        if (existing) {
+          // Same cat + date + clinic — check if content is similar
+          const simScore = textSimilarity(v.narrative || v.synopsis || '', existing.narrative || existing.synopsis || '');
+          if (simScore > 0.5) {
+            // High similarity — mark as duplicate and skip silently
+            v._skipDuplicate = true;
+            qualityFlags.push({
+              type: 'duplicate_visit',
+              description: `Duplicate detected: ${v.cat} visit on ${v.date} already exists with ${Math.round(simScore*100)}% similar content. Skipped.`,
+              bestGuess: null
+            });
+          } else if (simScore > 0.2) {
+            // Partial overlap — likely an amendment, mark it
+            isAmendment = true;
+          }
+          // Low similarity with same cat+date+clinic — could be legitimate separate record, proceed
+        }
+      }
+      // Remove visits marked as duplicates
+      const dupCount = allVisits.filter(v => v._skipDuplicate).length;
+      allVisits.splice(0, allVisits.length, ...allVisits.filter(v => !v._skipDuplicate));
+      if (dupCount && allVisits.length === 0 && allLabs.length === 0) {
+        // Everything was a duplicate — skip file entirely
+        await writeFileStatus(file.id, file.name, 'complete', {
+          extractionPasses: ['duplicate_skipped'],
+          fileHash: fileHash || null
+        });
+        updateFileBadge(file.id, 'complete');
+        showToast(`${file.name.slice(0,30)}: exact duplicate — skipped ✓`, 'journal');
+        return;
+      }
+    }
+
+    // ── QUALITY: Synopsis absent or very short ──
+    const shortSynopsis = allVisits.filter(v => !v._skipDuplicate && (!v.synopsis || v.synopsis.length < 30));
+    if (shortSynopsis.length) {
+      qualityFlags.push({
+        type: 'quality_warning',
+        description: `Synopsis missing or very short — extraction may be incomplete for ${shortSynopsis.map(v=>v.cat+' '+v.date).join(', ')}.`,
+        bestGuess: null
+      });
+    }
+
+    // ── QUALITY: Narrative very short ──
+    const shortNarrative = allVisits.filter(v => !v._skipDuplicate && v.narrative && v.narrative.length < 150);
+    if (shortNarrative.length) {
+      qualityFlags.push({
+        type: 'quality_warning',
+        description: `Narrative unusually short (${shortNarrative[0].narrative?.length} chars) — clinical detail may be missing.`,
+        bestGuess: null
+      });
+    }
+
+    // ── QUALITY: Labs expected but none found ──
+    const textHasLabKeywords = (extractedText || '').toLowerCase().match(/\b(cbc|chemistry|hematology|urinalysis|creatinine|albumin|platelets|lymphocytes)\b/);
+    if (textHasLabKeywords && allLabs.length === 0) {
+      qualityFlags.push({
+        type: 'quality_warning',
+        description: 'Document appears to contain lab results but none were extracted — may need reprocessing.',
+        bestGuess: null
+      });
+    }
+
+    // ── QUALITY: Amendment with no existing record to amend ──
+    if (isAmendment && _allVisitsCache) {
+      const hasMatchingVisit = allVisits.some(v =>
+        _allVisitsCache.some(e => e.cat === v.cat && e.date === v.date)
+      );
+      if (!hasMatchingVisit) {
+        qualityFlags.push({
+          type: 'quality_warning',
+          description: 'Document flagged as amendment but no existing record found for this cat+date — importing as new record.',
+          bestGuess: null
+        });
+        isAmendment = false; // treat as new
+      }
+    }
+
+    // Add quality flags to allFlags (non-blocking)
+    allFlags.push(...qualityFlags);
+
+    // Prompt for critical issues
+    if (issues.length) {
+      const corrections = await promptClarification(file.name, issues);
+      if (corrections === null) {
+        await writeFileStatus(file.id, file.name, 'unprocessed');
+        updateFileBadge(file.id, 'unprocessed');
+        return;
+      }
+      if (corrections.cat) {
+        for (const v of allVisits) v.cat = corrections.cat;
+        for (const l of allLabs) l.cat = corrections.cat;
+        allCats.clear(); allCats.add(corrections.cat);
+      }
+      if (corrections.date) {
+        for (const v of allVisits) if (!v.date || v.date === 'unknown') v.date = corrections.date;
+        for (const l of allLabs) if (!l.resultDate) l.resultDate = corrections.date;
+        allDates.add(corrections.date);
+      }
+      // multicat confirmed — no changes needed, user said it's correct
+      // low confidence confirmed — proceed as-is
+    }
+  }
+
   // Normalize labGroup for any rows the model mis-classified
   normalizeLabGroups(allLabs);
+  // Remove BP readings — these belong in visit vitals, not the lab panel
+  allLabs.splice(0, allLabs.length, ...stripBPFromLabs(allLabs));
 
-  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes);
+  // Reconcile lab cat names — if a lab has an unknown cat name (not in APP_PETS)
+  // but we have a confirmed patient from chunk 0, correct it and flag for review.
+  if (chunkContext?.cat) {
+    const knownCats = new Set((APP_PETS || []).map(p => p.toLowerCase()));
+    const badCats = new Set();
+    for (const lab of allLabs) {
+      if (!lab.cat || (knownCats.size > 0 && !knownCats.has((lab.cat || '').toLowerCase()))) {
+        badCats.add(lab.cat || '(blank)');
+        lab.cat = chunkContext.cat; // correct it so the data isn't lost
+      }
+    }
+    if (badCats.size > 0) {
+      // Flag it so the user knows a correction was made
+      allFlags.push({
+        type: 'no_cats',
+        description: `Labs from chunk 2+ had unrecognized cat name(s): ${[...badCats].join(', ')}. Reassigned to ${chunkContext.cat} — please verify lab data is correct.`,
+        bestGuess: chunkContext.cat
+      });
+    }
+    allCats.add(chunkContext.cat);
+  }
+
+  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes, isAmendment, fileHash);
 }
 
-async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes) {
+async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes, isAmendment = false, fileHash = null) {
   // Save raw extraction result to Firestore immediately — free, enables write-only retry
   const extractionCache = { allVisits, allLabs, allFlags, cats: [...allCats], dates: [...allDates], passes: [...new Set(passes)] };
   try {
@@ -2484,23 +2915,69 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     });
   } catch(e) { console.warn('Extraction cache write failed (non-critical):', e.message); }
 
+  // Clear any stale flags from a previous (possibly bad) extraction of this file
+  // so reprocessing doesn't accumulate orphaned flags that keep the file stuck as "flagged"
+  try {
+    const oldFlags = await getDocs(query(collection(db, 'flags'), where('fileId', '==', file.id)));
+    for (const d of oldFlags.docs) await deleteDoc(d.ref);
+  } catch(e) { console.warn('Flag clear failed (non-critical):', e.message); }
+
   // Build a reliable date pool: result.dates + all visit dates — used as fallback for orphaned labs
   const visitDates = allVisits.map(v => v.date).filter(Boolean);
   const allKnownDates = [...new Set([...allDates, ...visitDates])].sort().reverse(); // most recent first
   const primaryDate = allKnownDates[0] || null;
 
-  // Write to Firestore using batch — catch errors and mark file as write-failed
-  // so user can retry the write without re-extracting (no extra API cost)
+  // Pre-fetch existing visits for amendment handling (reads must happen before writeBatch)
+  const amendmentMatches = {};
+  if (isAmendment) {
+    for (const visit of allVisits) {
+      if (!visit.cat || visit.cat === 'SKIP') continue;
+      try {
+        const existingSnap = await getDocs(query(
+          collection(db, 'visits'),
+          where('cat', '==', visit.cat),
+          where('date', '==', visit.date || 'unknown')
+        ));
+        if (!existingSnap.empty) {
+          amendmentMatches[`${visit.cat}_${visit.date}`] = existingSnap.docs[0];
+        }
+      } catch(e) { /* non-critical */ }
+    }
+  }
+
+  // Write to Firestore using batch
   try {
     const fsBatch = writeBatch(db);
 
     for (const visit of allVisits) {
       if (!visit.cat || visit.cat === 'SKIP') continue;
+
+      // Amendment handling: if same cat+date already exists, merge rather than duplicate
+      const matchKey = `${visit.cat}_${visit.date}`;
+      if (isAmendment && amendmentMatches[matchKey]) {
+        const existDoc = amendmentMatches[matchKey];
+        const existData = existDoc.data();
+        fsBatch.update(existDoc.ref, {
+          synopsis: visit.synopsis || existData.synopsis,
+          narrative: visit.narrative || existData.narrative,
+          medications: visit.medications?.length ? visit.medications : existData.medications,
+          procedures: visit.procedures?.length ? visit.procedures : existData.procedures,
+          vitals: visit.vitals || existData.vitals,
+          updatedAt: new Date().toISOString(),
+          sourceFiles: [...new Set([...(existData.sourceFiles||[]), file.name])],
+          driveFileIds: [...new Set([...(existData.driveFileIds||[]), file.id])]
+        });
+        if (visit.cat) allCats.add(visit.cat);
+        if (visit.date) allDates.add(visit.date);
+        continue;
+      }
+
       fsBatch.set(doc(collection(db, 'visits')), {
         cat: visit.cat, date: visit.date || 'unknown',
         clinic: visit.clinic || null, doctor: visit.doctor || null,
         chiefComplaint: visit.chiefComplaint || null,
-        diagnoses: visit.diagnoses || [], medications: visit.medications || [],
+        synopsis: visit.synopsis || null,
+        medications: visit.medications || [],
         procedures: visit.procedures || [], vitals: visit.vitals || null,
         narrative: visit.narrative || '',
         sourceFiles: [file.name], driveFileIds: [file.id], sourceFileId: file.id,
@@ -2564,6 +3041,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     datesCovered: [...allDates].sort(),
     extractionPasses: [...new Set(passes)],
     flags: allFlags.map(f => f.type),
+    fileHash: fileHash || null,
     processedAt: new Date().toISOString()
   });
 
@@ -2924,7 +3402,11 @@ async function confirmDeleteFileRecords(file) {
   await reloadSidebars('labs');
   updateProcessButtons();
 
-  showToast(`Deleted: ${toDelete.length} visits, ${labCount} labs ✓`, 'journal');
+  const summary = [];
+  if (toDelete.length) summary.push(`${toDelete.length} visit${toDelete.length > 1 ? 's' : ''}`);
+  if (labCount) summary.push(`${labCount} lab result${labCount > 1 ? 's' : ''}`);
+  if (flagCount) summary.push(`${flagCount} flag${flagCount > 1 ? 's' : ''}`);
+  showToast(`Deleted ${summary.join(', ')} from "${file.name.slice(0, 25)}" ✓`, 'journal');
 }
 
 // ── VISIT CONTEXT MENU ──
@@ -3020,17 +3502,7 @@ async function writeFileStatus(fileId, filename, status, extra = {}) {
 
 // ── CLAUDE EXTRACTION PASSES ──
 
-function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records.
-Rules:
-- Pet/patient name: identify the ANIMAL PATIENT being examined — the subject of the visit, listed under 'Patient Name', 'Patient', or 'Name' in the patient details section. Known pets: ${APP_PETS.join(', ')||'detect from document'}. Do NOT use the owner name, attending vet name, referring vet name, clinic name, or any staff name as the cat name. If uncertain which name is the patient, use context (species, breed, age fields nearby confirm it).
-- Invoices: extract ONLY meds dispensed, vaccines, prescription foods, procedures + dates. Discard all costs/billing. If none of those → respond {skip:true}
-- Bulk clinical summaries: IGNORE any summary/problem list header block at the top. Extract ONLY individual dated visit entries
-- Discard boilerplate: portal instructions, legal text, appointment reminders
-- Multi-cat files: produce separate records per cat
-- confidence (0-1) on each visit is required
-- flags array: ONLY include flags that require human review to resolve — missing visit date, unidentified cat, or genuinely ambiguous document type. Do NOT flag low-confidence individual lab values, marketing inserts, or minor formatting issues. Leave flags:[] for clean documents.
-- Dates: YYYY-MM-DD format. If uncertain, use your best guess and set confidence accordingly
-- Always respond with ONLY valid JSON, no markdown fences, no extra text`; }
+function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. Never truncate or omit clinical data.`; }
 
 async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
@@ -3166,15 +3638,17 @@ function normalizeLabGroups(labs) {
     if (UA_TESTS.has(t)) { lab.labGroup = 'Urinalysis'; continue; }
     if (CBC_TESTS.has(t)) { lab.labGroup = 'CBC'; continue; }
     if (ENDO_TESTS.has(t)) { lab.labGroup = 'Endocrinology'; continue; }
-    if (BP_TESTS.has(t)) { lab.labGroup = 'Blood Pressure'; continue; }
-    // If still unset, default to Chemistry (most common)
+    if (BP_TESTS.has(t)) { lab._isBP = true; continue; } // mark for removal
     if (!lab.labGroup) lab.labGroup = 'Chemistry';
   }
 }
 
+// Strip BP readings from labs array — they belong in visit vitals, not the lab panel
+function stripBPFromLabs(labs) {
+  return labs.filter(l => !l._isBP);
+}
+
 async function runCombinedPass(file, chunk) {
-  // Build context preamble for continuation chunks (pages 2+ of a split document)
-  // This prevents the model from inventing a patient name from random text fragments
   const continuationHeader = (chunk._isContinuation && chunk._context)
     ? `CONTINUATION CHUNK — This is a later section of the same document.
 Patient context already established:
@@ -3189,128 +3663,146 @@ above. Return visits:[] and put all findings into the labs array using the cat/d
 `
     : '';
 
-  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), not the owner, vet, or clinic name.
-${continuationHeader}Extract ALL clinical data from this document. Be exhaustive — never omit values.
-
+  const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), NOT the owner, vet, or clinic name.
+${continuationHeader}
 CRITICAL — DATE ANCHORING:
-This document has a single Record Date / Visit Date that applies to ALL content in it — the clinical note,
-physical exam, assessments, AND all diagnostic results (CBC, chemistry, urinalysis, endocrinology, blood pressure).
-Even if the diagnostic results section appears at the end under a separate header or reference number,
-they belong to the SAME visit date as the rest of the document. Use the Record Date from the header as
-the date for every visit and every lab result unless the document explicitly states a DIFFERENT date for
-a specific result. Never leave resultDate or visitDate null if a Record Date exists anywhere in the document.
+All content in a document (clinical note, physical exam, assessments, AND all diagnostics including
+CBC, chemistry, urinalysis, endocrinology, blood pressure) shares the single Record Date from the
+document header. Use that date for every visit and every lab result unless a DIFFERENT date is
+explicitly stated for a specific result. Never leave resultDate or visitDate null.
 
-IMPORTANT — LAB TABLE FORMAT:
-PDF extraction often garbles table columns. The lab table has columns:
-  Test Name | Result | Units | Low Reference | High Reference | Qualifier (H/L/blank)
-The values may appear out of order or with columns separated. Reconstruct each row carefully.
-Common tests: BUN, Creatinine, SDMA, ALT, ALP, Albumin, Globulin, Total Protein, Glucose,
-Phosphorus, Potassium, Sodium, Chloride, T4, Folate, Cobalamin, TLI, PLI, WBC, RBC,
-Hematocrit, Hemoglobin, Platelets, MCV, MCH, MCHC, Cystatin B, Amylase, Lipase, CK,
-Cholesterol, Bilirubin, Anion Gap, TCO2, Na:K Ratio, Reticulocytes, Reticulocyte Hemoglobin,
-USG (Specific Gravity), pH, Protein (urine), Glucose (urine), Ketones, Bilirubin (urine),
-Blood/Hemoglobin (urine), WBC (urine), RBC (urine), Casts, Crystals, Bacteria, Epithelial Cells.
-Extract EVERY row — do not skip any. If a qualifier column says H or HIGH → abnormal:"HIGH",
-L or LOW → abnormal:"LOW", blank/normal → abnormal:null.
-For values expressed as "<N" (e.g. "< 50") keep the string as the value.
+CRITICAL — CAT IDENTIFICATION:
+Cat name may not appear until page 2 or 3. "Patient" may be used instead of name. If name is
+ambiguous, use species/breed/age fields nearby to confirm. Multiple cats in household: ${APP_PETS.join(', ')||'detect from document'}.
 
-IMPORTANT — LAB GROUPING:
-Each lab result must include a "labGroup" field indicating which panel it belongs to.
-Use these exact group names: "CBC", "Chemistry", "Urinalysis", "Endocrinology", "PCR/Serology",
-"Blood Pressure", "Other". This is how panels are displayed grouped together in the UI.
-Urinalysis rows (USG/Specific Gravity, pH, Color, Clarity, Collection method, Protein, Glucose,
-Ketones, Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells,
-Casts, Crystals, Mucus) MUST ALL have labGroup:"Urinalysis" — no exceptions.
-CBC rows (RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes,
-Monocytes, Eosinophils, Basophils, Reticulocytes, Platelets) MUST ALL have labGroup:"CBC".
-Blood Pressure readings MUST have labGroup:"Blood Pressure".
-T4, TLI, PLI, Folate, Cobalamin, Cortisol MUST have labGroup:"Endocrinology".
+CLINIC NAME: Abbreviate the clinic name to be concise — strip generic words like "animal hospital",
+"veterinary", "vet clinic", "cat hospital". Examples: "Morrisville Cat Hospital" → "Morrisville",
+"BluePearl Emergency" → "BluePearl", "Carolina Veterinary Dermatology" → "Derm Clinic".
+
+LAB TABLE FORMAT:
+PDF extraction garbles table columns. Columns are: Test | Result | Units | Low Ref | High Ref | Qualifier
+Qualifier values: H, HIGH, L, LOW, * (asterisk) → all mean abnormal. Blank = normal.
+If qualifier says H/L/* but value appears within reference range, TRUST THE QUALIFIER — mark it abnormal.
+Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
+PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
+
+LAB GROUPING — labGroup field is required on every lab result:
+"CBC": RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes, Monocytes,
+  Eosinophils, Basophils, Reticulocytes, Platelets, and all differential %s
+"Chemistry": Glucose, BUN, Creatinine, SDMA, ALT, ALP, AST, GGT, Albumin, Globulin, Total Protein,
+  Phosphorus, Calcium, Sodium, Potassium, Chloride, TCO2, Anion Gap, Na:K Ratio, Cholesterol,
+  Bilirubin, Amylase, Lipase, Creatine Kinase, Cystatin B, BUN:Creatinine Ratio, and indices
+"Urinalysis": Specific Gravity/USG, pH, Color, Clarity, Collection method, Protein, Glucose,
+  Ketones, Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells,
+  Casts, Crystals, Mucus — ALL must be labGroup:"Urinalysis"
+"Endocrinology": T4, Free T4, TSH, TLI, PLI, Folate, Cobalamin, Cortisol, ACTH, Insulin
+"PCR": any PCR, culture, titer, antigen, antibody test — including GI/diarrhea/parasite panels
+  (Clostridium, Giardia, Tritrichomonas, Cryptosporidium, Campylobacter, FeLV, FIV, etc.)
+  Named panels like "IDEXX GI Panel", "Diarrhea Panel", "Parasite PCR" all use labGroup:"PCR"
+BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP field instead.
+
+MEDICATIONS:
+- Extract ALL medications that are prescribed, continuing, or recommended — not just dispensed ones
+- Tag each as supplement:true if it's a vitamin, supplement, or nutraceutical (fish oil, probiotics,
+  cobalamin, etc.) rather than a pharmaceutical medication
+- Deduplicate: if same medication appears in both problem list and current medications section, keep once
+- Same medication dispensed AND prescribed: keep one entry, set dispensed:true
+
+PROCEDURES: Extract all — cystocentesis, blood pressure monitoring, blood draw, dental, imaging,
+injections, surgeries. Include findings/outcome if documented.
+
+WEIGHT: If recorded in both lbs and kg, include both: "8.25 lbs / 3.74 kg". Prefer to note both.
 
 EXTRACT:
-- Cat name(s), visit date(s), clinic name, attending vet name
-- Chief complaint, all diagnoses, conditions, symptoms, allergies, adverse reactions
-- ALL medications: name, dosage, frequency, route, whether dispensed or continuing
-- ALL supplements, vitamins, special/prescription foods, feeding instructions, caloric targets (kcal/day, kcal/cup, kcal/can), feeding option combos
-- Parasite prevention: product name, last dose date
+- Cat name, visit date, clinic (abbreviated), attending vet
+- Chief complaint (owner's words, what brought them in)
+- ALL medications with dose, frequency, route, dispensed flag, supplement flag, continuing flag
+- Parasite prevention: product, last dose date
 - Muscle condition score if noted
-- ALL vaccines: name, date given, next due date
-- ALL lab results — every single row from every panel, never omit any
-- ALL PCR/serology results including NEGATIVE results
+- ALL vaccines: name, date given, next due
+- ALL lab results — every single row from every panel
+- ALL PCR/serology including NEGATIVE results
 - Imaging: type, region, findings, impression, date
-- Procedures/surgeries: name, date, findings, outcome
-- Vital signs: weight, temp, HR, RR, body condition score, blood pressure readings
-- Follow-up instructions, care plans, referrals, scheduled procedures with dates
+- Procedures: name, date, findings, outcome
+- Vitals: weight (lbs + kg if both present), HR, RR, BCS, BP
 
-NARRATIVE: The narrative field must be a complete, thorough filtered clinical text — preserve the
-full physical exam findings, all assessment details, all plan details, and all key take-home points.
-Do NOT summarize or truncate. This is the primary readable record. Aim for completeness over brevity.
+SYNOPSIS: Write 2-4 sentences summarizing what actually happened at this visit. Factual only —
+no speculation, no "suspected", no vet template language. What was the reason for the visit,
+what was found, what was decided. This is the quick-reference summary used in chat context.
+Example: "Follow-up for IBD and weight loss. Weight down to 8.25 lbs from 9.4 lbs in Sept 2024.
+Bloodwork stable except mildly low phosphorus and decreased urine concentration suggesting early
+CKD. Continuing prednisolone and omeprazole; fish oil discontinued; dental scheduled June 9th."
 
-SKIP: costs/fees/billing, boilerplate legal text, appointment reminders, portal instructions,
-product marketing copy (e.g. Solensia product description paragraphs).
-INVOICES: keep only meds dispensed, vaccines, prescription foods, procedures + dates.
-BULK SUMMARIES: skip any header problem-list block, extract only individual dated visit entries.
+NARRATIVE: Complete filtered clinical text preserving all details. Structure with labeled sections:
+HISTORY
+[owner-reported history]
+
+PHYSICAL EXAM
+[full exam findings by system — do not omit any system]
+
+ASSESSMENT
+[clinical reasoning, findings, context — include vet's interpretation]
+
+PLAN
+[medications, procedures, follow-up, monitoring]
+
+The narrative and synopsis are both kept — do not remove content from narrative because it's in synopsis.
+Preserve ALL clinical detail. Do NOT summarize or truncate.
+
+SKIP entirely: costs/billing, boilerplate legal text, portal instructions, appointment reminders,
+product marketing copy (Solensia description paragraphs, etc.), feeding plans, kcal targets.
+INVOICES: keep only meds dispensed, vaccines, procedures + dates.
+BULK SUMMARIES: skip header problem-list block, extract only individual dated visit entries.
+AMENDED/UPDATED DOCUMENTS: if this appears to be an updated version of a previous record
+(same cat + same date), set "isAmendment":true so the system can handle deduplication correctly.
 
 Return JSON only, no markdown:
 {
   "skip": false,
+  "isAmendment": false,
   "cats": ["Mocha"],
-  "dates": ["2024-03-15"],
+  "dates": ["2025-05-13"],
   "visits": [{
     "cat": "Mocha",
-    "date": "2024-03-15",
-    "clinic": "Morrisville Cat Hospital",
+    "date": "2025-05-13",
+    "clinic": "Morrisville",
     "doctor": "Dr. Beth Hraban",
-    "chiefComplaint": "vomiting, weight loss",
-    "diagnoses": ["IBD", "Pancreatitis"],
-    "medications": [{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","dispensed":false,"continuing":true}],
-    "procedures": [{"name":"Abdominal ultrasound","date":"2024-03-15","findings":"thickened intestinal walls"}],
+    "chiefComplaint": "weight loss, alopecia, occasional limping",
+    "synopsis": "2-4 sentence factual summary of the visit",
+    "medications": [
+      {"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","dispensed":false,"continuing":true,"supplement":false},
+      {"name":"Fish oil","dose":null,"frequency":null,"route":null,"dispensed":false,"continuing":false,"supplement":true}
+    ],
+    "procedures": [{"name":"Cystocentesis","date":"2025-05-13","findings":"urine collected for UA"}],
     "vitals": {"weight":"8.25 lbs","HR":164,"RR":50,"BCS":"4.5/9","muscleConditionScore":"1.5/4","BP":"124/124/124 mmHg"},
-    "narrative": "COMPLETE untruncated clinical text including all physical exam findings, assessments, and plan",
+    "narrative": "HISTORY\\n[text]\\n\\nPHYSICAL EXAM\\n[text]\\n\\nASSESSMENT\\n[text]\\n\\nPLAN\\n[text]",
     "confidence": 0.9,
     "flags": []
   }],
   "labs": [{
     "cat": "Mocha",
-    "test": "BUN",
-    "value": 16,
+    "test": "Phosphorus",
+    "value": 2.8,
     "unit": "mg/dL",
-    "refLow": 16,
-    "refHigh": 37,
-    "abnormal": null,
-    "resultDate": "2024-03-15",
-    "visitDate": "2024-03-15",
-    "labName": "CBC Lytes UA",
-    "labGroup": "Chemistry"
-  },{
-    "cat": "Mocha",
-    "test": "Specific Gravity",
-    "value": 1.026,
-    "unit": null,
-    "refLow": 1.035,
-    "refHigh": null,
+    "refLow": 2.9,
+    "refHigh": 6.3,
     "abnormal": "LOW",
-    "resultDate": "2024-03-15",
-    "visitDate": "2024-03-15",
-    "labName": "Urinalysis",
-    "labGroup": "Urinalysis"
+    "resultDate": "2025-05-13",
+    "visitDate": "2025-05-13",
+    "labName": "Chemistry",
+    "labGroup": "Chemistry"
   }],
-  "pcr": [{
-    "cat": "Mocha",
-    "test": "FeLV Antigen",
-    "value": "NEGATIVE",
-    "unit": null,
-    "abnormal": "NEG",
-    "resultDate": "2024-03-15",
-    "visitDate": "2024-03-15",
-    "labGroup": "PCR/Serology"
-  }],
-  "flags": [{"type":"no_date","description":"Could not determine visit date","bestGuess":"2024-03"}]
+  "pcr": [],
+  "flags": []
 }
 
-If invoice with no medications/vaccines/procedures → {"skip":true}
+If invoice with no clinical content → {"skip":true}
 
 --- FILE: ${file.name} ---
 `;
+
+  const contLabel = chunk._isContinuation ? ` (diagnostics)` : '';
+  if ($('progress-current')) $('progress-current').textContent = `${file.name}${contLabel}: calling Claude…`;
 
   const result = await callExtractionClaude([
     { role: 'user', content: buildUserContent(chunk, prompt) }
@@ -3343,13 +3835,71 @@ function abbreviateClinic(name) {
   return name.replace(/\b(animal hospital|veterinary|vet|clinic|hospital|care|pet)\b/gi,'').trim().split(/\s+/).slice(0,2).join(' ');
 }
 
-let popupMatches = [], popupMatchIdx = 0, popupRawText = '';
+// ── NARRATIVE FORMATTER ──
+// Breaks a wall-of-text narrative into labeled sections for readability.
+// Works on both well-structured narratives (already has \n\n) and dense single-paragraph ones.
+const NARRATIVE_SECTIONS = [
+  // Pattern, display label
+  [/\b(history|chief complaint|presenting complaint|reason for visit|presenting concern)[\s:—]/i, 'History'],
+  [/\b(physical exam|physical examination|general appearance|examination findings|exam findings|on examination|on physical exam)[\s:—]/i, 'Physical Exam'],
+  [/\b(musculoskeletal|orthopedic exam|musculoskeletal exam)[\s:—]/i, 'Musculoskeletal'],
+  [/\b(integument|skin|coat|dermatologic)[\s:—]/i, 'Integument'],
+  [/\b(oral|dental|oral cavity|dentition)[\s:—]/i, 'Oral'],
+  [/\b(diagnostic results?|bloodwork|lab(?:oratory)? results?|diagnostics)[\s:—]/i, 'Diagnostics'],
+  [/\b(assessment|assessments|impression|clinical impression|summary)[\s:—]/i, 'Assessment'],
+  [/\b(plan|treatment plan|recommendations?|recommended|follow[- ]?up|instructions?)[\s:—]/i, 'Plan'],
+];
+
+function formatNarrative(text) {
+  if (!text) return '';
+  // If already has paragraph breaks, just clean up and return — preserve structure
+  if ((text.match(/\n\n/g) || []).length >= 2) {
+    return text.trim();
+  }
+  // Single-paragraph narrative — try to split at known section boundaries
+  // Strategy: find sentence boundaries that start a new known section
+  const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+  const sections = []; // [{label, lines[]}]
+  let current = { label: null, lines: [] };
+
+  for (const sentence of sentences) {
+    let matched = false;
+    for (const [pattern, label] of NARRATIVE_SECTIONS) {
+      if (pattern.test(sentence)) {
+        if (current.lines.length) sections.push(current);
+        current = { label, lines: [sentence] };
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) current.lines.push(sentence);
+  }
+  if (current.lines.length) sections.push(current);
+
+  // If we found at least 2 distinct sections, format with headers
+  const namedSections = sections.filter(s => s.label);
+  if (namedSections.length >= 2) {
+    return sections.map(s =>
+      (s.label ? `${s.label.toUpperCase()}\n` : '') + s.lines.join(' ').trim()
+    ).join('\n\n').trim();
+  }
+
+  // Fallback: split on long sentences that look like new topics after a period
+  // (every ~4-5 sentences, break at the closest period)
+  const allSentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+  if (allSentences.length <= 4) return text.trim();
+  const chunks = [];
+  for (let i = 0; i < allSentences.length; i += 4) {
+    chunks.push(allSentences.slice(i, i + 4).join(' '));
+  }
+  return chunks.join('\n\n').trim();
+}
 
 function openVisit(visit) {
   const title = `${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : ''}`;
   let content = '';
+  if (visit.synopsis) content += `${visit.synopsis}\n\n`;
   if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
-  if (visit.diagnoses?.length) content += `Diagnoses: ${visit.diagnoses.join(', ')}\n\n`;
   if (visit.vitals && Object.keys(visit.vitals).length) {
     const vparts = [];
     if (visit.vitals.weight) vparts.push(`Weight: ${visit.vitals.weight}`);
@@ -3370,7 +3920,7 @@ function openVisit(visit) {
     for (const p of visit.procedures) content += `  • ${p.name}${p.date && p.date !== visit.date ? ' (' + formatDate(p.date) + ')' : ''}${p.findings ? ' — ' + p.findings : ''}\n`;
     content += '\n';
   }
-  if (visit.narrative) content += `\n${visit.narrative}`;
+  if (visit.narrative) content += `\n${formatNarrative(visit.narrative)}`;
   content = content.trim();
 
   $('popup-title').textContent = title;
@@ -3379,7 +3929,7 @@ function openVisit(visit) {
   popupRawText = content;
   popupMatches = []; popupMatchIdx = 0;
   const body = $('popup-body');
-  body.textContent = content;
+  renderPopupContent(body, content);
 
   const linkEl = $('popup-drive-link');
   if (visit.driveFileIds?.[0]) {
@@ -3391,10 +3941,49 @@ function openVisit(visit) {
   setTimeout(() => $('popup-search-input').focus(), 80);
 }
 
+// Renders popup content with styled section headers and metadata lines
+function renderPopupContent(body, text) {
+  body.innerHTML = '';
+  const paragraphs = text.split(/\n\n+/);
+  for (const para of paragraphs) {
+    const lines = para.split('\n');
+    const block = document.createElement('div');
+    block.style.cssText = 'margin-bottom:0.9rem;';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+
+      // ALL-CAPS section headers (HISTORY, PHYSICAL EXAM, ASSESSMENT, etc.)
+      const isHeader = /^[A-Z][A-Z &\/\-]{2,}$/.test(line.trim());
+      // Structured metadata lines: "Chief complaint:", "Diagnoses:", "Vitals:", "Medications:", etc.
+      const isLabel = /^(Chief complaint|Diagnoses|Vitals|Medications|Procedures|Follow-up|Assessment|Plan):/i.test(line.trim());
+
+      if (isHeader) {
+        const el = document.createElement('div');
+        el.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:0.25rem;margin-top:0.1rem;border-bottom:1px solid var(--surface2);padding-bottom:0.15rem;';
+        el.textContent = line.trim();
+        block.appendChild(el);
+      } else if (isLabel) {
+        const el = document.createElement('div');
+        el.style.cssText = 'font-weight:600;color:var(--ink);margin-bottom:0.15rem;';
+        el.textContent = line.trim();
+        block.appendChild(el);
+      } else {
+        const el = document.createElement('div');
+        el.style.cssText = 'color:var(--ink-dim);line-height:1.65;';
+        el.textContent = line.trim();
+        block.appendChild(el);
+      }
+    }
+    body.appendChild(block);
+  }
+}
+
 function runPopupSearch() {
   const term = $('popup-search-input').value.trim();
   const body = $('popup-body');
-  if (!term) { body.textContent = popupRawText; $('popup-search-count').textContent = ''; popupMatches = []; return; }
+  if (!term) { renderPopupContent(body, popupRawText); $('popup-search-count').textContent = ''; popupMatches = []; return; }
   const esc = term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const re = new RegExp(esc, 'gi');
   const parts = popupRawText.split(re);
@@ -3496,6 +4085,90 @@ $('pause-continue-btn').addEventListener('click', () => {
   if (pauseResolver) { pauseResolver(); pauseResolver = null; }
   hidePauseOverlay();
 });
+
+// ── TEXT SIMILARITY (Jaccard on word sets) ──
+// Returns 0-1, used for duplicate/amendment detection
+function textSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const wa = new Set(a.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+  const wb = new Set(b.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+  if (!wa.size && !wb.size) return 0;
+  const inter = [...wa].filter(w => wb.has(w)).length;
+  const union = new Set([...wa, ...wb]).size;
+  return union === 0 ? 0 : inter / union;
+}
+
+// ── CLARIFICATION PROMPT ──
+// Shows a modal asking the user to resolve critical unknowns before data is written.
+// Returns { cat, date } corrections, or null if user chose to skip the file.
+function promptClarification(filename, issues) {
+  return new Promise(resolve => {
+    const box = document.querySelector('.pause-box');
+    const origContent = box.innerHTML;
+
+    let html = `
+      <div class="pause-icon">❓</div>
+      <div class="pause-title">Clarification needed</div>
+      <div class="pause-desc" style="margin-bottom:0.75rem;">
+        Claude couldn't confidently identify some details in <strong>${escHtml(filename.slice(0,40))}</strong>.
+        Please clarify before importing.
+      </div>`;
+
+    for (const issue of issues) {
+      html += `<div style="margin-bottom:0.75rem;text-align:left;">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);margin-bottom:0.35rem;">${escHtml(issue.label)}</div>`;
+
+      if (issue.type === 'cat') {
+        html += `<select id="clarify-cat" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;">
+          <option value="">Choose cat…</option>
+          ${(APP_PETS || []).map(p => `<option value="${escHtml(p)}"${issue.current?.toLowerCase()===p.toLowerCase()?' selected':''}>${escHtml(p)}</option>`).join('')}
+        </select>`;
+      } else if (issue.type === 'date') {
+        html += `<input id="clarify-date" type="date" value="${issue.current||''}" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem;padding:0.4rem 0.6rem;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);outline:none;">`;
+      } else if (issue.type === 'confirm') {
+        html += `<div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);background:var(--surface);border-radius:6px;padding:0.5rem 0.65rem;line-height:1.5;">${escHtml(issue.detail||'')}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--amber);margin-top:0.35rem;">Click "Import anyway" to proceed or "Skip file" to leave it unprocessed.</div>`;
+      } else if (issue.type === 'multicat') {
+        html += `<div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);background:var(--surface);border-radius:6px;padding:0.5rem 0.65rem;">
+          ${(issue.cats||[]).map(c => `<span style="display:inline-block;background:var(--accent);color:white;border-radius:4px;padding:0.1rem 0.4rem;margin:0.15rem;font-size:0.65rem;">${escHtml(c)}</span>`).join('')}
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);margin-top:0.35rem;">If correct, click "Import anyway". Each cat's records will be stored separately.</div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `<div style="display:flex;gap:0.5rem;justify-content:center;margin-top:0.25rem;">
+      <button id="clarify-confirm" style="flex:1;background:var(--green);color:white;border:none;border-radius:8px;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:0.9rem;padding:0.7rem;cursor:pointer;">${issues.some(i=>i.type==='confirm'||i.type==='multicat') ? 'Import anyway' : 'Import with these details'}</button>
+      <button id="clarify-skip" style="background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;font-family:'Instrument Sans',sans-serif;font-size:0.85rem;padding:0.7rem 1rem;cursor:pointer;">Skip file</button>
+    </div>`;
+
+    box.innerHTML = html;
+    $('pause-overlay').classList.add('open');
+
+    const cleanup = (result) => {
+      $('pause-overlay').classList.remove('open');
+      box.innerHTML = origContent;
+      // Re-wire original continue button
+      const btn = document.getElementById('pause-continue-btn');
+      if (btn) btn.addEventListener('click', () => {
+        if (pauseResolver) { pauseResolver(); pauseResolver = null; }
+        hidePauseOverlay();
+      });
+      resolve(result);
+    };
+
+    document.getElementById('clarify-confirm').onclick = () => {
+      const corrections = {};
+      const catEl = document.getElementById('clarify-cat');
+      const dateEl = document.getElementById('clarify-date');
+      if (catEl?.value) corrections.cat = catEl.value;
+      if (dateEl?.value) corrections.date = dateEl.value;
+      cleanup(corrections);
+    };
+
+    document.getElementById('clarify-skip').onclick = () => cleanup(null);
+  });
+}
 
 function promptChunkFailure(filename, chunkSize, estimatedCost) {
   return new Promise(resolve => {
@@ -3649,7 +4322,8 @@ async function sendMessage() {
     appendMsg('assistant', response);
     convHistory.push({ role: 'assistant', content: response });
     if (convHistory.length >= 2) $('save-session-btn').style.display = 'inline-flex';
-    extractJournalFromConversation(text, response); // async, non-blocking
+    // Client-side journal processing — no API call
+    processMessageForJournal(text, response);
   } catch (err) {
     typingEl.remove();
     const msg = err.message || '';
@@ -3699,112 +4373,572 @@ function appendMsg(role, text) {
   return div;
 }
 
-// ── JOURNAL — Claude-powered (Haiku, background) ──
+// ══════════════════════════════════════════════
+// JOURNAL — CLIENT-SIDE, NO PER-MESSAGE API CALLS
+// ══════════════════════════════════════════════
+//
+// Design:
+// - Client-side mention tracking during session, zero API calls
+// - Explicit commands parsed by regex, update pendingJournalItems immediately
+// - 4 mentions of same term promotes to "potential" entry with auto-detected badge
+// - Cat context carries forward — last explicitly named cat is the implicit subject
+// - Save Session: one Claude call reviews full convHistory and resolves ambiguous entries
+// - Save writes all pending items to Firestore in one batch
 
-// Client-side pre-filter — only call API if message mentions a cat AND a medical keyword
-let JOURNAL_CATS_RE = /\b(placeholder)\b/i; // rebuilt dynamically by rebuildPetRegex() after pets load
-const JOURNAL_MED_RE = /\b(prednisolone|gabapentin|cerenia|convenia|tylosin|metronidazole|panacur|cyclosporine|mirtazapine|omeprazole|zofran|famotidine|miralax|buprenex|b12|cobalamin|visbiome|animalbiome|boulardii|psyllium|propectalin|fish oil|salmon oil|instinct|ultamino|hydrolyzed|hills|purina|royal canin|blue buffalo|wellness|probiotics?|supplement|vitamin|omega|fiber|pumpkin|appetite|antibiotic|steroid|dose|dosage|started|stopped|switched|discontinued|no longer|giving her|she.s on|back on|restarted|tried|prescribed)\b/i;
+// ── SESSION STATE ──
+let mentionTracker = {};   // { "Mocha_fish oil": { count } } — resets each session
+let sessionActiveCat = null; // last explicitly named cat in conversation
 
-async function extractJournalFromConversation(userMsg, assistantMsg) {
-  if (!apiKey) return;
-  // Only call API if message has a cat name + medical keyword — saves tokens on casual chat
-  if (!JOURNAL_CATS_RE.test(userMsg) || !JOURNAL_MED_RE.test(userMsg + ' ' + assistantMsg)) return;
-  try {
-    const jSnap = await getDocs(collection(db, 'journal'));
-    const journalLines = [];
-    jSnap.forEach(d => {
-      const j = d.data();
-      journalLines.push(`${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose ? ' — '+j.dose : ''}`);
-    });
-    const journalContext = journalLines.length ? journalLines.join('\n') : '(empty)';
-    const today = new Date().toISOString().split('T')[0];
+const MENTION_THRESHOLD = 4; // mentions before auto-promoting to "potential"
 
-    const prompt = `You are a veterinary care journal extractor. Known pets: ${APP_PETS.join(', ')||'detect from context'}.
-Analyze this conversation and extract loggable care information.
-Return ONLY valid JSON, no markdown:
-{"entries":[{"cat":"Mocha|Evie|Latte","list":"Medications|Foods|Supplements|Symptoms|Plans|Procedures|Weight Log","status":"current|past|plan|maybe","text":"terse factual text","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD or null","updateOf":"existing entry text or null","updateNote":"what changed or null"}],"mentions":[{"cat":"cat or all","term":"item mentioned","context":"brief note"}]}
-Status: current=actively receiving, past=stopped, plan=intending, maybe=speculation. Single neutral mention goes in mentions only. Return empty arrays if nothing to log. Be conservative.
-Existing journal:\n${journalContext}\nUser: ${userMsg}\nAssistant: ${assistantMsg.slice(0,400)}`;
+// Standard list names — open-ended, user can create new ones via explicit command
+const STANDARD_LISTS = ['Medications', 'Supplements', 'Foods', 'Diet', 'Symptoms', 'Plans', 'Procedures', 'Weight Log'];
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,system:'Return only valid JSON.',messages:[{role:'user',content:prompt}]})
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
-    const parsed = JSON.parse(data.content.map(b=>b.text||'').join('').trim().replace(/```json|```/g,'').trim());
-    applyJournalExtraction(parsed, today);
-  } catch(e) { console.warn('Journal extraction (non-critical):', e.message); }
+// ── EXPLICIT COMMAND PATTERNS ──
+// These are detected client-side per message with no API call
+const JOURNAL_COMMAND_PATTERNS = [
+  // ADD patterns
+  { re: /\b(?:add|adding|started?|she(?:'s| is) (?:on|taking|getting)|(?:giving|put) (?:her|him) (?:on)?|prescribed?)\s+([a-zA-Z0-9 \-]+?)(?:\s+to\s+(?:her|his)\s+(\w+))?(?:\s|$|,|\.)/i, action: 'add' },
+  // REMOVE patterns
+  { re: /\b(?:stopped?|stopping|discontinued?|discontinuing|no longer (?:giving|taking|on)|removed?|taking (?:her|him) off)\s+(?:the\s+)?([a-zA-Z0-9 \-]+?)(?:\s|$|,|\.)/i, action: 'remove' },
+  // PLAN patterns
+  { re: /\b(?:going to (?:try|start|add)|(?:want|plan(?:ning)?|thinking about|considering|might try) (?:to )?(?:start|add|try|use|give her|give him)?)\s+([a-zA-Z0-9 \-]+?)(?:\s|$|,|\.)/i, action: 'plan' },
+  // MAYBE patterns
+  { re: /\b(?:maybe|might|should we try|wondering (?:about|if)|(?:that )?sounds? good|let(?:'s| us) (?:do|try) that)\b/i, action: 'maybe_confirm' },
+];
+
+// Extract cat name from text, update session context
+function extractCatFromText(text) {
+  const lower = text.toLowerCase();
+  for (const cat of APP_PETS) {
+    if (lower.includes(cat.toLowerCase())) {
+      sessionActiveCat = cat;
+      return cat;
+    }
+  }
+  return sessionActiveCat; // fall back to last known
 }
 
-function applyJournalExtraction(data, date) {
-  for (const e of (data.entries || [])) {
-    if (!e.cat || !e.text) continue;
-    const item = { id:Math.random().toString(36).slice(2,9), cat:e.cat, list:e.list||'General', text:e.text, status:e.status||'current', startDate:e.startDate||date, endDate:e.endDate||null, addedDate:date };
-    pendingJournalItems.push(item);
-    const undo = () => { pendingJournalItems = pendingJournalItems.filter(i=>i!==item); loadJournalSidebar(); };
-    showToast(`Journal: ${e.cat} · ${e.text.slice(0,28)}${e.status==='maybe'?' (maybe)':e.status==='plan'?' (plan)':''}`, 'journal', undo);
+// Track mentions of medical/supplement terms client-side
+const TRACKABLE_TERMS_RE = /\b([a-zA-Z][a-zA-Z0-9 \-]{2,30}?)\b(?=.*(?:supplement|vitamin|probiotic|fish oil|omega|cobalamin|b12|denamarin|miralax|pumpkin|fiber|lysine|fortiflora|azodyl|epakitin|tumil[- ]k|prednisolone|gabapentin|cerenia|convenia|metronidazole|mirtazapine|omeprazole|famotidine|sucralfate|atenolol|amlodipine|methimazole|cyclosporine|atopica|cytopoint|apoquel|solensia|buprenorphine|tramadol|meloxicam|adequan|dasuquin))/gi;
+
+function processMessageForJournal(userMsg, assistantMsg) {
+  const today = new Date().toISOString().split('T')[0];
+  const cat = extractCatFromText(userMsg + ' ' + assistantMsg);
+  const fullText = userMsg + ' ' + assistantMsg;
+
+  // 1. Check for explicit commands
+  for (const pattern of JOURNAL_COMMAND_PATTERNS) {
+    if (pattern.action === 'maybe_confirm') {
+      // "that sounds good / let's do that" — look at recent assistant message for what was discussed
+      // We can't resolve this client-side without context — mark for Save-time resolution
+      if (pattern.re.test(userMsg) && sessionActiveCat) {
+        addPendingItem({
+          cat: sessionActiveCat,
+          list: 'Plans',
+          text: `[Confirm at save] User indicated interest: "${userMsg.slice(0,60)}"`,
+          status: 'maybe',
+          startDate: today,
+          _needsResolution: true
+        });
+      }
+      continue;
+    }
+
+    const match = fullText.match(pattern.re);
+    if (match && match[1] && cat) {
+      const term = match[1].trim().toLowerCase();
+      if (term.length < 3 || term.length > 40) continue;
+
+      // Determine list based on term type
+      const list = guessListForTerm(term);
+      const status = pattern.action === 'add' ? 'current'
+        : pattern.action === 'remove' ? 'past'
+        : 'plan';
+
+      addPendingItem({
+        cat,
+        list,
+        text: capitalizeFirst(match[1].trim()),
+        status,
+        startDate: today,
+        endDate: status === 'past' ? today : null,
+        _source: 'explicit'
+      });
+    }
   }
-  for (const m of (data.mentions || [])) {
-    const cats = m.cat === 'all' ? APP_PETS : [m.cat];
-    for (const cat of cats) {
-      const key = `${cat}_${(m.term||'').toLowerCase()}`;
-      mentionTally[key] = (mentionTally[key]||0) + 1;
-      if (mentionTally[key] === 2) {
-        const item = {id:Math.random().toString(36).slice(2,9),cat,list:'Maybe',text:m.term,status:'maybe',startDate:date,addedDate:date};
-        pendingJournalItems.push(item);
-        showToast(`Journal: ${cat} · ${m.term} → maybe (mentioned twice)`,'journal');
+
+  // 2. Track mention frequency for auto-promotion
+  const words = fullText.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+  // Look for multi-word medical terms
+  const medTerms = extractMedicalTerms(fullText);
+  for (const term of medTerms) {
+    if (!cat) continue;
+    const key = `${cat}_${term.toLowerCase()}`;
+    if (!mentionTracker[key]) mentionTracker[key] = { count: 0 };
+    mentionTracker[key].count++;
+
+    if (mentionTracker[key].count === MENTION_THRESHOLD) {
+      // Check not already in pending or journal
+      const alreadyPending = pendingJournalItems.some(p =>
+        p.cat === cat && p.text.toLowerCase().includes(term.toLowerCase())
+      );
+      if (!alreadyPending) {
+        addPendingItem({
+          cat,
+          list: guessListForTerm(term),
+          text: capitalizeFirst(term),
+          status: 'maybe',
+          startDate: today,
+          _source: 'auto',
+          _autoNote: `Mentioned ${MENTION_THRESHOLD}× in this session — review before saving`
+        });
       }
     }
   }
-  if (pendingJournalItems.length) { loadJournalSidebar(); $('save-session-btn').style.display='inline-flex'; }
+
+  // Update journal tab badge
+  updateJournalBadge();
 }
+
+function extractMedicalTerms(text) {
+  const terms = [];
+  const lower = text.toLowerCase();
+  // Known multi-word terms first
+  const MULTI_WORD = ['fish oil','b12','cobalamin','fortiflora','denamarin','royal canin',
+    'fish oil','psyllium husk','probiotics','omega 3','vitamin d','prednisolone','gabapentin',
+    'omeprazole','metronidazole','cerenia','convenia','mirtazapine','famotidine','sucralfate',
+    'azodyl','epakitin','miralax','adequan','dasuquin','solensia','cytopoint','apoquel'];
+  for (const term of MULTI_WORD) {
+    if (lower.includes(term)) terms.push(term);
+  }
+  return [...new Set(terms)];
+}
+
+function guessListForTerm(term) {
+  const t = term.toLowerCase();
+  if (/\b(mg|mcg|ml|tablet|capsule|injection|drops?|cream|ointment|spray)\b/.test(t)) return 'Medications';
+  if (/\b(supplement|vitamin|probiotic|omega|cobalamin|b12|fish oil|lysine|pumpkin|fiber|fortiflora|azodyl|epakitin|denamarin|tumil)\b/.test(t)) return 'Supplements';
+  if (/\b(food|kibble|canned|dry|wet|purina|hills|royal canin|ultamino|hydrolyzed|instinct|blue buffalo|wellness)\b/.test(t)) return 'Foods';
+  if (/\b(diet|feeding|meal plan|kcal|calor|portion)\b/.test(t)) return 'Diet';
+  if (/\b(symptom|vomit|diarrhea|limp|sneez|cough|scratch|itch|letharg|weight loss|appetite)\b/.test(t)) return 'Symptoms';
+  if (/\b(dental|procedure|surgery|vaccine|injection|blood|ultrasound|x.ray|recheck|appointment)\b/.test(t)) return 'Procedures';
+  // Check if it's a known pharmaceutical
+  if (/\b(prednisolone|gabapentin|omeprazole|cerenia|convenia|metronidazole|mirtazapine|famotidine|sucralfate|atenolol|amlodipine|methimazole|cyclosporine|solensia|buprenorphine|tramadol|meloxicam|adequan)\b/.test(t)) return 'Medications';
+  return 'Supplements'; // default for ambiguous terms
+}
+
+function capitalizeFirst(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function addPendingItem(item) {
+  // Avoid duplicates in pending
+  const key = `${item.cat}_${item.text.toLowerCase()}_${item.status}`;
+  if (pendingJournalItems.some(p => `${p.cat}_${p.text.toLowerCase()}_${p.status}` === key)) return;
+  item.id = Math.random().toString(36).slice(2,9);
+  pendingJournalItems.push(item);
+  loadJournalSidebar();
+}
+
+function updateJournalBadge() {
+  const count = pendingJournalItems.length;
+  const tabs = document.querySelectorAll('.sidebar-tab');
+  tabs.forEach(t => {
+    if (t.dataset.tab === 'journal') {
+      const existing = t.querySelector('.journal-badge');
+      if (count > 0) {
+        if (!existing) {
+          const badge = document.createElement('span');
+          badge.className = 'journal-badge';
+          badge.style.cssText = 'display:inline-block;background:var(--amber);color:white;border-radius:8px;padding:0 4px;font-size:0.5rem;margin-left:3px;line-height:1.4;vertical-align:middle;';
+          t.appendChild(badge);
+        }
+        t.querySelector('.journal-badge').textContent = count;
+      } else if (existing) {
+        existing.remove();
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// NOTES — persistent context scratchpad
+// ══════════════════════════════════════════════
+
+let _notesCache = []; // { id, text, cats[], pinned, addedDate }
+let _notesPinState = false; // current state of pin toggle in add row
+let _notesCatSelection = new Set(); // selected cats for new note
+
+async function loadNotes() {
+  try {
+    const snap = await getDocs(query(collection(db, 'context_notes'), orderBy('addedDate', 'desc')));
+    _notesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderNotes();
+  } catch(e) { console.warn('Notes load failed:', e.message); }
+}
+
+function renderNotes() {
+  const list = $('notes-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const pinned = _notesCache.filter(n => n.pinned).sort((a,b) => a.addedDate > b.addedDate ? -1 : 1);
+  const active = _notesCache.filter(n => !n.pinned).sort((a,b) => a.addedDate > b.addedDate ? -1 : 1);
+
+  if (!pinned.length && !active.length) {
+    list.innerHTML = '<div style="padding:1.5rem 1rem;font-family:\'JetBrains Mono\',monospace;font-size:0.65rem;color:var(--ink-muted);text-align:center;line-height:1.8;">No notes yet.<br>Add context Claude should<br>always know about.</div>';
+    return;
+  }
+
+  if (pinned.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'notes-section-label';
+    lbl.textContent = '📌 Pinned';
+    list.appendChild(lbl);
+    pinned.forEach(n => list.appendChild(makeNoteEl(n)));
+  }
+
+  if (active.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'notes-section-label';
+    lbl.style.marginTop = pinned.length ? '0.4rem' : '0';
+    lbl.textContent = 'Active';
+    list.appendChild(lbl);
+
+    if (active.length >= 12) {
+      const warn = document.createElement('div');
+      warn.className = 'note-count-warning';
+      warn.textContent = `${active.length}/15 active notes`;
+      list.appendChild(warn);
+    }
+
+    active.forEach(n => list.appendChild(makeNoteEl(n)));
+  }
+}
+
+function makeNoteEl(note) {
+  const el = document.createElement('div');
+  el.className = 'note-item' + (note.pinned ? ' pinned' : '');
+  el.dataset.id = note.id;
+
+  const pinBtn = document.createElement('button');
+  pinBtn.className = 'note-pin-btn';
+  pinBtn.textContent = '📌';
+  pinBtn.title = note.pinned ? 'Unpin' : 'Pin';
+  pinBtn.onclick = (e) => { e.stopPropagation(); toggleNotePin(note); };
+
+  const textWrap = document.createElement('div');
+  textWrap.style.cssText = 'flex:1;min-width:0;';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'note-text';
+  textEl.textContent = note.text;
+  textEl.contentEditable = 'true';
+  textEl.spellcheck = false;
+  textEl.style.outline = 'none';
+  textEl.addEventListener('blur', () => saveNoteText(note, textEl.textContent.trim()));
+  textEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); textEl.blur(); }
+    if (e.key === 'Escape') { textEl.textContent = note.text; textEl.blur(); }
+  });
+  textWrap.appendChild(textEl);
+
+  if (note.cats?.length) {
+    const catsEl = document.createElement('div');
+    catsEl.className = 'note-cats';
+    note.cats.forEach(c => {
+      const tag = document.createElement('span');
+      tag.className = 'note-cat-tag';
+      tag.textContent = c;
+      catsEl.appendChild(tag);
+    });
+    textWrap.appendChild(catsEl);
+  }
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'note-delete-btn';
+  delBtn.textContent = '✕';
+  delBtn.title = note.pinned ? 'Unpin first to delete' : 'Delete';
+  delBtn.onclick = (e) => { e.stopPropagation(); deleteNote(note); };
+
+  el.appendChild(pinBtn);
+  el.appendChild(textWrap);
+  el.appendChild(delBtn);
+  return el;
+}
+
+async function toggleNotePin(note) {
+  try {
+    await setDoc(doc(db, 'context_notes', note.id), { pinned: !note.pinned }, { merge: true });
+    note.pinned = !note.pinned;
+    renderNotes();
+  } catch(e) { showToast('Pin failed: ' + e.message, 'warning'); }
+}
+
+async function saveNoteText(note, newText) {
+  if (!newText || newText === note.text) return;
+  try {
+    await setDoc(doc(db, 'context_notes', note.id), { text: newText }, { merge: true });
+    note.text = newText;
+  } catch(e) { showToast('Save failed: ' + e.message, 'warning'); }
+}
+
+async function deleteNote(note) {
+  if (note.pinned) { showToast('Unpin before deleting', 'warning'); return; }
+  try {
+    await deleteDoc(doc(db, 'context_notes', note.id));
+    _notesCache = _notesCache.filter(n => n.id !== note.id);
+    renderNotes();
+  } catch(e) { showToast('Delete failed: ' + e.message, 'warning'); }
+}
+
+async function addNote(text, cats, pinned) {
+  if (!text.trim()) return;
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const ref = doc(collection(db, 'context_notes'));
+    const note = { id: ref.id, text: text.trim(), cats: [...cats], pinned, addedDate: today };
+    await setDoc(ref, note);
+    _notesCache.unshift(note);
+    renderNotes();
+  } catch(e) { showToast('Add failed: ' + e.message, 'warning'); }
+}
+
+// Build notes context for chat injection
+function buildNotesContext() {
+  if (!_notesCache.length) return '';
+  const pinned = _notesCache.filter(n => n.pinned);
+  const active = _notesCache.filter(n => !n.pinned);
+  let ctx = '\n\n## Active Context Notes\n';
+  for (const n of pinned) {
+    const catPrefix = n.cats?.length ? `[${n.cats.join('/')}] ` : '';
+    ctx += `📌 ${catPrefix}${n.text}\n`;
+  }
+  for (const n of active) {
+    const catPrefix = n.cats?.length ? `[${n.cats.join('/')}] ` : '';
+    ctx += `• ${catPrefix}${n.text}\n`;
+  }
+  return ctx;
+}
+
+// Wire up Notes UI
+document.addEventListener('DOMContentLoaded', () => {
+  // Cat chips for note input
+  const chipsEl = $('notes-cat-chips');
+  if (chipsEl) {
+    const allCats = APP_PETS.length ? APP_PETS : ['Mocha', 'Evie', 'Latte'];
+    // Re-render chips when APP_PETS loads — also called from updatePetList
+    const renderChips = () => {
+      chipsEl.innerHTML = '';
+      (APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte']).forEach(cat => {
+        const chip = document.createElement('button');
+        chip.className = 'notes-cat-chip';
+        chip.textContent = cat;
+        chip.onclick = () => {
+          if (_notesCatSelection.has(cat)) { _notesCatSelection.delete(cat); chip.classList.remove('active'); }
+          else { _notesCatSelection.add(cat); chip.classList.add('active'); }
+        };
+        chipsEl.appendChild(chip);
+      });
+    };
+    renderChips();
+    // Re-render when pet list updates
+    window._renderNoteChips = renderChips;
+  }
+
+  const pinToggle = $('notes-pin-toggle');
+  if (pinToggle) {
+    pinToggle.onclick = () => {
+      _notesPinState = !_notesPinState;
+      pinToggle.classList.toggle('active', _notesPinState);
+      pinToggle.title = _notesPinState ? 'Will be pinned' : 'Pin this note';
+    };
+  }
+
+  const addBtn = $('notes-add-btn');
+  const input = $('notes-input');
+  if (addBtn && input) {
+    const doAdd = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      await addNote(text, _notesCatSelection, _notesPinState);
+      input.value = '';
+      _notesCatSelection.clear();
+      _notesPinState = false;
+      if (pinToggle) { pinToggle.classList.remove('active'); pinToggle.title = 'Pin this note'; }
+      document.querySelectorAll('.notes-cat-chip').forEach(c => c.classList.remove('active'));
+    };
+    addBtn.onclick = doAdd;
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+  }
+});
 
 // ── SAVE SESSION ──
 $('save-session-btn').addEventListener('click', async () => {
-  if (!convHistory.length) return;
+  if (!convHistory.length && !pendingJournalItems.length) return;
   $('save-session-btn').disabled = true;
-  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Saving…';
+  $('save-session-btn').innerHTML = '<span class="free-dot"></span> Saving…';
   try {
     const today = new Date().toISOString().split('T')[0];
-    const prompt = `Review this veterinary care conversation. Extract:
-1. Key clinical decisions or conclusions
-2. Medication/supplement/food changes (cat, item, change)
-3. Follow-up concerns
+
+    // Load current journal state for Claude to reference
+    const jSnap = await getDocs(collection(db, 'journal'));
+    const existingJournal = [];
+    jSnap.forEach(d => existingJournal.push({ id: d.id, ...d.data() }));
+    const journalContext = existingJournal.length
+      ? existingJournal.map(j => `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' ('+j.dose+')':''}`).join('\n')
+      : '(empty)';
+
+    const pendingContext = pendingJournalItems.length
+      ? pendingJournalItems.map(p => `${p.cat} / ${p.list} [${p.status}]: ${p.text}${p._source==='auto'?' (auto-detected)':p._needsResolution?' (needs resolution)':''}`).join('\n')
+      : '(none)';
+
+    const notesContext = _notesCache.length
+      ? _notesCache.map(n => `${n.pinned?'[PINNED] ':''}${n.cats?.length?'['+n.cats.join('/')+'] ':''}${n.text}`).join('\n')
+      : '(empty)';
+
+    const prompt = `You are reviewing a veterinary care chat session to update the care journal and context notes for cats: ${APP_PETS.join(', ')}.
+
+EXISTING JOURNAL:
+${journalContext}
+
+ALREADY PENDING (client-side detected — include these unless they're wrong):
+${pendingContext}
+
+CURRENT CONTEXT NOTES (pinned notes cannot be suggested for removal):
+${notesContext}
+
+FULL CONVERSATION:
+${convHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')}
+
+Tasks:
+1. Confirm, correct, or discard the pending journal items above
+2. Find any journal-worthy items the client-side detection missed
+3. Identify items that should be marked as PAST (stopped medications, ended treatments)
+4. For items marked "needs resolution", determine what they refer to using full conversation context
+5. Suggest additions or removals to ACTIVE (non-pinned) context notes — short fragments only, not full sentences
+
+Rules:
+- Only extract things that are actually decided/happening, not just mentioned in passing
+- Track which cat each item is for — use full conversation context to resolve pronouns
+- Medications/supplements: include dose and frequency if mentioned
+- Do NOT duplicate items already in the existing journal
+- Context note suggestions: add only genuinely new ongoing concerns; suggest removing ones that seem resolved
+- Never suggest removing pinned notes
+- Be conservative — fewer accurate entries is better than many noisy ones
+
 Return ONLY valid JSON:
-{"highlights":["..."],"journalUpdates":[{"cat":"...","list":"...","text":"...","dose":"...","status":"current|past|plan|maybe","startDate":"${today}"}]}
-Conversation:\n${convHistory.map(m=>`${m.role}: ${m.content}`).join('\n\n').slice(0,8000)}`;
+{
+  "journalUpdates": [
+    {
+      "cat": "Mocha",
+      "list": "Medications|Supplements|Foods|Diet|Symptoms|Plans|Procedures|Weight Log|<custom>",
+      "text": "terse factual entry",
+      "dose": "dose/frequency if known, else null",
+      "status": "current|past|plan|maybe",
+      "startDate": "${today}",
+      "endDate": "YYYY-MM-DD or null",
+      "updateOf": "exact text of existing entry this replaces, or null"
+    }
+  ],
+  "noteSuggestions": [
+    {
+      "action": "add|remove",
+      "text": "terse fragment",
+      "cats": ["Mocha"] or [],
+      "pinned": false,
+      "removeText": "exact text of note to remove if action=remove"
+    }
+  ],
+  "highlights": ["key clinical decision or conclusion from this session"]
+}`;
 
-    const raw = await callClaude([{role:'user',content:prompt}], 1024);
-    const extracted = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const raw = await callClaude([{ role: 'user', content: prompt }], 1500);
+    const extracted = JSON.parse(raw.replace(/```json|```/g, '').trim());
 
-    await setDoc(doc(collection(db,'sessions')), {
-      date:new Date().toISOString(), userId:currentUser.uid,
-      highlights:extracted.highlights||[], journalChanges:extracted.journalUpdates||[],
-      messageCount:convHistory.length
-    });
+    // Write journal updates to Firestore
+    const updates = extracted.journalUpdates || [];
+    const fsBatch = writeBatch(db);
 
-    const allItems = [...pendingJournalItems, ...(extracted.journalUpdates||[]).map(u=>({...u,addedDate:today}))];
-    for (const item of allItems) {
+    for (const item of updates) {
       if (!item.cat || !item.text) continue;
-      await setDoc(doc(collection(db,'journal')), {
-        cat:item.cat, list:item.list||'General', text:item.text,
-        dose:item.dose||null, status:item.status||'current',
-        startDate:item.startDate||today, endDate:item.endDate||null,
-        addedDate:today, updatedDate:today, updates:[]
+
+      if (item.updateOf) {
+        // Find existing entry and update it
+        const existing = existingJournal.find(j =>
+          j.cat === item.cat && j.text === item.updateOf
+        );
+        if (existing) {
+          fsBatch.update(doc(db, 'journal', existing.id), {
+            status: item.status || existing.status,
+            endDate: item.endDate || existing.endDate,
+            dose: item.dose || existing.dose,
+            updatedDate: today,
+            updates: [...(existing.updates||[]), { date: today, note: item.text }]
+          });
+          continue;
+        }
+      }
+
+      fsBatch.set(doc(collection(db, 'journal')), {
+        cat: item.cat,
+        list: item.list || 'General',
+        text: item.text,
+        dose: item.dose || null,
+        status: item.status || 'current',
+        startDate: item.startDate || today,
+        endDate: item.endDate || null,
+        addedDate: today,
+        updatedDate: today,
+        updates: []
       });
     }
+
+    await fsBatch.commit();
+
+    // Handle note suggestions from Claude
+    const noteSuggestions = extracted.noteSuggestions || [];
+    let noteAdds = 0, noteRemovals = 0;
+    for (const sug of noteSuggestions) {
+      if (!sug.text && sug.action !== 'remove') continue;
+      if (sug.action === 'add') {
+        await addNote(sug.text, sug.cats || [], sug.pinned || false);
+        noteAdds++;
+      } else if (sug.action === 'remove' && sug.removeText) {
+        // Find matching non-pinned note and remove it
+        const match = _notesCache.find(n => !n.pinned && n.text === sug.removeText);
+        if (match) { await deleteNote(match); noteRemovals++; }
+      }
+    }
+
+    // Save session record
+    await setDoc(doc(collection(db, 'sessions')), {
+      date: new Date().toISOString(),
+      userId: currentUser?.uid,
+      highlights: extracted.highlights || [],
+      journalChanges: updates.length,
+      noteChanges: noteAdds + noteRemovals,
+      messageCount: convHistory.length
+    });
+
+    // Clear pending
     pendingJournalItems = [];
+    mentionTracker = {};
+    sessionActiveCat = null;
+    updateJournalBadge();
     await loadJournalSidebar();
-    showToast(`Session saved — ${(extracted.highlights||[]).length} highlights, ${allItems.length} journal entries`,'journal');
+
+    const count = updates.length;
+    const noteMsg = (noteAdds || noteRemovals) ? `, ${noteAdds + noteRemovals} note update${(noteAdds+noteRemovals)!==1?'s':''}` : '';
+    showToast(`Session saved — ${count} journal update${count !== 1 ? 's' : ''}${noteMsg} ✓`, 'journal');
+
   } catch(err) {
     console.error('Save session error:', err);
-    showToast('Save failed — '+err.message,'warning');
+    showToast('Save failed — ' + err.message, 'warning');
   }
   $('save-session-btn').disabled = false;
-  $('save-session-btn').innerHTML = '<span class="cost-dot"></span> Save Session';
+  $('save-session-btn').innerHTML = '<span class="free-dot"></span> Save Session';
 });
 
 // ══════════════════════════════════════════════
@@ -3929,24 +5063,25 @@ For values expressed as "<N" keep the string as the value.
 
 IMPORTANT — LAB GROUPING:
 Each lab result must include "labGroup": one of "CBC", "Chemistry", "Urinalysis", "Endocrinology",
-"PCR/Serology", "Blood Pressure", "Imaging", "Other".
+"PCR", "Imaging", "Other".
 Urinalysis rows (Specific Gravity/USG, pH, Color, Clarity, Collection, Protein, Glucose, Ketones,
 Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells, Casts, Crystals,
 Mucus) MUST ALL use labGroup:"Urinalysis" — no exceptions.
 CBC rows (RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, WBC, Neutrophils, Lymphocytes,
 Monocytes, Eosinophils, Basophils, Reticulocytes, Platelets) MUST ALL use labGroup:"CBC".
-Blood Pressure readings MUST use labGroup:"Blood Pressure".
+PCR includes all PCR/culture/titer/antigen tests and named GI/diarrhea/parasite panels.
 T4, TLI, PLI, Folate, Cobalamin, Cortisol MUST use labGroup:"Endocrinology".
+BLOOD PRESSURE: Do NOT put in labs. Store in vitals.BP instead.
 
-EXTRACT everything: visits, chief complaint, diagnoses, medications (with dose/freq/route/continuing),
-supplements, foods (with kcal/cup and kcal/can), caloric targets, feeding plans, parasite prevention,
-muscle condition score, vaccines, ALL lab values from ALL panels, PCR results, imaging, procedures,
-vitals (weight, HR, RR, BCS, BP readings), care plans, follow-up instructions with dates.
-NARRATIVE: preserve the complete physical exam, all assessments, all plan details. Do not truncate.
-SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing copy.
+EXTRACT everything: visits with synopsis, chief complaint, medications (name/dose/freq/route/continuing/supplement flag),
+procedures, vitals, ALL lab values from ALL panels, PCR results, parasite prevention, vaccines.
+SYNOPSIS: 2-4 factual sentences — what happened at this visit, what was found, what was decided.
+NARRATIVE: Structure with labeled sections: HISTORY, PHYSICAL EXAM, ASSESSMENT, PLAN. Preserve all details.
+MEDICATIONS: tag supplement:true for vitamins/supplements/nutraceuticals. Deduplicate.
+SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing, feeding plans, kcal.
 
 Return JSON only, no markdown:
-{"skip":false,"cats":["Mocha"],"dates":["2024-03-15"],"visits":[{"cat":"Mocha","date":"2024-03-15","clinic":"...","doctor":"...","chiefComplaint":"...","diagnoses":[],"medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true}],"procedures":[],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"COMPLETE clinical text","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2024-03-15","visitDate":"2024-03-15","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
+{"skip":false,"isAmendment":false,"cats":["Mocha"],"dates":["2025-05-13"],"visits":[{"cat":"Mocha","date":"2025-05-13","clinic":"Morrisville","doctor":"Dr. Beth Hraban","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
 
 If invoice with no clinical content → {"skip":true}
 
@@ -4032,7 +5167,7 @@ async function processBatchResults(batchId) {
           }
 
           // Normalize labGroups before writing
-          const batchLabs = [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology', labGroup:'PCR/Serology'}))];
+          const batchLabs = [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR', labGroup:'PCR'}))];
           normalizeLabGroups(batchLabs);
           parsed._normalizedLabs = batchLabs;
 
@@ -4090,7 +5225,8 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       cat: visit.cat, date: visit.date || 'unknown',
       clinic: visit.clinic || null, doctor: visit.doctor || null,
       chiefComplaint: visit.chiefComplaint || null,
-      diagnoses: visit.diagnoses || [], medications: visit.medications || [],
+      synopsis: visit.synopsis || null,
+      medications: visit.medications || [],
       procedures: visit.procedures || [], vitals: visit.vitals || null,
       narrative: visit.narrative || '',
       sourceFiles: [filename], driveFileIds: [fileId], sourceFileId: fileId,
@@ -4105,7 +5241,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
     if (writeCount % 400 === 0) { await batch.commit(); }
   }
 
-  for (const lab of (parsed._normalizedLabs || [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR/Serology', labGroup:'PCR/Serology'}))])) {
+  for (const lab of (parsed._normalizedLabs || [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR', labGroup:'PCR'}))])) {
     if (!lab.test || lab.value === undefined || lab.value === null) continue;
     const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
     if (!cat) continue;
@@ -4241,6 +5377,20 @@ const FLAG_CONFIG = {
     label: 'Excel file — manual review needed',
     icon: '📊',
     explain: 'Excel files cannot be auto-processed. Lab data from this file needs to be entered manually or exported to CSV first.',
+    actionLabel: null,
+    async apply() { return null; }
+  },
+  duplicate_visit: {
+    label: 'Duplicate visit skipped',
+    icon: '⟳',
+    explain: 'A visit with the same cat, date, and similar content already exists. The duplicate was not imported.',
+    actionLabel: null,
+    async apply() { return null; }
+  },
+  quality_warning: {
+    label: 'Data quality warning',
+    icon: '⚠',
+    explain: 'The extraction may be incomplete — synopsis, narrative, or labs shorter than expected. Consider reprocessing.',
     actionLabel: null,
     async apply() { return null; }
   }
@@ -4391,6 +5541,42 @@ async function openFlagsModal() {
           await updateFileFlagStatus(flag.fileId);
         });
         actions.appendChild(dismissBtn);
+
+        // Reprocess button — for flags that require full re-extraction
+        const REPROCESS_FLAG_TYPES = ['chunk_skipped', 'verify_missing_data', 'quality_warning'];
+        if (REPROCESS_FLAG_TYPES.includes(flag.type) && flag.fileId) {
+          const reprocessBtn = document.createElement('button');
+          reprocessBtn.className = 'btn-icon cost-icon';
+          reprocessBtn.style.fontSize = '0.62rem';
+          reprocessBtn.innerHTML = '<span class="cost-dot"></span> Reprocess';
+          reprocessBtn.addEventListener('click', async () => {
+            if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
+            if (!driveAccessToken) { showToast('Connect Drive first — go to Files tab', 'warning'); return; }
+            reprocessBtn.disabled = true;
+            reprocessBtn.textContent = 'Starting…';
+            $('flags-modal').classList.remove('open');
+            // Delete existing records for this file and reprocess
+            const fileObj = { id: flag.fileId, name: flag.filename, mimeType: '' };
+            try {
+              // Clear existing data
+              const [vsnap, lsnap, fsnap] = await Promise.all([
+                getDocs(query(collection(db, 'visits'), where('driveFileIds', 'array-contains', flag.fileId))),
+                getDocs(query(collection(db, 'labs'), where('driveFileId', '==', flag.fileId))),
+                getDocs(query(collection(db, 'flags'), where('fileId', '==', flag.fileId)))
+              ]);
+              for (const d of vsnap.docs) await deleteDoc(d.ref);
+              for (const d of lsnap.docs) await deleteDoc(d.ref);
+              for (const d of fsnap.docs) await deleteDoc(d.ref);
+              await writeFileStatus(flag.fileId, flag.filename, 'unprocessed');
+              updateFileBadge(flag.fileId, 'unprocessed');
+              // Trigger reprocess
+              await startProcessingQueue([fileObj]);
+            } catch(e) {
+              showToast('Reprocess failed: ' + e.message, 'warning');
+            }
+          });
+          actions.appendChild(reprocessBtn);
+        }
       }
 
       el.appendChild(actions);
@@ -4555,61 +5741,152 @@ function appendTyping() {
 }
 
 // ── CONTEXT BUILDER ──
+// In-memory cache of all visits and labs loaded at startup — used for client-side search
+let _allVisitsCache = null;
+let _allLabsCache = null;
+
+async function ensureDataCache() {
+  if (!_allVisitsCache) {
+    const snap = await getDocs(collection(db, 'visits'));
+    _allVisitsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+  if (!_allLabsCache) {
+    const snap = await getDocs(collection(db, 'labs'));
+    _allLabsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+}
+
+// Client-side full-text search across all visit synopses and narratives
+function searchVisits(query) {
+  if (!_allVisitsCache) return [];
+  const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+  return _allVisitsCache.filter(v => {
+    const text = `${v.synopsis||''} ${v.narrative||''} ${v.chiefComplaint||''}`.toLowerCase();
+    return terms.every(t => text.includes(t));
+  });
+}
+
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
-  // If a cat name is mentioned in the message, scope to those; otherwise use all known pets
   const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
   const targetCats = mentioned.length ? mentioned : knownCats;
-  if (!targetCats.length) return ''; // pets not loaded yet — context will be empty this turn
-  let context = '';
+  if (!targetCats.length) return '';
+
+  await ensureDataCache();
+
+  // Notes context always comes first — highest priority
+  let context = buildNotesContext();
+  const isSearchQuery = /search|find|mention|history|all visit|every time|when did|has she ever|back in|years? ago|look(ing)? for/i.test(userMessage);
+  const isFullHistoryRequest = /full history|load (all|everything)|all records|complete history/i.test(userMessage);
+
+  // Always include journal (current state — small and critical)
   try {
-    for (const cat of targetCats) {
-      const vq = query(collection(db, 'visits'), where('cat', '==', cat), orderBy('date', 'desc'), limit(10));
-      const vsnap = await getDocs(vq);
-      if (!vsnap.empty) {
-        context += `\n\n## ${cat} — Recent Visits\n`;
-        vsnap.forEach(d => {
-          const v = d.data();
-          context += `\n### ${v.date}${v.clinic ? ' — ' + v.clinic : ''}${v.doctor ? ' · ' + v.doctor : ''}\n`;
-          if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
-          if (v.diagnoses?.length) context += `Diagnoses: ${v.diagnoses.join(', ')}\n`;
-          if (v.medications?.length) context += `Medications: ${v.medications.map(m=>m.name+(m.dose?' '+m.dose:'')+(m.frequency?' '+m.frequency:'')).join(', ')}\n`;
-          if (v.vitals) context += `Vitals: ${JSON.stringify(v.vitals)}\n`;
-          if (v.narrative) context += `${v.narrative.slice(0, 2500)}\n`;
-        });
-      }
-      const lq = query(collection(db, 'labs'), where('cat', '==', cat), orderBy('resultDate', 'desc'), limit(120));
-      const lsnap = await getDocs(lq);
-      if (!lsnap.empty) {
-        // Group by date then labGroup for readable context
-        const byDate = {};
-        lsnap.forEach(d => {
-          const l = d.data();
-          const dk = l.resultDate || 'unknown';
-          const gk = l.labGroup || l.labName || 'Other';
-          if (!byDate[dk]) byDate[dk] = {};
-          if (!byDate[dk][gk]) byDate[dk][gk] = [];
-          byDate[dk][gk].push(`${l.test}: ${l.value}${l.unit?' '+l.unit:''}${l.abnormal?' ['+l.abnormal+']':''}`);
-        });
-        context += `\n\n## ${cat} — Recent Labs\n`;
-        for (const [date, groups] of Object.entries(byDate)) {
-          context += `\n### ${date}\n`;
-          for (const [group, rows] of Object.entries(groups)) {
-            context += `${group}: ${rows.join(', ')}\n`;
+    const jsnap = await getDocs(query(collection(db, 'journal'), where('cat', 'in', targetCats)));
+    if (!jsnap.empty) {
+      const bycat = {};
+      jsnap.forEach(d => {
+        const j = d.data();
+        if (j.status === 'past') return;
+        if (!bycat[j.cat]) bycat[j.cat] = {};
+        if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
+        bycat[j.cat][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+      });
+      if (Object.keys(bycat).length) {
+        context += '\n\n## Care Journal (current)\n';
+        for (const [cat, lists] of Object.entries(bycat)) {
+          for (const [list, items] of Object.entries(lists)) {
+            context += `${cat} / ${list}: ${items.join(', ')}\n`;
           }
         }
       }
     }
-    const jq = query(collection(db, 'journal'), where('cat', 'in', targetCats));
-    const jsnap = await getDocs(jq);
-    if (!jsnap.empty) {
-      context += '\n\n## Care Journal\n';
-      jsnap.forEach(d => {
-        const j = d.data();
-        if (j.status !== 'past') context += `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' — '+j.dose:''}\n`;
-      });
+  } catch(e) { console.warn('Journal context failed:', e); }
+
+  if (isFullHistoryRequest) {
+    // Load everything — user explicitly asked for it
+    for (const cat of targetCats) {
+      const visits = _allVisitsCache.filter(v => v.cat === cat).sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+      if (visits.length) {
+        context += `\n\n## ${cat} — Full Visit History (${visits.length} visits)\n`;
+        for (const v of visits) {
+          context += `\n### ${v.date}${v.clinic ? ' · ' + v.clinic : ''}${v.doctor ? ' · ' + v.doctor : ''}\n`;
+          if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
+          if (v.synopsis) context += `${v.synopsis}\n`;
+          if (v.narrative) context += `\n${v.narrative}\n`;
+        }
+      }
     }
-  } catch(e) { console.error('Context build error:', e); }
+  } else if (isSearchQuery) {
+    // Client-side search — find matching visits and inject full text
+    const matches = searchVisits(userMessage).filter(v => targetCats.includes(v.cat));
+    if (matches.length) {
+      context += `\n\n## Search Results for "${userMessage.slice(0,50)}"\n`;
+      for (const v of matches.slice(0, 8)) {
+        context += `\n### ${v.cat} · ${v.date}${v.clinic ? ' · ' + v.clinic : ''}\n`;
+        if (v.synopsis) context += `${v.synopsis}\n`;
+        if (v.narrative) context += `\n${v.narrative}\n`;
+      }
+    } else {
+      context += `\n\n(No visits matched the search query in records)\n`;
+    }
+  } else {
+    // Default: recent visits as synopses (compact), older ones as one-liners
+    for (const cat of targetCats) {
+      const visits = _allVisitsCache
+        .filter(v => v.cat === cat)
+        .sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+
+      if (!visits.length) continue;
+      context += `\n\n## ${cat} — Visits\n`;
+
+      // Most recent 3: full synopsis
+      for (const v of visits.slice(0, 3)) {
+        context += `\n### ${v.date}${v.clinic ? ' · ' + v.clinic : ''}${v.doctor ? ' · ' + v.doctor : ''}\n`;
+        if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
+        if (v.synopsis) context += `${v.synopsis}\n`;
+        if (v.medications?.length) {
+          const meds = v.medications.map(m => `${m.name}${m.dose?' '+m.dose:''}`).join(', ');
+          context += `Medications: ${meds}\n`;
+        }
+      }
+
+      // Older visits: one-liner each
+      if (visits.length > 3) {
+        context += `\nOlder visits:\n`;
+        for (const v of visits.slice(3)) {
+          const synopsis = v.synopsis ? v.synopsis.split('.')[0] : (v.chiefComplaint || 'visit');
+          context += `- ${v.date}${v.clinic ? ' · ' + v.clinic : ''}: ${synopsis}\n`;
+        }
+      }
+    }
+  }
+
+  // Always include recent labs (structured — always complete)
+  try {
+    for (const cat of targetCats) {
+      const labs = _allLabsCache
+        .filter(l => l.cat === cat)
+        .sort((a,b) => (b.resultDate||'') > (a.resultDate||'') ? 1 : -1);
+
+      if (!labs.length) continue;
+      const byDate = {};
+      for (const l of labs) {
+        const dk = l.resultDate || 'unknown';
+        const gk = l.labGroup || 'Other';
+        if (!byDate[dk]) byDate[dk] = {};
+        if (!byDate[dk][gk]) byDate[dk][gk] = [];
+        byDate[dk][gk].push(`${l.test}: ${l.value}${l.unit?' '+l.unit:''}${l.abnormal?' ['+l.abnormal+']':''}`);
+      }
+      context += `\n\n## ${cat} — Labs\n`;
+      for (const [date, groups] of Object.entries(byDate)) {
+        context += `\n### ${date}\n`;
+        for (const [group, rows] of Object.entries(groups)) {
+          context += `${group}: ${rows.join(', ')}\n`;
+        }
+      }
+    }
+  } catch(e) { console.warn('Lab context failed:', e); }
+
   return context;
 }
 
