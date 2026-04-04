@@ -1137,11 +1137,13 @@ function renderRecordsTree(tree) {
       for (const v of visits) {
         const ve = document.createElement('div');
         ve.className = 'visit-entry';
-        ve.style.cssText = 'position:relative;';
+        ve.style.cssText = 'position:relative;cursor:pointer;';
         const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
-        const synopsisPreview = v.synopsis ? v.synopsis.split('.')[0].slice(0, 55) : (v.chiefComplaint ? v.chiefComplaint.slice(0, 55) : '');
+        const doctorDisplay = v.doctor ? v.doctor.replace(/^Dr\.?\s*/i, '') : '';
+        const isInvoice = v.docType === 'Invoice';
         ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
-            <span style="color:var(--accent)">${escHtml(clinicDisplay)}</span>${synopsisPreview ? `<span style="color:var(--ink-muted)"> — ${escHtml(synopsisPreview)}${synopsisPreview.length >= 55 ? '…' : ''}</span>` : ''}
+            ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
+            <span style="color:var(--accent);font-weight:500;">${escHtml(clinicDisplay)}</span>${doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;"> · ${escHtml(doctorDisplay)}</span>` : ''}
           </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
@@ -1149,7 +1151,11 @@ function renderRecordsTree(tree) {
           </span>`;
         ve.addEventListener('mouseenter', () => { ve.querySelector('.visit-entry-actions').style.display = 'flex'; });
         ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
-        ve.querySelector('.visit-entry-type').onclick = () => openVisit(v);
+        // Whole row is clickable — not just the text span
+        ve.addEventListener('click', (e) => {
+          if (e.target.closest('[data-action]')) return; // don't open on edit/delete btn
+          openVisit(v);
+        });
         ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
         ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
         attachVisitCtxMenu(ve, v);
@@ -2034,19 +2040,24 @@ async function loadDriveFiles() {
   $('drive-status').textContent = 'Drive connected';
   $('files-actions').style.display = 'none';
   filesList.innerHTML = '<div class="files-loading">Loading files from Drive…</div>';
+
+  // Helper: fetch with a 15 second timeout so we never hang silently
+  const fetchWithTimeout = (url, opts, ms = 15000) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  };
+
   try {
-    // Use saved folder ID if we have it (avoids re-searching every load)
     let uploadsId = null;
     try { uploadsId = localStorage.getItem('pr_uploads_folder_id'); } catch(e) {}
 
     if (!uploadsId) {
-      // Search for PawRecords folder (case-insensitive via Drive API limitation — exact match only)
-      const pawRes = await fetch(
+      const pawRes = await fetchWithTimeout(
         `https://www.googleapis.com/drive/v3/files?q=name%3D'PawRecords'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)&includeItemsFromAllDrives=true&supportsAllDrives=true`,
         { headers: { Authorization: `Bearer ${driveAccessToken}` } }
       );
 
-      // Token expired — show reconnect button (must be user-triggered, can't auto-popup)
       if (pawRes.status === 401) {
         driveAccessToken = null;
         try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
@@ -2068,13 +2079,11 @@ async function loadDriveFiles() {
       const pawFolder = pawData.files?.[0];
 
       if (!pawFolder) {
-        // Folder not found — let user pick it
         showFolderNotFoundPrompt();
         return;
       }
 
-      // Find uploads subfolder
-      const folderRes = await fetch(
+      const folderRes = await fetchWithTimeout(
         `https://www.googleapis.com/drive/v3/files?q=name%3D'uploads'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+'${pawFolder.id}'+in+parents+and+trashed%3Dfalse&fields=files(id,name)`,
         { headers: { Authorization: `Bearer ${driveAccessToken}` } }
       );
@@ -2082,24 +2091,20 @@ async function loadDriveFiles() {
       const uploadFolder = folderData.files?.[0];
 
       if (!uploadFolder) {
-        // No uploads subfolder — use PawRecords root directly
         uploadsId = pawFolder.id;
         showToast('No "uploads" subfolder found — using PawRecords root folder', 'info');
       } else {
         uploadsId = uploadFolder.id;
       }
-      // Cache folder ID so we don't search every load
       try { localStorage.setItem('pr_uploads_folder_id', uploadsId); } catch(e) {}
     }
 
-    // List files
-    const filesRes = await fetch(
+    const filesRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files?q='${uploadsId}'+in+parents+and+trashed%3Dfalse&fields=files(id,name,size,mimeType,modifiedTime)&pageSize=200&orderBy=name`,
       { headers: { Authorization: `Bearer ${driveAccessToken}` } }
     );
 
     if (filesRes.status === 401) {
-      // Cached folder ID but token expired
       try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
       driveAccessToken = null;
       try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
@@ -2113,7 +2118,17 @@ async function loadDriveFiles() {
     renderFilesList(driveFiles, statusMap);
   } catch (err) {
     console.error('Drive load error:', err);
-    filesList.innerHTML = `<div class="files-loading" style="color:var(--red);">Drive error: ${escHtml(err.message)}<br><br><button class="btn-icon" onclick="loadDriveFiles()" style="margin-top:0.5rem;">Retry</button></div>`;
+    filesList.innerHTML = `<div class="files-loading" style="color:var(--red);">
+      ${err.name === 'AbortError' ? 'Drive timed out — connection may be slow or the token expired.' : 'Drive error: ' + escHtml(err.message)}
+      <br><br>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button class="btn-icon" onclick="window._driveFilesLoaded=false;loadDriveFiles()" style="margin-top:0.25rem;">Retry</button>
+        <button class="btn-icon" onclick="try{localStorage.removeItem('pr_uploads_folder_id')}catch(e){}window._driveFilesLoaded=false;loadDriveFiles()" style="margin-top:0.25rem;">Clear cache &amp; retry</button>
+      </div>
+    </div>`;
+    // Clear stale folder ID on any error — it may be the cause
+    try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
+    window._driveFilesLoaded = false; // allow tab re-click to retry
   }
 }
 
@@ -2977,6 +2992,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         clinic: visit.clinic || null, doctor: visit.doctor || null,
         chiefComplaint: visit.chiefComplaint || null,
         synopsis: visit.synopsis || null,
+        docType: visit.docType || null,
         medications: visit.medications || [],
         procedures: visit.procedures || [], vitals: visit.vitals || null,
         narrative: visit.narrative || '',
@@ -3768,6 +3784,7 @@ Return JSON only, no markdown:
     "clinic": "Morrisville",
     "doctor": "Dr. Beth Hraban",
     "chiefComplaint": "weight loss, alopecia, occasional limping",
+    "docType": null,
     "synopsis": "2-4 sentence factual summary of the visit",
     "medications": [
       {"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","dispensed":false,"continuing":true,"supplement":false},
@@ -3796,7 +3813,10 @@ Return JSON only, no markdown:
   "flags": []
 }
 
-If invoice with no clinical content → {"skip":true}
+INVOICES: Extract meds dispensed, vaccines given, prescription foods, and procedures with dates.
+Store as a visit with docType:"Invoice". Do NOT skip invoices — they often contain vaccine records,
+dispensed medications, and procedures not found in clinical notes. Remove all costs/fees/billing.
+If an invoice has literally no clinical content at all (no meds, no vaccines, no procedures) → {"skip":true}
 
 --- FILE: ${file.name} ---
 `;
@@ -5083,7 +5103,8 @@ SKIP: costs, billing, boilerplate, appointment reminders, legal text, product ma
 Return JSON only, no markdown:
 {"skip":false,"isAmendment":false,"cats":["Mocha"],"dates":["2025-05-13"],"visits":[{"cat":"Mocha","date":"2025-05-13","clinic":"Morrisville","doctor":"Dr. Beth Hraban","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
 
-If invoice with no clinical content → {"skip":true}
+INVOICES: Extract meds dispensed, vaccines given, procedures with dates. Store as docType:"Invoice".
+Only skip if truly empty of all clinical content → {"skip":true}
 
 --- FILE: ${filename} ---
 ${text.slice(0, 18000)}`;
@@ -5226,6 +5247,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       clinic: visit.clinic || null, doctor: visit.doctor || null,
       chiefComplaint: visit.chiefComplaint || null,
       synopsis: visit.synopsis || null,
+      docType: visit.docType || null,
       medications: visit.medications || [],
       procedures: visit.procedures || [], vitals: visit.vitals || null,
       narrative: visit.narrative || '',
