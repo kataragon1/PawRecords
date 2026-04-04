@@ -89,11 +89,11 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .visit-entry:hover .visit-entry-type{color:var(--accent);}
 
 /* Labs panel */
-.lab-cat-section{border-bottom:1px solid var(--surface2);}
-.lab-cat-heading{padding:0.5rem 1rem;font-size:0.78rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:0.5rem;user-select:none;transition:background 0.15s;}
-.lab-cat-heading:hover{background:var(--surface);}
-.lab-summary-row{display:flex;align-items:baseline;padding:0.2rem 1rem 0.2rem 1.5rem;gap:0.5rem;cursor:pointer;transition:background 0.1s;}
+.lab-summary-row{display:flex;align-items:baseline;padding:0.2rem 1rem 0.2rem 1.5rem;gap:0.5rem;cursor:pointer;transition:background 0.1s;position:relative;}
 .lab-summary-row:hover{background:var(--surface);}
+.lab-group-edit-btn{position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:0.6rem;opacity:0;transition:opacity 0.15s;padding:0.1rem 0.2rem;border-radius:3px;color:var(--ink-muted);line-height:1;}
+.lab-summary-row:hover .lab-group-edit-btn{opacity:0.35;}
+.lab-group-edit-btn:hover{opacity:1!important;background:var(--surface2);}
 .lab-test-name{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .lab-val{font-family:'JetBrains Mono',monospace;font-size:0.66rem;font-weight:600;flex-shrink:0;}
 .lab-val.high{color:#b91c1c;background:#fee2e2;border-radius:3px;padding:0 3px;}
@@ -106,13 +106,6 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .journal-cat-section{border-bottom:1px solid var(--surface2);}
 .journal-cat-heading{padding:0.5rem 1rem;font-size:0.78rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:0.5rem;user-select:none;transition:background 0.15s;}
 .journal-cat-heading:hover{background:var(--surface);}
-.journal-list-name{padding:0.3rem 1rem 0.15rem 1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);}
-.journal-item{padding:0.2rem 1rem 0.2rem 1.75rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);line-height:1.5;display:flex;align-items:flex-start;gap:0.4rem;}
-.journal-status-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0;margin-top:0.3rem;}
-.journal-status-dot.using{background:var(--green);}
-.journal-status-dot.pending{background:var(--amber);}
-.journal-status-dot.removed{background:var(--ink-muted);}
-.journal-status-dot.considering{background:var(--blue);}
 
 /* Files panel */
 #files-panel{overflow-y:auto;}
@@ -283,7 +276,6 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .process-file-row:last-child{border-bottom:none;}
 .process-file-row-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-dim);}
 .process-file-row-ext{color:var(--accent);font-size:0.56rem;width:28px;flex-shrink:0;}
-.process-file-row-size{color:var(--ink-muted);flex-shrink:0;}
 .process-modal-footer{padding:0.85rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-shrink:0;}
 .process-cancel-note{font-family:'JetBrains Mono',monospace;font-size:0.57rem;color:var(--ink-muted);}
 
@@ -305,7 +297,6 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .record-popup-box{background:white;border-radius:13px;width:100%;max-width:700px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;}
 .record-popup-header{padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;flex-wrap:wrap;}
 .record-popup-title{font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);flex:1;min-width:0;}
-.record-popup-meta{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);white-space:nowrap;}
 .record-popup-search{display:flex;align-items:center;gap:0.3rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem;transition:border-color 0.2s;}
 .record-popup-search:focus-within{border-color:var(--accent);}
 #popup-search-input{background:transparent;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink);width:110px;}
@@ -422,7 +413,6 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 .flag-type{font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:var(--amber-bg);color:var(--amber);padding:0.1rem 0.4rem;border-radius:10px;white-space:nowrap;flex-shrink:0;}
 .flag-type.resolved{background:var(--green-bg);color:var(--green);}
 .flag-desc{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);line-height:1.55;margin-bottom:0.5rem;}
-.flag-best-guess{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);margin-bottom:0.6rem;}
 .flag-actions{display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;}
 .flag-input{flex:1;min-width:140px;font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.6rem;color:var(--ink);outline:none;}
 .flag-input:focus{border-color:var(--accent);}
@@ -673,7 +663,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <div class="status-dot grey" id="firebase-dot"></div>
         <span id="firebase-status">Connecting…</span>
       </div>
-      <div class="status-indicator">
+      <div class="status-indicator" id="drive-status-indicator" style="cursor:pointer;" title="Click to reconnect Drive">
         <div class="status-dot grey" id="drive-dot"></div>
         <span id="drive-status">Drive not connected</span>
       </div>
@@ -1080,7 +1070,8 @@ async function loadInitialData() {
     setLoading('Loading notes…');
     await loadNotes();
     setLoading('Loading corrections…');
-    await loadLabCorrections(); // pre-load all visits+labs into memory for search
+    await loadLabCorrections();
+    await loadLabGroups(); // pre-load all visits+labs into memory for search
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -1354,16 +1345,6 @@ function openVisitEdit(v) {
   $('record-popup').classList.add('open');
 }
 
-async function deleteVisit(v) {
-  if (!v.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
-  if (!confirm(`Delete this record?\n${v.cat} · ${v.date} · ${v.docType || 'Visit'}\n\nThis cannot be undone.`)) return;
-  try {
-    await deleteDoc(doc(db, 'visits', v.id));
-    showToast('Record deleted', 'warning', null);
-    loadRecordsSidebar();
-  } catch(err) { showToast('Delete failed: ' + err.message, 'warning'); }
-}
-
 // ── LABS SIDEBAR + FLOWSHEET ──
 const TEST_ORDER = [
   // CBC
@@ -1440,6 +1421,31 @@ function inferLabGroup(test, labName) {
   // Imaging — should be in procedures but handle gracefully
   if (['ultrasound','radiograph','x-ray','xray','ct scan','mri','echo','echocardiogram'].some(k => t.includes(k))) return 'Imaging';
   return 'Chemistry';
+}
+
+// ── SHARED LAB ROW BUILDER ──
+function makeLabRow(test, e, targetContainer, onClick) {
+  const row = document.createElement('div');
+  row.className = 'lab-summary-row';
+  const abn = (e.abnormal||'').toUpperCase();
+  const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
+  const displayVal = typeof e.value === 'number'
+    ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
+    : String(e.value || '');
+  row.innerHTML = `
+    <span class="lab-test-name">${escHtml(test)}</span>
+    <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
+    <span class="lab-date">${formatDateShort(e.resultDate)}</span>
+    <button class="lab-group-edit-btn" title="Change group">✏</button>`;
+  row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
+  row.addEventListener('click', onClick);
+  row.querySelector('.lab-group-edit-btn').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    showLabGroupPicker(e, ev.currentTarget);
+  });
+  attachLabCtxMenu(row, e, flowsheetCat);
+  targetContainer.appendChild(row);
+  return row;
 }
 
 function renderLabsSidebar() {
@@ -1576,21 +1582,7 @@ function renderLabsSidebar() {
 
       for (const test of ordered) {
         const e = latest[test];
-        const row = document.createElement('div');
-        row.className = 'lab-summary-row';
-        const abn = (e.abnormal||'').toUpperCase();
-        const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
-        const displayVal = typeof e.value === 'number'
-          ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
-          : String(e.value || '');
-        row.innerHTML = `
-          <span class="lab-test-name">${escHtml(test)}</span>
-          <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
-          <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
-        row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
-        row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
-        attachLabCtxMenu(row, e, flowsheetCat);
-        rowsEl.appendChild(row);
+        makeLabRow(test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, test));
       }
       container.appendChild(rowsEl);
 
@@ -1605,21 +1597,7 @@ function renderLabsSidebar() {
 
       for (const test of ordered) {
         const e = latest[test];
-        const row = document.createElement('div');
-        row.className = 'lab-summary-row';
-        const abn = (e.abnormal||'').toUpperCase();
-        const valClass = abn === 'HIGH' ? 'high' : abn === 'LOW' ? 'low' : (abn === 'NEG' || abn === 'NEGATIVE') ? 'neg' : 'normal';
-        const displayVal = typeof e.value === 'number'
-          ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
-          : String(e.value || '');
-        row.innerHTML = `
-          <span class="lab-test-name">${escHtml(test)}</span>
-          <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
-          <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
-        row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
-        row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
-        attachLabCtxMenu(row, e, flowsheetCat);
-        container.appendChild(row);
+        makeLabRow(test, e, container, () => openFlowsheetModal(flowsheetCat, test));
       }
     }
   }
@@ -1799,6 +1777,8 @@ function buildFlowsheetTable(cat, container) {
 
 // ── JOURNAL SIDEBAR ──
 async function loadJournalSidebar() {
+  _journalCache = null; // invalidate chat context cache on any journal reload
+  _journalCacheTime = 0;
   try {
     const q = query(collection(db, 'journal'), orderBy('cat'));
     const snap = await getDocs(q);
@@ -1984,22 +1964,14 @@ function openJournalEdit(item) {
   $('record-popup').classList.add('open');
 }
 
-async function deleteJournalEntry(item) {
-  if (!item.id) { showToast('Cannot delete — no Firestore ID', 'warning'); return; }
-  if (!confirm(`Delete: ${item.cat} / ${item.list}: ${item.text}?`)) return;
-  try {
-    await deleteDoc(doc(db, 'journal', item.id));
-    showToast('Journal entry deleted', 'warning');
-    loadJournalSidebar();
-  } catch(err) { showToast('Delete failed: ' + err.message, 'warning'); }
-}
-
 // ── SIDEBAR TABS ──
+let _activeTab = 'records';
 document.querySelectorAll('.sidebar-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
+    _activeTab = tab.dataset.tab;
     $(`panel-${tab.dataset.tab}`).classList.add('active');
     // Reload Drive files on Files tab click — always, so stale token is caught immediately
     // Debounce: don't reload if we just loaded within the last 60 seconds
@@ -2007,16 +1979,27 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
       const now = Date.now();
       const lastLoad = window._driveLastLoaded || 0;
       if (!driveAccessToken) {
-        // No token — show reconnect prompt immediately without trying to load
         showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
       } else if (now - lastLoad > 60000) {
-        // Token exists and it's been over a minute — reload
         window._driveLastLoaded = now;
         loadDriveFiles();
       }
-      // else: loaded recently, leave as-is
     }
   });
+});
+
+// Re-check Drive when user returns to the tab after being away
+// (covers cases where token was cleared or session expired while page was in background)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && _activeTab === 'files') {
+    const now = Date.now();
+    if (!driveAccessToken) {
+      showDriveConnectPrompt('Drive session expired. Click to reconnect.');
+    } else if (now - (window._driveLastLoaded || 0) > 5 * 60 * 1000 && !processingActive) {
+      window._driveLastLoaded = now;
+      loadDriveFiles();
+    }
+  }
 });
 
 // ── FILES FILTER ──
@@ -2040,7 +2023,40 @@ function filterFiles(filter) {
 }
 
 // ── DRIVE CONNECTION (fallback if token expired) ──
-$('connect-drive-btn').addEventListener('click', async () => {
+// ── DRIVE RECONNECT ──
+async function reconnectDrive(triggerEl) {
+  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Connecting…'; }
+  try {
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (credential?.accessToken) {
+      driveAccessToken = credential.accessToken;
+      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+      const pr = $('drive-connect-prompt');
+      if (pr) pr.style.display = 'none';
+      $('drive-dot').className = 'status-dot green';
+      $('drive-status').textContent = 'Drive connected';
+      window._driveLastLoaded = 0;
+      await loadDriveFiles();
+      showToast('Drive reconnected ✓', 'journal');
+    } else {
+      showToast('No Drive token returned — try again', 'warning');
+    }
+  } catch(e) {
+    if (e.code !== 'auth/cancelled-popup-request' && e.code !== 'auth/popup-closed-by-user') {
+      showToast('Reconnect failed: ' + e.message, 'warning');
+    }
+  } finally {
+    provider.setCustomParameters({});
+    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
+  }
+}
+
+$('connect-drive-btn').addEventListener('click', () => reconnectDrive($('connect-drive-btn')));
+
+// Status bar Drive indicator — click to reconnect
+$('drive-status-indicator').addEventListener('click', () => reconnectDrive(null));
 
 // ── UPLOAD BUTTON ──
 $('upload-files-btn').addEventListener('click', () => {
@@ -2050,7 +2066,7 @@ $('upload-files-btn').addEventListener('click', () => {
 $('upload-file-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
   if (!files.length) return;
-  e.target.value = ''; // reset so same files can be re-selected
+  e.target.value = '';
   await uploadFilesToDrive(files);
 });
 
@@ -2064,39 +2080,6 @@ document.querySelectorAll('.sort-btn').forEach(btn => {
       renderFilesList(window._driveFiles, window._statusMap);
     }
   });
-});
-  const btn = $('connect-drive-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
-  try {
-    // Force account picker so Google issues a fresh access token with Drive scope
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      driveAccessToken = credential.accessToken;
-      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
-      const pr = $('drive-connect-prompt');
-      if (pr) pr.style.display = 'none';
-      const dot = $('drive-dot');
-      if (dot) dot.className = 'status-dot green';
-      const st = $('drive-status');
-      if (st) st.textContent = 'Drive connected';
-      await loadDriveFiles();
-      showToast('Drive reconnected ✓', 'journal');
-    } else {
-      showToast('No Drive token returned — try again', 'warning');
-    }
-  } catch(e) {
-    // COOP popup warnings from Firebase are non-fatal — suppress them
-    if (e.code !== 'auth/cancelled-popup-request' && e.code !== 'auth/popup-closed-by-user') {
-      showToast('Reconnect failed: ' + e.message, 'warning');
-    }
-  } finally {
-    // Reset button — guard null in case DOM was replaced during the auth flow
-    provider.setCustomParameters({});
-    const btn2 = $('connect-drive-btn');
-    if (btn2) { btn2.disabled = false; btn2.textContent = 'Reconnect Drive'; }
-  }
 });
 
 async function loadDriveFiles() {
@@ -2688,6 +2671,7 @@ async function startProcessingQueue(files) {
 
   // Reload sidebars with new data
   await reloadSidebars('all');
+  await updatePetList(); // refresh pet list and center message in case new cats were found
   _allVisitsCache = null; // invalidate search cache — will reload on next chat message
   _allLabsCache = null;
   updateProcessButtons();
@@ -3643,6 +3627,29 @@ async function confirmDeleteVisit(visit) {
 }
 
 // ── LAB CONTEXT MENU ──
+// ── LAB GROUPS ──
+// Loaded from Firestore — editable, not hardcoded
+let _labGroups = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
+
+async function loadLabGroups() {
+  try {
+    const d = await getDoc(doc(db, 'app_config', 'lab_groups'));
+    if (d.exists() && d.data().groups?.length) {
+      _labGroups = d.data().groups;
+    } else {
+      // First time — seed Firestore with defaults
+      await setDoc(doc(db, 'app_config', 'lab_groups'), { groups: _labGroups });
+    }
+  } catch(e) { console.warn('Lab groups load failed:', e.message); }
+}
+
+async function addLabGroup(name) {
+  const trimmed = name.trim();
+  if (!trimmed || _labGroups.includes(trimmed)) return;
+  _labGroups.push(trimmed);
+  await setDoc(doc(db, 'app_config', 'lab_groups'), { groups: _labGroups });
+}
+
 // ── LAB GROUP CORRECTIONS ──
 // User-defined overrides: { testName (lowercase) → labGroup }
 let _labCorrections = {}; // loaded from Firestore on startup
@@ -3674,18 +3681,80 @@ async function saveLabCorrection(testName, labGroup) {
 function attachLabCtxMenu(el, entry, cat) {
   el.addEventListener('contextmenu', e => {
     ctxTarget = entry;
-    const LAB_GROUPS = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
-    const currentGroup = entry.labGroup || 'Chemistry';
-    const groupItems = LAB_GROUPS
-      .filter(g => g !== currentGroup)
-      .map(g => ({ label: `→ ${g}`, action: () => saveLabCorrection(entry.test, g) }));
-    showCtxMenu(e, `${entry.test} · ${currentGroup}`, [
-      ...groupItems,
-      'sep',
+    showCtxMenu(e, `${entry.test} · ${entry.labGroup || 'Chemistry'}`, [
       { label: '🗑 Delete this result', danger: true, action: () => confirmDeleteLab(entry, cat) },
       { label: '🗑 Delete all from this date', danger: true, action: () => confirmDeleteLabsByDate(entry.resultDate || entry.visitDate, cat) }
     ]);
   });
+}
+
+function showLabGroupPicker(entry, anchorEl) {
+  // Remove any existing picker
+  document.querySelectorAll('.lab-group-picker').forEach(p => p.remove());
+
+  const picker = document.createElement('div');
+  picker.className = 'lab-group-picker';
+  picker.style.cssText = 'position:fixed;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:1000;min-width:140px;padding:0.25rem 0;font-family:JetBrains Mono,monospace;font-size:0.65rem;';
+
+  const currentGroup = entry.labGroup || 'Chemistry';
+
+  // Header
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'padding:0.3rem 0.75rem 0.2rem;color:var(--ink-muted);font-size:0.58rem;letter-spacing:0.06em;border-bottom:1px solid var(--surface2);margin-bottom:0.2rem;';
+  hdr.textContent = 'Move to group';
+  picker.appendChild(hdr);
+
+  for (const g of _labGroups) {
+    const opt = document.createElement('div');
+    opt.style.cssText = `padding:0.25rem 0.75rem;cursor:${g === currentGroup ? 'default' : 'pointer'};color:${g === currentGroup ? 'var(--accent)' : 'var(--ink-dim)'};transition:background 0.1s;display:flex;align-items:center;gap:0.4rem;`;
+    if (g === currentGroup) opt.style.fontWeight = '600';
+    opt.innerHTML = `${g === currentGroup ? '✓ ' : ''}<span>${escHtml(g)}</span>`;
+    if (g !== currentGroup) {
+      opt.addEventListener('mouseenter', () => opt.style.background = 'var(--surface)');
+      opt.addEventListener('mouseleave', () => opt.style.background = '');
+      opt.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        picker.remove();
+        await saveLabCorrection(entry.test, g);
+      });
+    }
+    picker.appendChild(opt);
+  }
+
+  // Add new group option
+  const sep = document.createElement('div');
+  sep.style.cssText = 'border-top:1px solid var(--surface2);margin:0.2rem 0;';
+  picker.appendChild(sep);
+
+  const addOpt = document.createElement('div');
+  addOpt.style.cssText = 'padding:0.25rem 0.75rem;cursor:pointer;color:var(--ink-muted);font-size:0.6rem;';
+  addOpt.textContent = '+ New group…';
+  addOpt.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    picker.remove();
+    const name = prompt('New group name:');
+    if (name?.trim()) {
+      await addLabGroup(name.trim());
+      await saveLabCorrection(entry.test, name.trim());
+    }
+  });
+  picker.appendChild(addOpt);
+
+  // Position near anchor
+  document.body.appendChild(picker);
+  const rect = anchorEl.getBoundingClientRect();
+  const pw = picker.offsetWidth || 150;
+  const ph = picker.offsetHeight || 200;
+  let x = rect.right - pw;
+  let y = rect.bottom + 2;
+  if (y + ph > window.innerHeight - 8) y = rect.top - ph - 2;
+  if (x < 8) x = 8;
+  picker.style.left = x + 'px';
+  picker.style.top = y + 'px';
+
+  // Close on outside click
+  const close = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 0);
 }
 
 async function confirmDeleteLab(entry, cat) {
@@ -6109,6 +6178,10 @@ function searchVisits(query) {
   });
 }
 
+let _journalCache = null;
+let _journalCacheTime = 0;
+const JOURNAL_CACHE_TTL = 60000; // 1 minute
+
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
   const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
@@ -6122,18 +6195,23 @@ async function buildChatContext(userMessage) {
   const isSearchQuery = /search|find|mention|history|all visit|every time|when did|has she ever|back in|years? ago|look(ing)? for/i.test(userMessage);
   const isFullHistoryRequest = /full history|load (all|everything)|all records|complete history/i.test(userMessage);
 
-  // Always include journal (current state — small and critical)
+  // Journal — cached for 1 minute to avoid a Firestore read on every message
   try {
-    const jsnap = await getDocs(query(collection(db, 'journal'), where('cat', 'in', targetCats)));
-    if (!jsnap.empty) {
+    const now = Date.now();
+    if (!_journalCache || now - _journalCacheTime > JOURNAL_CACHE_TTL) {
+      const jsnap = await getDocs(query(collection(db, 'journal'), where('cat', 'in', targetCats)));
+      _journalCache = jsnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _journalCacheTime = now;
+    }
+    const jDocs = _journalCache.filter(j => targetCats.includes(j.cat));
+    if (jDocs.length) {
       const bycat = {};
-      jsnap.forEach(d => {
-        const j = d.data();
-        if (j.status === 'past') return;
+      for (const j of jDocs) {
+        if (j.status === 'past') continue;
         if (!bycat[j.cat]) bycat[j.cat] = {};
         if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
         bycat[j.cat][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
-      });
+      }
       if (Object.keys(bycat).length) {
         context += '\n\n## Care Journal (current)\n';
         for (const [cat, lists] of Object.entries(bycat)) {
