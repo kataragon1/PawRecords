@@ -96,8 +96,8 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .lab-summary-row:hover{background:var(--surface);}
 .lab-test-name{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .lab-val{font-family:'JetBrains Mono',monospace;font-size:0.66rem;font-weight:600;flex-shrink:0;}
-.lab-val.high{color:var(--red);}
-.lab-val.low{color:var(--blue);}
+.lab-val.high{color:#b91c1c;background:#fee2e2;border-radius:3px;padding:0 3px;}
+.lab-val.low{color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:0 3px;}
 .lab-val.neg{color:var(--ink-muted);font-weight:400;}
 .lab-val.normal{color:var(--ink);}
 .lab-date{font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--ink-muted);flex-shrink:0;}
@@ -928,6 +928,9 @@ function updateStatusBar() {
   if (driveAccessToken) {
     $('drive-dot').className = 'status-dot green';
     $('drive-status').textContent = 'Drive connected';
+  } else {
+    $('drive-dot').className = 'status-dot amber';
+    $('drive-status').textContent = 'Drive — click Files to connect';
   }
 }
 
@@ -1361,7 +1364,7 @@ function renderLabsSidebar() {
         <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
         <span class="lab-date">${formatDateShort(e.resultDate)}</span>`;
       row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
-      row.addEventListener('click', () => openFlowsheetModal(flowsheetCat));
+      row.addEventListener('click', () => openFlowsheetModal(flowsheetCat, test));
       attachLabCtxMenu(row, e, flowsheetCat);
       container.appendChild(row);
     }
@@ -1379,7 +1382,7 @@ let _flowsheetCache = {}; // {cat: htmlElement} — rebuilt only when labDataCac
 
 function invalidateFlowsheetCache() { _flowsheetCache = {}; }
 
-function openFlowsheetModal(cat) {
+function openFlowsheetModal(cat, focusTest) {
   flowsheetCat = cat || flowsheetCat;
   // Populate cat selector
   const sel = $('flowsheet-modal-cat');
@@ -1401,6 +1404,25 @@ function openFlowsheetModal(cat) {
     if (body.firstChild) _flowsheetCache[flowsheetCat] = body.firstChild.cloneNode(true);
   }
   $('flowsheet-modal').classList.add('open');
+
+  // Scroll to the focused test row after the modal renders
+  if (focusTest) {
+    requestAnimationFrame(() => {
+      // Find the td with the exact test name in the sticky first column
+      const rows = body.querySelectorAll('tbody tr');
+      for (const row of rows) {
+        const nameCell = row.querySelector('td:first-child');
+        if (nameCell && nameCell.textContent.trim() === focusTest) {
+          nameCell.closest('tr').scrollIntoView({ block: 'center', behavior: 'smooth' });
+          // Briefly highlight the row
+          row.style.transition = 'background 0.2s';
+          row.style.background = 'var(--amber-bg)';
+          setTimeout(() => { row.style.background = ''; }, 1400);
+          break;
+        }
+      }
+    });
+  }
 }
 
 function buildFlowsheetTable(cat, container) {
@@ -1714,7 +1736,9 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     $(`panel-${tab.dataset.tab}`).classList.add('active');
     // Load Drive files on first click of Files tab
     if (tab.dataset.tab === 'files' && !window._driveFilesLoaded) {
-      window._driveFilesLoaded = true;
+      if (driveAccessToken) {
+        window._driveFilesLoaded = true; // lock only when we actually have a token and will load
+      }
       loadDriveFiles();
     }
   });
@@ -1779,8 +1803,7 @@ $('connect-drive-btn').addEventListener('click', async () => {
 async function loadDriveFiles() {
   const filesList = $('files-list');
   if (!driveAccessToken) {
-    window._driveFilesLoaded = false; // reset so tab click retries
-    showDriveConnectPrompt('Drive token expired. Sign out and back in to reconnect, or click below.');
+    showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
     return;
   }
   $('drive-connect-prompt').style.display = 'none';
