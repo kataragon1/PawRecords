@@ -2011,7 +2011,10 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   });
 });
 
+let _activeFileFilter = 'all';
+
 function filterFiles(filter) {
+  _activeFileFilter = filter;
   document.querySelectorAll('.file-item').forEach(el => {
     const status = el.dataset.status;
     let show = false;
@@ -2020,6 +2023,17 @@ function filterFiles(filter) {
     else show = (status === filter);
     el.style.display = show ? 'flex' : 'none';
   });
+  updateSelectAllLabel();
+  updateProcessButtons();
+}
+
+function updateSelectAllLabel() {
+  const sal = $('select-all-link');
+  if (!sal) return;
+  const visible = [...document.querySelectorAll('.file-item')]
+    .filter(el => el.style.display !== 'none');
+  const allChecked = visible.length > 0 && visible.every(el => el.querySelector('.file-item-checkbox')?.checked);
+  sal.textContent = allChecked ? 'deselect all' : 'select all';
 }
 
 // ── DRIVE CONNECTION (fallback if token expired) ──
@@ -2460,16 +2474,22 @@ function renderFilesList(driveFiles, statusMap) {
     filesList.appendChild(item);
   }
 
-  // Select all link
+  // Select all link — respects active filter, deselects hidden items
   setTimeout(() => {
     const sal = $('select-all-link');
     if (sal) sal.addEventListener('click', () => {
-      const all = document.querySelectorAll('.file-item-checkbox');
-      const anyUnchecked = [...all].some(cb => !cb.checked);
-      all.forEach(cb => {
-        cb.checked = anyUnchecked;
-        cb.closest('.file-item').classList.toggle('selected', anyUnchecked);
+      const all = [...document.querySelectorAll('.file-item')];
+      const visible = all.filter(el => el.style.display !== 'none');
+      const anyUnchecked = visible.some(el => !el.querySelector('.file-item-checkbox')?.checked);
+      // Select all visible, deselect all hidden
+      all.forEach(el => {
+        const cb = el.querySelector('.file-item-checkbox');
+        if (!cb) return;
+        const isVisible = el.style.display !== 'none';
+        cb.checked = isVisible ? anyUnchecked : false;
+        el.classList.toggle('selected', isVisible ? anyUnchecked : false);
       });
+      updateSelectAllLabel();
       updateProcessButtons();
     });
   }, 50);
@@ -2479,6 +2499,7 @@ function renderFilesList(driveFiles, statusMap) {
 }
 
 function updateProcessButtons() {
+  updateSelectAllLabel();
   const selected = [...document.querySelectorAll('.file-item-checkbox')].filter(cb => cb.checked);
   const selBtn = $('process-selected-btn');
   const allBtn = $('process-all-btn');
