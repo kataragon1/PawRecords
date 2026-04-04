@@ -1062,6 +1062,7 @@ async function loadInitialData() {
     // Check for recent abnormal lab values
     await checkAbnormalLabs();
     await checkPendingBatches();
+    await recoverStuckFiles(); // recover any files stuck in 'processing' from a previous interrupted session
     setLoading('Ready');
   } catch (err) {
     console.error('Load error:', err);
@@ -1151,10 +1152,11 @@ function renderRecordsTree(tree) {
           </span>`;
         ve.addEventListener('mouseenter', () => { ve.querySelector('.visit-entry-actions').style.display = 'flex'; });
         ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
-        // Whole row is clickable — not just the text span
         ve.addEventListener('click', (e) => {
-          if (e.target.closest('[data-action]')) return; // don't open on edit/delete btn
-          openVisit(v);
+          if (e.target.closest('[data-action]')) return;
+          e.stopPropagation();
+          console.log('Visit click fired, visit:', v.cat, v.date, 'id:', v.id);
+          try { openVisit(v); } catch(err) { showToast('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
         });
         ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
         ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
@@ -1315,6 +1317,17 @@ function openVisitEdit(v) {
     } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
   };
   body.appendChild(saveBtn);
+
+  // Show drive link in footer same as read popup
+  const linkEl = $('popup-drive-link');
+  if (linkEl) {
+    if (v.driveFileIds?.[0]) {
+      linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${v.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+    } else {
+      linkEl.textContent = v.sourceFiles?.[0] || '';
+    }
+  }
+
   $('record-popup').classList.add('open');
 }
 
@@ -3430,6 +3443,7 @@ function attachVisitCtxMenu(el, visit) {
   el.addEventListener('contextmenu', e => {
     ctxTarget = visit;
     showCtxMenu(e, `${visit.cat} · ${formatDate(visit.date)}`, [
+      { label: '👁 View', action: () => openVisit(visit) },
       { label: '✏ Edit', action: () => openVisitEdit(visit) },
       { label: '↗ Open source in Drive', disabled: !visit.driveFileIds?.[0],
         action: () => window.open(`https://drive.google.com/file/d/${visit.driveFileIds[0]}/view`, '_blank') },
@@ -3876,10 +3890,22 @@ function formatNarrative(text) {
   if ((text.match(/\n\n/g) || []).length >= 2) {
     return text.trim();
   }
-  // Single-paragraph narrative — try to split at known section boundaries
-  // Strategy: find sentence boundaries that start a new known section
-  const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
-  const sections = []; // [{label, lines[]}]
+  // Split on sentence boundaries — Safari-safe (no lookbehind)
+  const splitSentences = (t) => {
+    const parts = [];
+    let last = 0;
+    for (let i = 0; i < t.length - 1; i++) {
+      if ('.!?'.includes(t[i]) && t[i+1] === ' ' && i + 2 < t.length && t[i+2] === t[i+2].toUpperCase() && t[i+2] !== t[i+2].toLowerCase()) {
+        parts.push(t.slice(last, i + 1));
+        last = i + 2;
+      }
+    }
+    if (last < t.length) parts.push(t.slice(last));
+    return parts.filter(s => s.trim());
+  };
+
+  const sentences = splitSentences(text);
+  const sections = [];
   let current = { label: null, lines: [] };
 
   for (const sentence of sentences) {
@@ -3896,7 +3922,6 @@ function formatNarrative(text) {
   }
   if (current.lines.length) sections.push(current);
 
-  // If we found at least 2 distinct sections, format with headers
   const namedSections = sections.filter(s => s.label);
   if (namedSections.length >= 2) {
     return sections.map(s =>
@@ -3904,18 +3929,17 @@ function formatNarrative(text) {
     ).join('\n\n').trim();
   }
 
-  // Fallback: split on long sentences that look like new topics after a period
-  // (every ~4-5 sentences, break at the closest period)
-  const allSentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
-  if (allSentences.length <= 4) return text.trim();
+  // Fallback: break every ~4 sentences
+  if (sentences.length <= 4) return text.trim();
   const chunks = [];
-  for (let i = 0; i < allSentences.length; i += 4) {
-    chunks.push(allSentences.slice(i, i + 4).join(' '));
+  for (let i = 0; i < sentences.length; i += 4) {
+    chunks.push(sentences.slice(i, i + 4).join(' '));
   }
   return chunks.join('\n\n').trim();
 }
 
 function openVisit(visit) {
+  try {
   const title = `${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : ''}`;
   let content = '';
   if (visit.synopsis) content += `${visit.synopsis}\n\n`;
@@ -3958,12 +3982,21 @@ function openVisit(visit) {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
   $('record-popup').classList.add('open');
+  console.log('record-popup opened, classList:', $('record-popup').className);
   setTimeout(() => $('popup-search-input').focus(), 80);
+  } catch(e) {
+    console.error('openVisit error:', e);
+    showToast('Could not open visit: ' + e.message, 'warning');
+  }
 }
 
 // Renders popup content with styled section headers and metadata lines
 function renderPopupContent(body, text) {
   body.innerHTML = '';
+  if (!text || !text.trim()) {
+    body.innerHTML = '<div style="color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.7rem;padding:0.5rem;">No content to display.</div>';
+    return;
+  }
   const paragraphs = text.split(/\n\n+/);
   for (const para of paragraphs) {
     const lines = para.split('\n');
@@ -5303,6 +5336,63 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
     extractionPasses: ['combined_batch'], processedAt: new Date().toISOString()
   });
 }
+async function recoverStuckFiles() {
+  // Find files stuck in 'processing' status — browser was closed mid-extraction
+  // Check if they have an uncommitted extraction cache and complete the write,
+  // otherwise reset to 'unprocessed' so they can be reprocessed cleanly.
+  try {
+    const stuckSnap = await getDocs(query(
+      collection(db, 'files'),
+      where('status', '==', 'processing')
+    ));
+    if (stuckSnap.empty) return;
+
+    let recovered = 0, reset = 0;
+    for (const fileDoc of stuckSnap.docs) {
+      const fileData = fileDoc.data();
+      const fileId = fileData.driveFileId || fileDoc.id;
+      const filename = fileData.filename || fileId;
+
+      // Check for uncommitted extraction cache
+      try {
+        const cacheDoc = await getDoc(doc(db, 'extractions', fileId));
+        if (cacheDoc.exists() && cacheDoc.data().result && !cacheDoc.data().committed) {
+          // Cache exists — complete the write without re-extracting
+          const cached = JSON.parse(cacheDoc.data().result);
+          if (cached.allVisits || cached.allLabs) {
+            const allCats = new Set(cached.cats || []);
+            const allDates = new Set(cached.dates || []);
+            await writeExtractionToFirestore(
+              { id: fileId, name: filename },
+              cached.allVisits || [],
+              cached.allLabs || [],
+              cached.allFlags || [],
+              allCats, allDates,
+              cached.passes || [],
+              false, null
+            );
+            recovered++;
+            console.log(`Recovered stuck file: ${filename}`);
+            continue;
+          }
+        }
+      } catch(e) { /* no cache — fall through to reset */ }
+
+      // No cache or cache invalid — reset to unprocessed
+      await setDoc(doc(db, 'files', fileId), { status: 'unprocessed', updatedAt: new Date().toISOString() }, { merge: true });
+      reset++;
+    }
+
+    if (recovered || reset) {
+      await reloadSidebars('all');
+      if (recovered) showToast(`Recovered ${recovered} interrupted file${recovered > 1 ? 's' : ''} ✓`, 'journal');
+      if (reset) showToast(`Reset ${reset} stuck file${reset > 1 ? 's' : ''} to unprocessed`, 'warning');
+    }
+  } catch(e) {
+    console.warn('Stuck file recovery failed (non-critical):', e.message);
+  }
+}
+
 async function checkPendingBatches() {
   if (!apiKey || !currentUser) return;
   try {
