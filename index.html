@@ -357,7 +357,8 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #notes-input:focus{border-color:var(--accent);}
 #notes-pin-toggle.active{background:var(--accent);color:white;border-color:var(--accent);}
 .notes-cat-chip{font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.4rem;border-radius:10px;border:1px solid var(--border);background:white;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;}
-.notes-cat-chip.active{background:var(--accent);color:white;border-color:var(--accent);}
+.sort-btn.active{background:var(--accent)!important;color:white!important;border-color:var(--accent)!important;}
+.sort-btn:hover:not(.active){background:var(--surface);color:var(--ink)!important;}
 .journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
 .journal-entry-full:hover{background:var(--surface);}
 .journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -552,6 +553,22 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <button class="filter-btn" data-filter="unprocessed">Unprocessed</button>
         <button class="filter-btn" data-filter="flagged">Needs review</button>
         <button class="filter-btn" data-filter="done">Done</button>
+      </div>
+      <div class="files-secondary-toolbar" id="files-secondary-toolbar" style="display:none;padding:0.35rem 0.75rem;border-bottom:1px solid var(--border);display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+        <button class="btn-icon free-icon" id="upload-files-btn" style="font-size:0.62rem;padding:0.25rem 0.5rem;">
+          <span class="free-dot"></span> Upload files
+        </button>
+        <input type="file" id="upload-file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" style="display:none;">
+        <div style="flex:1;"></div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);">Sort:</span>
+        <button class="sort-btn active" data-sort="name" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:none;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.4rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;">A–Z</button>
+        <button class="sort-btn" data-sort="date" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;background:none;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.4rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;">Recent</button>
+      </div>
+      <div id="upload-progress-bar" style="display:none;padding:0.35rem 0.75rem;background:var(--surface);border-bottom:1px solid var(--border);">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);margin-bottom:0.25rem;" id="upload-progress-label">Uploading…</div>
+        <div style="background:var(--border);border-radius:4px;height:4px;overflow:hidden;">
+          <div id="upload-progress-fill" style="background:var(--accent);height:100%;width:0%;transition:width 0.2s;border-radius:4px;"></div>
+        </div>
       </div>
       <div class="files-actions" id="files-actions" style="display:none;">
         <button class="btn-icon cost-icon" id="process-selected-btn" style="display:none;">
@@ -1061,7 +1078,9 @@ async function loadInitialData() {
     setLoading('Building search index…');
     await ensureDataCache();
     setLoading('Loading notes…');
-    await loadNotes(); // pre-load all visits+labs into memory for search
+    await loadNotes();
+    setLoading('Loading corrections…');
+    await loadLabCorrections(); // pre-load all visits+labs into memory for search
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -1393,11 +1412,13 @@ function inferLabGroup(test, labName) {
     if (ln.includes('urinalysis') || ln.includes('urine') || ln.includes('ua')) return 'Urinalysis';
     if (ln.includes('cbc') || ln.includes('hematology') || ln.includes('hemato')) return 'CBC';
     if (ln.includes('chemistry') || ln.includes('chem') || ln.includes('biochem')) return 'Chemistry';
-    if (ln.includes('endocrin') || ln.includes('thyroid') || ln.includes('t4')) return 'Endocrinology';
-    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('felv') || ln.includes('fiv') ||
-        ln.includes('gi panel') || ln.includes('diarrhea') || ln.includes('parasite') || ln.includes('fecal') ||
-        ln.includes('enteric') || ln.includes('stool')) return 'PCR';
-    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return null; // BP goes in vitals
+    if (ln.includes('endocrin') || ln.includes('thyroid')) return 'Endocrinology';
+    // Note: don't match 't4' here — too broad, catches unrelated names
+    if (ln.includes('pcr') || ln.includes('serology') || ln.includes('culture') ||
+        ln.includes('panel') || ln.includes('titer') || ln.includes('antigen') ||
+        ln.includes('antibody') || ln.includes('fecal') || ln.includes('stool') ||
+        ln.includes('gi ') || ln.includes('diarrhea') || ln.includes('parasite')) return 'PCR';
+    if (ln.includes('blood pressure') || ln.includes('bp monitor')) return null;
   }
   const t = test.toLowerCase();
   // CBC markers
@@ -1980,12 +2001,20 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     $(`panel-${tab.dataset.tab}`).classList.add('active');
-    // Load Drive files on first click of Files tab
-    if (tab.dataset.tab === 'files' && !window._driveFilesLoaded) {
-      if (driveAccessToken) {
-        window._driveFilesLoaded = true; // lock only when we actually have a token and will load
+    // Reload Drive files on Files tab click — always, so stale token is caught immediately
+    // Debounce: don't reload if we just loaded within the last 60 seconds
+    if (tab.dataset.tab === 'files') {
+      const now = Date.now();
+      const lastLoad = window._driveLastLoaded || 0;
+      if (!driveAccessToken) {
+        // No token — show reconnect prompt immediately without trying to load
+        showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
+      } else if (now - lastLoad > 60000) {
+        // Token exists and it's been over a minute — reload
+        window._driveLastLoaded = now;
+        loadDriveFiles();
       }
-      loadDriveFiles();
+      // else: loaded recently, leave as-is
     }
   });
 });
@@ -2012,6 +2041,30 @@ function filterFiles(filter) {
 
 // ── DRIVE CONNECTION (fallback if token expired) ──
 $('connect-drive-btn').addEventListener('click', async () => {
+
+// ── UPLOAD BUTTON ──
+$('upload-files-btn').addEventListener('click', () => {
+  if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+  $('upload-file-input').click();
+});
+$('upload-file-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  if (!files.length) return;
+  e.target.value = ''; // reset so same files can be re-selected
+  await uploadFilesToDrive(files);
+});
+
+// ── SORT BUTTONS ──
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _fileSort = btn.dataset.sort;
+    if (window._driveFiles && window._statusMap) {
+      renderFilesList(window._driveFiles, window._statusMap);
+    }
+  });
+});
   const btn = $('connect-drive-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
   try {
@@ -2133,19 +2186,22 @@ async function loadDriveFiles() {
     const driveFiles = filesData.files || [];
     const statusMap = await loadFileStatuses(driveFiles.map(f => f.id));
     renderFilesList(driveFiles, statusMap);
+    $('files-secondary-toolbar').style.display = 'flex';
+    $('files-actions').style.display = 'flex';
+    updateProcessButtons();
   } catch (err) {
     console.error('Drive load error:', err);
     filesList.innerHTML = `<div class="files-loading" style="color:var(--red);">
       ${err.name === 'AbortError' ? 'Drive timed out — connection may be slow or the token expired.' : 'Drive error: ' + escHtml(err.message)}
       <br><br>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-        <button class="btn-icon" onclick="window._driveFilesLoaded=false;loadDriveFiles()" style="margin-top:0.25rem;">Retry</button>
-        <button class="btn-icon" onclick="try{localStorage.removeItem('pr_uploads_folder_id')}catch(e){}window._driveFilesLoaded=false;loadDriveFiles()" style="margin-top:0.25rem;">Clear cache &amp; retry</button>
+        <button class="btn-icon" onclick="window._driveLastLoaded=0;loadDriveFiles()" style="margin-top:0.25rem;">Retry</button>
+        <button class="btn-icon" onclick="try{localStorage.removeItem('pr_uploads_folder_id')}catch(e){}window._driveLastLoaded=0;loadDriveFiles()" style="margin-top:0.25rem;">Clear cache &amp; retry</button>
       </div>
     </div>`;
     // Clear stale folder ID on any error — it may be the cause
     try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
-    window._driveFilesLoaded = false; // allow tab re-click to retry
+    window._driveLastLoaded = 0; // allow tab re-click to retry
   }
 }
 
@@ -2155,8 +2211,18 @@ function showDriveConnectPrompt(message) {
   const p = prompt.querySelector('p');
   if (p) p.textContent = message;
   prompt.style.display = 'flex';
+  // Clear any loading spinner
+  const filesList = $('files-list');
+  if (filesList) {
+    const spinner = filesList.querySelector('.files-loading');
+    if (spinner) spinner.remove();
+  }
   const dot = $('drive-dot');
   if (dot) dot.className = 'status-dot amber';
+  const statusEl = $('drive-status');
+  if (statusEl) statusEl.textContent = 'Drive disconnected';
+  // Reset load timer so reconnect attempt runs immediately
+  window._driveLastLoaded = 0;
 }
 
 function showFolderNotFoundPrompt() {
@@ -2213,18 +2279,122 @@ async function loadFileStatuses(driveFileIds) {
   return map;
 }
 
+// ── FILE SORT STATE ──
+let _fileSort = 'name'; // 'name' | 'date'
+
+// ── DRIVE UPLOAD ──
+async function uploadFilesToDrive(files) {
+  if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+
+  // Get uploads folder ID
+  let uploadsId = null;
+  try { uploadsId = localStorage.getItem('pr_uploads_folder_id'); } catch(e) {}
+  if (!uploadsId) {
+    showToast('Drive folder not loaded yet — open Files tab first', 'warning');
+    return;
+  }
+
+  const bar = $('upload-progress-bar');
+  const label = $('upload-progress-label');
+  const fill = $('upload-progress-fill');
+  bar.style.display = 'block';
+
+  const results = { ok: 0, fail: 0 };
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    label.textContent = `Uploading ${i + 1}/${files.length}: ${file.name}`;
+    fill.style.width = `${Math.round((i / files.length) * 100)}%`;
+
+    try {
+      // Use multipart upload for files under 5MB, resumable for larger
+      const metadata = JSON.stringify({ name: file.name, parents: [uploadsId] });
+
+      if (file.size <= 5 * 1024 * 1024) {
+        // Simple multipart upload
+        const form = new FormData();
+        form.append('metadata', new Blob([metadata], { type: 'application/json' }));
+        form.append('file', file);
+        const res = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,mimeType,modifiedTime',
+          { method: 'POST', headers: { Authorization: `Bearer ${driveAccessToken}` }, body: form }
+        );
+        if (res.status === 401) { driveAccessToken = null; showDriveConnectPrompt('Token expired during upload.'); break; }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const newFile = await res.json();
+        // Add to local file list immediately
+        if (window._driveFiles) {
+          window._driveFiles.push(newFile);
+          if (window._statusMap) window._statusMap[newFile.id] = 'unprocessed';
+        }
+        results.ok++;
+      } else {
+        // Resumable upload for large files
+        const initRes = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,modifiedTime',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${driveAccessToken}`,
+              'Content-Type': 'application/json',
+              'X-Upload-Content-Type': file.type || 'application/octet-stream',
+              'X-Upload-Content-Length': file.size
+            },
+            body: metadata
+          }
+        );
+        if (!initRes.ok) throw new Error(`Init failed: HTTP ${initRes.status}`);
+        const uploadUrl = initRes.headers.get('Location');
+        const uploadRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file
+        });
+        if (!uploadRes.ok) throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+        const newFile = await uploadRes.json();
+        if (window._driveFiles) {
+          window._driveFiles.push(newFile);
+          if (window._statusMap) window._statusMap[newFile.id] = 'unprocessed';
+        }
+        results.ok++;
+      }
+    } catch(e) {
+      console.error(`Upload failed: ${file.name}`, e);
+      results.fail++;
+    }
+  }
+
+  fill.style.width = '100%';
+  label.textContent = `Done — ${results.ok} uploaded${results.fail ? ', ' + results.fail + ' failed' : ''}`;
+  setTimeout(() => { bar.style.display = 'none'; }, 2500);
+
+  // Re-render with new files
+  if (window._driveFiles && window._statusMap) {
+    renderFilesList(window._driveFiles, window._statusMap);
+    $('files-actions').style.display = 'flex';
+    updateProcessButtons();
+  }
+  if (results.ok) showToast(`${results.ok} file${results.ok > 1 ? 's' : ''} uploaded to Drive ✓`, 'journal');
+  if (results.fail) showToast(`${results.fail} file${results.fail > 1 ? 's' : ''} failed to upload`, 'warning');
+}
+
 function renderFilesList(driveFiles, statusMap) {
   const filesList = $('files-list');
   if (!driveFiles.length) {
     filesList.innerHTML = '<div class="files-loading">No files found in PawRecords/uploads.</div>';
     return;
   }
-  // Sort: unprocessed/flagged/failed first, then complete
+  // Sort: respect user sort preference, with unprocessed/flagged first within each sort
   const priority = { unprocessed: 0, flagged: 1, failed: 2, processing: 3, queued: 4, complete: 5 };
   const sorted = [...driveFiles].sort((a, b) => {
-    const sa = priority[statusMap[a.id] || 'unprocessed'] ?? 0;
-    const sb = priority[statusMap[b.id] || 'unprocessed'] ?? 0;
-    return sa - sb || a.name.localeCompare(b.name);
+    if (_fileSort === 'date') {
+      // Most recent modified first
+      const da = new Date(a.modifiedTime || 0).getTime();
+      const db2 = new Date(b.modifiedTime || 0).getTime();
+      return db2 - da;
+    }
+    // Default: alphabetical by name
+    return a.name.localeCompare(b.name);
   });
 
   // Store globally for pipeline access
@@ -3473,20 +3643,47 @@ async function confirmDeleteVisit(visit) {
 }
 
 // ── LAB CONTEXT MENU ──
+// ── LAB GROUP CORRECTIONS ──
+// User-defined overrides: { testName (lowercase) → labGroup }
+let _labCorrections = {}; // loaded from Firestore on startup
+
+async function loadLabCorrections() {
+  try {
+    const snap = await getDocs(collection(db, 'lab_corrections'));
+    _labCorrections = {};
+    snap.forEach(d => { _labCorrections[d.id] = d.data().labGroup; });
+  } catch(e) { console.warn('Lab corrections load failed:', e.message); }
+}
+
+async function saveLabCorrection(testName, labGroup) {
+  const key = testName.toLowerCase().trim();
+  try {
+    await setDoc(doc(db, 'lab_corrections', key), { testName, labGroup, updatedAt: new Date().toISOString() });
+    _labCorrections[key] = labGroup;
+    // Apply correction to all existing labs with this test name
+    const snap = await getDocs(query(collection(db, 'labs'), where('test', '==', testName)));
+    const batch = writeBatch(db);
+    snap.forEach(d => batch.update(d.ref, { labGroup }));
+    await batch.commit();
+    showToast(`"${testName}" → ${labGroup} saved ✓`, 'journal');
+    invalidateFlowsheetCache();
+    await loadLabsSidebar();
+  } catch(e) { showToast('Correction failed: ' + e.message, 'warning'); }
+}
+
 function attachLabCtxMenu(el, entry, cat) {
   el.addEventListener('contextmenu', e => {
     ctxTarget = entry;
-    showCtxMenu(e, `${entry.test} · ${entry.resultDate || ''}`, [
-      {
-        label: '🗑 Delete this result',
-        danger: true,
-        action: () => confirmDeleteLab(entry, cat)
-      },
-      {
-        label: '🗑 Delete all from this date',
-        danger: true,
-        action: () => confirmDeleteLabsByDate(entry.resultDate || entry.visitDate, cat)
-      }
+    const LAB_GROUPS = ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
+    const currentGroup = entry.labGroup || 'Chemistry';
+    const groupItems = LAB_GROUPS
+      .filter(g => g !== currentGroup)
+      .map(g => ({ label: `→ ${g}`, action: () => saveLabCorrection(entry.test, g) }));
+    showCtxMenu(e, `${entry.test} · ${currentGroup}`, [
+      ...groupItems,
+      'sep',
+      { label: '🗑 Delete this result', danger: true, action: () => confirmDeleteLab(entry, cat) },
+      { label: '🗑 Delete all from this date', danger: true, action: () => confirmDeleteLabsByDate(entry.resultDate || entry.visitDate, cat) }
     ]);
   });
 }
@@ -3677,11 +3874,15 @@ const BP_TESTS = new Set([
 function normalizeLabGroups(labs) {
   for (const lab of labs) {
     const t = (lab.test || '').toLowerCase().trim();
+    // User corrections always win
+    if (_labCorrections[t]) { lab.labGroup = _labCorrections[t]; continue; }
+    // BP always stripped
+    if (BP_TESTS.has(t)) { lab._isBP = true; continue; }
+    // Only hard-correct Urinalysis and CBC where test names are unambiguous
     if (UA_TESTS.has(t)) { lab.labGroup = 'Urinalysis'; continue; }
     if (CBC_TESTS.has(t)) { lab.labGroup = 'CBC'; continue; }
-    if (ENDO_TESTS.has(t)) { lab.labGroup = 'Endocrinology'; continue; }
-    if (BP_TESTS.has(t)) { lab._isBP = true; continue; } // mark for removal
-    if (!lab.labGroup) lab.labGroup = 'Chemistry';
+    // Everything else: keep Claude's assignment, infer only if missing
+    if (!lab.labGroup) lab.labGroup = inferLabGroup(lab.test, lab.labName) || 'Chemistry';
   }
 }
 
@@ -3743,9 +3944,10 @@ LAB GROUPING — labGroup field is required on every lab result:
   Ketones, Blood/Hemoglobin, Bilirubin, Urobilinogen, WBC, RBC, Bacteria, Epithelial Cells,
   Casts, Crystals, Mucus — ALL must be labGroup:"Urinalysis"
 "Endocrinology": T4, Free T4, TSH, TLI, PLI, Folate, Cobalamin, Cortisol, ACTH, Insulin
-"PCR": any PCR, culture, titer, antigen, antibody test — including GI/diarrhea/parasite panels
-  (Clostridium, Giardia, Tritrichomonas, Cryptosporidium, Campylobacter, FeLV, FIV, etc.)
-  Named panels like "IDEXX GI Panel", "Diarrhea Panel", "Parasite PCR" all use labGroup:"PCR"
+"PCR": any PCR, culture, titer, antigen, antibody, or infectious disease test — including any
+  named GI, diarrhea, parasite, or enteric panel regardless of brand name (Texas GI Panel,
+  IDEXX GI Panel, BioPath Diarrhea Panel, etc.). When in doubt: if it's testing for a pathogen,
+  organism, or infectious agent → PCR.
 BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP field instead.
 
 MEDICATIONS:
