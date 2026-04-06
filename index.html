@@ -1583,9 +1583,7 @@ function renderLabsSidebar() {
 }
 
 // ── FLOWSHEET MODAL ──
-let _flowsheetCache = {}; // {cat: htmlElement} — rebuilt only when labDataCache changes
-
-function invalidateFlowsheetCache() { _flowsheetCache = {}; }
+function invalidateFlowsheetCache() {} // no-op, cache removed
 
 function openFlowsheetModal(cat, focusTest) {
   flowsheetCat = cat || flowsheetCat || Object.keys(labDataCache).sort()[0];
@@ -1601,13 +1599,7 @@ function openFlowsheetModal(cat, focusTest) {
   $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
   const body = $('flowsheet-modal-body');
   body.innerHTML = '';
-  // Use cached table if available, otherwise build and cache
-  if (_flowsheetCache[flowsheetCat]) {
-    body.appendChild(_flowsheetCache[flowsheetCat].cloneNode(true));
-  } else {
-    buildFlowsheetTable(flowsheetCat, body);
-    if (body.firstChild) _flowsheetCache[flowsheetCat] = body.firstChild.cloneNode(true);
-  }
+  buildFlowsheetTable(flowsheetCat, body);
   $('flowsheet-modal').classList.add('open');
 
   // Scroll to the focused test row after the modal renders
@@ -1664,7 +1656,7 @@ function buildFlowsheetTable(cat, container) {
   });
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'overflow:auto;padding:0.5rem;';
+  wrap.style.cssText = 'overflow:auto;padding:0.5rem;max-height:100%;';
   const table = document.createElement('table');
   table.style.cssText = 'border-collapse:collapse;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
 
@@ -1673,13 +1665,13 @@ function buildFlowsheetTable(cat, container) {
   const hrow = document.createElement('tr');
   const thTest = document.createElement('th');
   thTest.textContent = 'Test';
-  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);font-weight:500;position:sticky;left:0;z-index:3;';
+  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);font-weight:500;position:sticky;left:0;top:0;z-index:4;';
   hrow.appendChild(thTest);
   for (const date of dates) {
     const th = document.createElement('th');
     th.textContent = date.slice(0,7);
     th.title = date;
-    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);font-weight:500;';
+    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);font-weight:500;position:sticky;top:0;z-index:2;';
     hrow.appendChild(th);
   }
   thead.appendChild(hrow);
@@ -3806,10 +3798,15 @@ async function saveLabCorrection(testName, labGroup) {
 function attachLabCtxMenu(el, entry, cat) {
   el.addEventListener('contextmenu', e => {
     ctxTarget = entry;
-    showCtxMenu(e, `${entry.test} · ${entry.labGroup || 'Chemistry'}`, [
+    const items = [];
+    if (entry.driveFileId) {
+      items.push({ label: '↗ Open original in Drive', action: () => window.open(`https://drive.google.com/file/d/${entry.driveFileId}/view`, '_blank') });
+    }
+    items.push(
       { label: '🗑 Delete this result', danger: true, action: () => confirmDeleteLab(entry, cat) },
       { label: '🗑 Delete all from this date', danger: true, action: () => confirmDeleteLabsByDate(entry.resultDate || entry.visitDate, cat) }
-    ]);
+    );
+    showCtxMenu(e, `${entry.test} · ${entry.labGroup || 'Chemistry'}`, items);
   });
 }
 
