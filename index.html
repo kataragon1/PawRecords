@@ -1367,27 +1367,8 @@ function openVisitEdit(v) {
 }
 
 // ── LABS SIDEBAR + FLOWSHEET ──
-const TEST_ORDER = [
-  // CBC
-  'RBC','Hematocrit','Hemoglobin','MCV','MCH','MCHC','Reticulocytes','Reticulocyte Hemoglobin',
-  'WBC','Neutrophils','Lymphocytes','Monocytes','Eosinophils','Basophils','Platelets',
-  // Chemistry
-  'Glucose','BUN','Creatinine','SDMA','Cystatin B',
-  'Albumin','Globulin','Total Protein','Albumin: Globulin Ratio',
-  'ALT','AST','ALP','GGT','Bilirubin - Total','Bilirubin - Unconjugated','Bilirubin - Conjugated',
-  'Phosphorus','Calcium','Sodium','Potassium','Chloride','TCO2 (Bicarbonate)','Anion Gap','Na: K Ratio',
-  'Cholesterol','Amylase','Lipase','Creatine Kinase',
-  'Folate','Cobalamin','TLI','PLI',
-  // Urinalysis
-  'Specific Gravity','Color','Clarity','pH','Urine Protein','Glucose','Ketones',
-  'Blood / Hemoglobin','Bilirubin','Urobilinogen',
-  'White Blood Cells','Red Blood Cells','Bacteria','Epithelial Cells','Mucus','Casts','Crystals',
-  // Endocrinology
-  'Total T4','T4','TSH','Cortisol',
-  // PCR
-  'FeLV','FIV','Giardia','Clostridium','Coronavirus','Tritrichomonas',
-  'Cryptosporidium','Toxoplasma','Bartonella','Heartworm'
-];
+// Test ordering is fully dynamic — no hardcoded TEST_ORDER list.
+// Within each labGroup, tests are sorted by labName (panel sub-header) then alphabetically.
 
 let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
 let flowsheetCat = null;
@@ -1487,7 +1468,7 @@ function renderLabsSidebar() {
   }
   const allRowKeys = Object.keys(latest);
 
-  // Group by labGroup, then within each group use TEST_ORDER for ordering
+  // Group by labGroup, sorted dynamically within each group
   const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
   for (const key of allRowKeys) {
@@ -1507,10 +1488,14 @@ function renderLabsSidebar() {
 
   for (const group of orderedGroups) {
     const keysInGroup = byGroup[group];
-    const ordered = [
-      ...TEST_ORDER.flatMap(t => keysInGroup.filter(k => k.startsWith(t + '||'))),
-      ...keysInGroup.filter(k => !TEST_ORDER.includes(k.split('||')[0])).sort()
-    ];
+    // Sort dynamically: by labName then alphabetically by test name.
+    const _seenSK = new Set();
+    const ordered = keysInGroup.slice().sort((a, b) => {
+      const na = (latest[a]?.labName || '').toLowerCase();
+      const nb = (latest[b]?.labName || '').toLowerCase();
+      if (na < nb) return -1; if (na > nb) return 1;
+      return a.split('||')[0].localeCompare(b.split('||')[0]);
+    }).filter(k => { if (_seenSK.has(k)) return false; _seenSK.add(k); return true; });
     const isCollapsible = COLLAPSIBLE_GROUPS.has(group);
 
     // Build summary text for collapsible groups
@@ -1660,11 +1645,16 @@ function buildFlowsheetTable(cat, container) {
     return e.test + '||' + g;
   };
   const allRowKeys = [...new Set(entries.map(rowKeyOf))];
-  // Sort row keys: follow TEST_ORDER by test name, with unknown tests appended alphabetically
-  const orderedRowKeys = [
-    ...TEST_ORDER.flatMap(t => allRowKeys.filter(k => k.startsWith(t + '||'))),
-    ...allRowKeys.filter(k => !TEST_ORDER.includes(k.split('||')[0])).sort()
-  ];
+  // Sort dynamically: by labName (panel sub-header) then alphabetically by test name.
+  // No hardcoded order — works with any future panel Claude extracts.
+  const orderedRowKeys = allRowKeys.slice().sort((a, b) => {
+    const ea = Object.values(lookup[a])[0];
+    const eb = Object.values(lookup[b])[0];
+    const na = (ea?.labName || '').toLowerCase();
+    const nb = (eb?.labName || '').toLowerCase();
+    if (na < nb) return -1; if (na > nb) return 1;
+    return a.split('||')[0].localeCompare(b.split('||')[0]);
+  });
   const lookup = {}; // rowKey → { date → entry }
   for (const e of entries) {
     const key = rowKeyOf(e);
