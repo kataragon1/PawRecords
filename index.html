@@ -837,7 +837,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, onIdTokenChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, onIdTokenChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
@@ -1042,6 +1042,22 @@ onAuthStateChanged(auth, async user => {
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
+
+    // Check if we're returning from a Drive reconnect redirect
+    try {
+      const reconnecting = sessionStorage.getItem('pr_reconnect_drive');
+      if (reconnecting) {
+        sessionStorage.removeItem('pr_reconnect_drive');
+        const result = await getRedirectResult(auth);
+        const credential = result ? GoogleAuthProvider.credentialFromResult(result) : null;
+        if (credential?.accessToken) {
+          driveAccessToken = credential.accessToken;
+          try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+          showToast('Drive reconnected ✓', 'journal');
+        }
+      }
+    } catch(e) { console.warn('Redirect result error:', e.message); }
+
     await loadInitialData();
     show('app');
     getPdfJs().catch(() => {}); // preload PDF.js in background
@@ -1462,21 +1478,23 @@ function renderLabsSidebar() {
     return;
   }
 
-  // Most recent value per test
+  // Most recent value per test+group combination
   const latest = {};
   for (const e of entries) {
-    if (!latest[e.test] || (e.resultDate||'') > (latest[e.test].resultDate||'')) latest[e.test] = e;
+    const g = e.labGroup || inferLabGroup(e.test, e.labName) || 'Other';
+    const key = e.test + '||' + g;
+    if (!latest[key] || (e.resultDate||'') > (latest[key].resultDate||'')) latest[key] = e;
   }
-  const allTests = Object.keys(latest);
+  const allRowKeys = Object.keys(latest);
 
   // Group by labGroup, then within each group use TEST_ORDER for ordering
   const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
-  for (const test of allTests) {
-    const e = latest[test];
-    const g = e.labGroup || inferLabGroup(test, e.labName);
+  for (const key of allRowKeys) {
+    const e = latest[key];
+    const g = e.labGroup || inferLabGroup(e.test, e.labName);
     if (!byGroup[g]) byGroup[g] = [];
-    byGroup[g].push(test);
+    byGroup[g].push(key);
   }
 
   const orderedGroups = [
@@ -1488,40 +1506,40 @@ function renderLabsSidebar() {
   const COLLAPSIBLE_GROUPS = new Set(GROUP_ORDER);
 
   for (const group of orderedGroups) {
-    const testsInGroup = byGroup[group];
+    const keysInGroup = byGroup[group];
     const ordered = [
-      ...TEST_ORDER.filter(t => testsInGroup.includes(t)),
-      ...testsInGroup.filter(t => !TEST_ORDER.includes(t)).sort()
+      ...TEST_ORDER.flatMap(t => keysInGroup.filter(k => k.startsWith(t + '||'))),
+      ...keysInGroup.filter(k => !TEST_ORDER.includes(k.split('||')[0])).sort()
     ];
     const isCollapsible = COLLAPSIBLE_GROUPS.has(group);
 
     // Build summary text for collapsible groups
     let summary = '';
     if (group === 'Urinalysis') {
-      const usg = ordered.find(t => t.toLowerCase().includes('gravity') || t.toLowerCase() === 'usg');
-      const abnormals = ordered.filter(t => {
-        const abn = (latest[t].abnormal||'').toUpperCase();
+      const usgKey = ordered.find(k => { const t = k.split('||')[0].toLowerCase(); return t.includes('gravity') || t === 'usg'; });
+      const abnormals = ordered.filter(k => {
+        const abn = (latest[k].abnormal||'').toUpperCase();
         return abn && abn !== 'NEG' && abn !== 'NEGATIVE' && abn !== 'NORMAL';
       });
-      summary = usg ? `USG ${latest[usg].value}` : '';
-      if (abnormals.length) summary += (summary ? ' · ' : '') + abnormals.map(t => t.split(' ')[0]).join(', ') + ' ⚠';
+      summary = usgKey ? `USG ${latest[usgKey].value}` : '';
+      if (abnormals.length) summary += (summary ? ' · ' : '') + abnormals.map(k => k.split('||')[0].split(' ')[0]).join(', ') + ' ⚠';
       else if (summary) summary += ' · normal';
     } else if (group === 'PCR') {
-      const positives = ordered.filter(t => {
-        const v = String(latest[t].value||'').toUpperCase();
-        return v === 'POSITIVE' || v === 'DETECTED' || (latest[t].abnormal||'').toUpperCase() === 'HIGH';
+      const positives = ordered.filter(k => {
+        const v = String(latest[k].value||'').toUpperCase();
+        return v === 'POSITIVE' || v === 'DETECTED' || (latest[k].abnormal||'').toUpperCase() === 'HIGH';
       });
       summary = positives.length
-        ? `${positives.length} positive: ${positives.map(t => t.split(' ')[0]).join(', ')}`
+        ? `${positives.length} positive: ${positives.map(k => k.split('||')[0].split(' ')[0]).join(', ')}`
         : `${ordered.length} tests — all negative`;
     } else if (group === 'Endocrinology') {
-      // Show key values inline: T4, TLI, PLI
-      const keyTests = ['Total T4','T4','TLI','PLI'].filter(k => ordered.includes(k));
-      summary = keyTests.map(k => {
+      const keyTests = ['Total T4','T4','TLI','PLI'];
+      const keyKeys = keyTests.flatMap(t => ordered.filter(k => k.startsWith(t + '||')));
+      summary = keyKeys.map(k => {
         const e = latest[k];
         const abn = (e.abnormal||'').toUpperCase();
         const val = typeof e.value === 'number' ? e.value.toFixed(1) : String(e.value||'');
-        return `${k} ${val}${abn && abn !== 'NEG' ? ' ⚠' : ''}`;
+        return `${e.test} ${val}${abn && abn !== 'NEG' ? ' ⚠' : ''}`;
       }).join(' · ') || `${ordered.length} tests`;
     }
 
@@ -1564,9 +1582,9 @@ function renderLabsSidebar() {
 
       container.appendChild(header);
 
-      for (const test of ordered) {
-        const e = latest[test];
-        makeLabRow(test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, test));
+      for (const key of ordered) {
+        const e = latest[key];
+        makeLabRow(e.test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, e.test));
       }
       container.appendChild(rowsEl);
     }
@@ -1634,16 +1652,25 @@ function buildFlowsheetTable(cat, container) {
     return;
   }
   const dates = [...new Set(entries.map(e => e.resultDate||e.visitDate||'').filter(Boolean))].sort();
-  const allTests = [...new Set(entries.map(e => e.test))];
-  const orderedTests = [
-    ...TEST_ORDER.filter(t => allTests.includes(t)),
-    ...allTests.filter(t => !TEST_ORDER.includes(t)).sort()
+
+  // Key rows by "test||labGroup" so same-named tests in different groups (e.g. Glucose in
+  // Chemistry vs Urinalysis, Bilirubin in Chemistry vs Urinalysis) get separate rows.
+  const rowKeyOf = e => {
+    const g = e.labGroup || inferLabGroup(e.test, e.labName) || 'Other';
+    return e.test + '||' + g;
+  };
+  const allRowKeys = [...new Set(entries.map(rowKeyOf))];
+  // Sort row keys: follow TEST_ORDER by test name, with unknown tests appended alphabetically
+  const orderedRowKeys = [
+    ...TEST_ORDER.flatMap(t => allRowKeys.filter(k => k.startsWith(t + '||'))),
+    ...allRowKeys.filter(k => !TEST_ORDER.includes(k.split('||')[0])).sort()
   ];
-  const lookup = {};
+  const lookup = {}; // rowKey → { date → entry }
   for (const e of entries) {
-    if (!lookup[e.test]) lookup[e.test] = {};
+    const key = rowKeyOf(e);
+    if (!lookup[key]) lookup[key] = {};
     const d = e.resultDate || e.visitDate || '';
-    if (!lookup[e.test][d] || (e.resultDate||'') >= (lookup[e.test][d].resultDate||'')) lookup[e.test][d] = e;
+    if (!lookup[key][d] || (e.resultDate||'') >= (lookup[key][d].resultDate||'')) lookup[key][d] = e;
   }
 
   const wrap = document.createElement('div');
@@ -1671,12 +1698,11 @@ function buildFlowsheetTable(cat, container) {
   // Body — grouped by labGroup
   const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
   const byGroup = {};
-  for (const test of orderedTests) {
-    // Find the most recent entry for this test to get its group
-    const mostRecent = Object.values(lookup[test]).sort((a,b)=>(b.resultDate||'')>(a.resultDate||'')?1:-1)[0];
-    const g = mostRecent?.labGroup || inferLabGroup(test, mostRecent?.labName);
+  for (const rowKey of orderedRowKeys) {
+    const mostRecent = Object.values(lookup[rowKey]).sort((a,b)=>(b.resultDate||'')>(a.resultDate||'')?1:-1)[0];
+    const g = mostRecent?.labGroup || inferLabGroup(mostRecent?.test, mostRecent?.labName);
     if (!byGroup[g]) byGroup[g] = [];
-    byGroup[g].push(test);
+    byGroup[g].push(rowKey);
   }
   const orderedGroups = [
     ...GROUP_ORDER.filter(g => byGroup[g]),
@@ -1694,7 +1720,8 @@ function buildFlowsheetTable(cat, container) {
     sepRow.appendChild(sepTd);
     tbody.appendChild(sepRow);
 
-    for (const test of byGroup[group]) {
+    for (const rowKey of byGroup[group]) {
+      const test = rowKey.split('||')[0];
       const row = document.createElement('tr');
       const tdName = document.createElement('td');
       tdName.textContent = test;
@@ -1703,7 +1730,7 @@ function buildFlowsheetTable(cat, container) {
       for (const date of dates) {
         const td = document.createElement('td');
         td.style.cssText = 'padding:0.3rem 0.6rem;border:1px solid var(--border);text-align:center;color:var(--ink);cursor:pointer;';
-        const entry = lookup[test]?.[date];
+        const entry = lookup[rowKey]?.[date];
         if (!entry) {
           td.textContent = '—';
           td.style.color = 'var(--border)';
@@ -2056,31 +2083,17 @@ function updateSelectAllLabel() {
 // ── DRIVE CONNECTION (fallback if token expired) ──
 // ── DRIVE RECONNECT ──
 async function reconnectDrive(triggerEl) {
-  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Connecting…'; }
+  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Redirecting…'; }
   try {
     provider.setCustomParameters({ prompt: 'select_account' });
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (credential?.accessToken) {
-      driveAccessToken = credential.accessToken;
-      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
-      const pr = $('drive-connect-prompt');
-      if (pr) pr.style.display = 'none';
-      $('drive-dot').className = 'status-dot green';
-      $('drive-status').textContent = 'Drive connected';
-      window._driveLastLoaded = 0;
-      await loadDriveFiles();
-      showToast('Drive reconnected ✓', 'journal');
-    } else {
-      showToast('No Drive token returned — try again', 'warning');
-    }
+    // Store intent so we know to load Drive after redirect completes
+    try { sessionStorage.setItem('pr_reconnect_drive', '1'); } catch(e) {}
+    await signInWithRedirect(auth, provider);
+    // Page navigates away — code below won't run until page returns
   } catch(e) {
-    if (e.code !== 'auth/cancelled-popup-request' && e.code !== 'auth/popup-closed-by-user') {
-      showToast('Reconnect failed: ' + e.message, 'warning');
-    }
-  } finally {
-    provider.setCustomParameters({});
+    console.error('Reconnect error:', e.code, e.message);
     if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
+    showToast(`Reconnect failed: ${e.code || e.message}`, 'warning', null, 8000);
   }
 }
 
