@@ -1588,7 +1588,7 @@ let _flowsheetCache = {}; // {cat: htmlElement} — rebuilt only when labDataCac
 function invalidateFlowsheetCache() { _flowsheetCache = {}; }
 
 function openFlowsheetModal(cat, focusTest) {
-  flowsheetCat = cat || flowsheetCat;
+  flowsheetCat = cat || flowsheetCat || Object.keys(labDataCache).sort()[0];
   // Populate cat selector
   const sel = $('flowsheet-modal-cat');
   sel.innerHTML = '';
@@ -1645,6 +1645,13 @@ function buildFlowsheetTable(cat, container) {
     return e.test + '||' + g;
   };
   const allRowKeys = [...new Set(entries.map(rowKeyOf))];
+  const lookup = {}; // rowKey → { date → entry }
+  for (const e of entries) {
+    const key = rowKeyOf(e);
+    if (!lookup[key]) lookup[key] = {};
+    const d = e.resultDate || e.visitDate || '';
+    if (!lookup[key][d] || (e.resultDate||'') >= (lookup[key][d].resultDate||'')) lookup[key][d] = e;
+  }
   // Sort dynamically: by labName (panel sub-header) then alphabetically by test name.
   // No hardcoded order — works with any future panel Claude extracts.
   const orderedRowKeys = allRowKeys.slice().sort((a, b) => {
@@ -1655,13 +1662,6 @@ function buildFlowsheetTable(cat, container) {
     if (na < nb) return -1; if (na > nb) return 1;
     return a.split('||')[0].localeCompare(b.split('||')[0]);
   });
-  const lookup = {}; // rowKey → { date → entry }
-  for (const e of entries) {
-    const key = rowKeyOf(e);
-    if (!lookup[key]) lookup[key] = {};
-    const d = e.resultDate || e.visitDate || '';
-    if (!lookup[key][d] || (e.resultDate||'') >= (lookup[key][d].resultDate||'')) lookup[key][d] = e;
-  }
 
   const wrap = document.createElement('div');
   wrap.style.cssText = 'overflow:auto;padding:0.5rem;';
