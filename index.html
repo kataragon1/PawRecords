@@ -2222,7 +2222,16 @@ async function reconnectDrive(triggerEl) {
     
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
-      
+      if (credential?.accessToken) {
+ 	 driveAccessToken = credential.accessToken;
+  	sessionStorage.setItem('pr_drive_token', driveAccessToken);
+
+  	// This tells the GAPI client to use the token you just got
+  	gapi.client.setToken({ access_token: driveAccessToken });
+  	showToast('Drive reconnected ✓', 'success');
+
+  await loadInitialData(); 
+}
       // 3. Save to sessionStorage so it persists if they do a manual refresh later
       try { 
         sessionStorage.setItem('pr_drive_token', driveAccessToken); 
