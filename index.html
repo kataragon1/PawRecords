@@ -593,7 +593,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div id="files-list" style="flex:1;overflow-y:auto;overflow-x:hidden;">
         <div class="files-connect-prompt" id="drive-connect-prompt" style="display:none;">
           <p>Drive token expired. Sign out and back in to reconnect, or click below.</p>
-          <button class="btn-icon free-icon" id="connect-drive-btn" type="button">
+          <button class="btn-icon free-icon" id="connect-drive-btn">
             <span class="free-dot"></span> Reconnect Drive
           </button>
         </div>
@@ -759,6 +759,9 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ TOAST CONTAINER ══ -->
 <div id="toast-container"></div>
 
+<!-- ══ PERSISTENT ALERT BAR ══ -->
+<div id="alert-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:600;"></div>
+
 <!-- ══ RECORD POPUP ══ -->
 <div id="lab-detail-popup" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:300;align-items:center;justify-content:center;">
   <div style="background:white;border-radius:12px;min-width:260px;max-width:380px;box-shadow:0 8px 32px rgba(42,37,32,0.2);font-family:'JetBrains Mono',monospace;overflow:hidden;">
@@ -870,7 +873,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <!-- ══ FIREBASE SDK ══ -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, onIdTokenChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, onIdTokenChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
@@ -918,6 +921,20 @@ let popupMatchIdx = 0;
 const $ = id => document.getElementById(id);
 const show = s => { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); $(s).classList.add('active'); };
 const setLoading = label => { $('loading-label').textContent = label; show('loading'); };
+
+// Persistent dismissable alert bar — for errors that must not be missed
+function showAlert(text, type = 'warning') {
+  const bar = document.getElementById('alert-bar');
+  const a = document.createElement('div');
+  const bg = type === 'warning' ? '#fef3c7' : '#fee2e2';
+  const border = type === 'warning' ? '#d97706' : '#dc2626';
+  const color = type === 'warning' ? '#92400e' : '#991b1b';
+  a.style.cssText = `display:flex;align-items:center;gap:0.75rem;padding:0.6rem 1rem;background:${bg};border-top:2px solid ${border};font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:${color};`;
+  a.innerHTML = `<span style="flex:1;">${escHtml(text)}</span><button style="background:none;border:none;cursor:pointer;color:${color};font-size:0.8rem;padding:0.1rem 0.3rem;border-radius:3px;font-weight:600;" title="Dismiss">✕</button>`;
+  a.querySelector('button').onclick = () => { a.remove(); if (!bar.children.length) bar.style.display = 'none'; };
+  bar.style.display = 'block';
+  bar.appendChild(a);
+}
 
 function showToast(text, type = 'info', undoFn = null, duration = 4000) {
   const c = $('toast-container');
@@ -1075,6 +1092,7 @@ onAuthStateChanged(auth, async user => {
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
+
     await loadInitialData();
     show('app');
     getPdfJs().catch(() => {}); // preload PDF.js in background
@@ -2205,55 +2223,30 @@ function updateSelectAllLabel() {
   sal.textContent = allChecked ? 'deselect all' : 'select all';
 }
 
+// ── DRIVE CONNECTION (fallback if token expired) ──
+// ── DRIVE RECONNECT ──
 async function reconnectDrive(triggerEl) {
-  if (triggerEl) { 
-    triggerEl.disabled = true; 
-    triggerEl.textContent = 'Connecting…'; 
-  }
-  
+  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Connecting…'; }
   try {
     provider.setCustomParameters({ prompt: 'select_account' });
-    
-    // 1. Trigger the Popup
     const result = await signInWithPopup(auth, provider);
-    
-    // 2. Extract the Access Token (This is the bit from your old function)
     const credential = GoogleAuthProvider.credentialFromResult(result);
-    
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
-      if (credential?.accessToken) {
- 	 driveAccessToken = credential.accessToken;
-  	sessionStorage.setItem('pr_drive_token', driveAccessToken);
-
-  	// This tells the GAPI client to use the token you just got
-  	gapi.client.setToken({ access_token: driveAccessToken });
-  	showToast('Drive reconnected ✓', 'success');
-
-  await loadInitialData(); 
-}
-      // 3. Save to sessionStorage so it persists if they do a manual refresh later
-      try { 
-        sessionStorage.setItem('pr_drive_token', driveAccessToken); 
-      } catch(e) { console.warn("Storage failed", e); }
-      
-      showToast('Drive reconnected ✓', 'success');
-
-      // 4. Trigger the UI/Data refresh immediately
-      // Since the page didn't reload, we call these manually:
-      await loadInitialData(); 
-      
-      // If you have a specific function that toggles the "Drive Connected" footer status:
-      // updateStatusIndicators(); 
+      try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+      showToast('Drive reconnected ✓', 'journal');
+      await loadInitialData();
+    } else {
+      showAlert('Drive reconnect did not return an access token. Please try again.', 'warning');
     }
   } catch(e) {
-    console.error('Reconnect error:', e.code, e.message);
-    showToast(`Reconnect failed: ${e.message}`, 'warning');
-  } finally {
-    if (triggerEl) {
-      triggerEl.disabled = false;
-      triggerEl.textContent = 'Reconnect Drive';
+    if (e.code === 'auth/cancelled-popup-request' || e.code === 'auth/popup-closed-by-user') {
+      // User closed popup — silent
+    } else {
+      showAlert(`Drive reconnect failed: ${e.message}`, 'warning');
     }
+  } finally {
+    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
   }
 }
 
@@ -2748,35 +2741,25 @@ $('process-modal-cancel').addEventListener('click', () => $('process-modal').cla
 
 function estimateCost(files) {
   // One combined pass per file: ~6k input tokens + ~2k output = ~8k tokens at Sonnet pricing
-  // Sonnet: $3/M input + $15/M output → ~$0.054 per 8k tokens is actually correct
-  // For batch API: 50% discount applies
+  // Sonnet: $3/M input + $15/M output
   const tokensPerFile = 8000;
   const totalTokens = files.length * tokensPerFile;
-  const ratePerM = files.length >= 5 ? 4.5 : 9; // batch = 50% off
+  const ratePerM = 9; // realtime rate
   const cost = (totalTokens / 1000000) * ratePerM;
   return { cost, totalTokens };
 }
 
 function openProcessModal(files) {
   if (!files.length) return;
-  const isRealtime = files.length <= 4;
-  $('process-modal-title').textContent = isRealtime ? 'Real-time Processing' : 'Batch Processing';
+  $('process-modal-title').textContent = 'Process Files';
   $('process-modal-subtitle').textContent = `${files.length} file${files.length > 1 ? 's' : ''} selected`;
 
   const modeInfo = $('process-mode-info');
-  if (isRealtime) {
-    modeInfo.innerHTML = `<div class="process-mode-card realtime">
-      <div class="process-mode-label">Real-time mode</div>
-      <div class="process-mode-desc">Files processed immediately — watch progress live. Best for 1–4 files. Rate limiting handled automatically with pause/resume.</div>
-    </div>`;
-    $('process-confirm-label').textContent = 'Start Processing';
-  } else {
-    modeInfo.innerHTML = `<div class="process-mode-card batch">
-      <div class="process-mode-label">Batch mode — ${files.length} files</div>
-      <div class="process-mode-desc">Uses Anthropic Batch API — 50% cheaper, runs on Anthropic servers. Your PC can be off. Results poll automatically when you reopen the app. Phase 2 reprocessing available for flagged files after review.</div>
-    </div>`;
-    $('process-confirm-label').textContent = `Submit Batch (${files.length} files)`;
-  }
+  modeInfo.innerHTML = `<div class="process-mode-card realtime">
+    <div class="process-mode-label">Real-time processing</div>
+    <div class="process-mode-desc">Files processed one at a time — watch progress live. Rate limiting handled automatically with pause/resume.</div>
+  </div>`;
+  $('process-confirm-label').textContent = files.length === 1 ? 'Process File' : `Process ${files.length} Files`;
 
   const { cost } = estimateCost(files);
   $('process-cost-estimate').textContent = `~$${cost.toFixed(3)}`;
@@ -2819,11 +2802,7 @@ $('process-modal-confirm').addEventListener('click', () => {
     return;
   }
   $('process-modal').classList.remove('open');
-  if (files.length >= 5) {
-    submitBatchJob(files);
-  } else {
-    startProcessingQueue(files);
-  }
+  startProcessingQueue(files);
 });
 
 // ── PROCESSING PIPELINE ──
