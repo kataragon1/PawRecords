@@ -745,6 +745,24 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 <div id="toast-container"></div>
 
 <!-- ══ RECORD POPUP ══ -->
+<div id="lab-detail-popup" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:300;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:12px;min-width:260px;max-width:380px;box-shadow:0 8px 32px rgba(42,37,32,0.2);font-family:'JetBrains Mono',monospace;overflow:hidden;">
+    <div id="lab-detail-header" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:0.5rem;">
+      <span id="lab-detail-test" style="font-size:0.8rem;font-weight:600;color:var(--ink);"></span>
+      <button onclick="document.getElementById('lab-detail-popup').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.85rem;line-height:1;">✕</button>
+    </div>
+    <div style="padding:0.75rem 1rem;display:flex;flex-direction:column;gap:0.4rem;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span id="lab-detail-value" style="font-size:1.4rem;font-weight:700;color:var(--ink);"></span>
+        <span id="lab-detail-unit" style="font-size:0.68rem;color:var(--ink-muted);"></span>
+      </div>
+      <div id="lab-detail-ref" style="font-size:0.65rem;color:var(--ink-muted);"></div>
+      <div id="lab-detail-date" style="font-size:0.63rem;color:var(--ink-muted);margin-top:0.2rem;"></div>
+    </div>
+    <div id="lab-detail-footer" style="padding:0.5rem 1rem 0.75rem;border-top:1px solid var(--border);"></div>
+  </div>
+</div>
+
 <div id="record-popup">
   <div class="record-popup-box">
     <div class="record-popup-header">
@@ -1610,18 +1628,20 @@ function openFlowsheetModal(cat, focusTest) {
         const nameCell = row.querySelector('td:first-child');
         if (nameCell && nameCell.textContent.trim() === focusTest) {
           row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          row.style.transition = 'background 0.3s';
-          row.style.background = 'var(--surface2)';
-          // Remove highlight when mouse enters any other row
-          const clearHighlight = () => {
-            row.style.background = '';
-            body.querySelectorAll('tbody tr').forEach(r => r.removeEventListener('mouseenter', clearHighlight));
+          // Highlight each cell individually so abnormal colors still show through
+          row.querySelectorAll('td').forEach(td => {
+            td._origBg = td.style.background || '';
+            td.style.transition = 'background 0.3s';
+            td.style.background = 'rgba(124,111,91,0.18)';
+          });
+          // Clear when mouse moves to any other row
+          const clearHighlight = (e) => {
+            if (!row.contains(e.relatedTarget)) {
+              row.querySelectorAll('td').forEach(td => { td.style.background = td._origBg || ''; });
+              body.removeEventListener('mouseover', clearHighlight);
+            }
           };
-          setTimeout(() => {
-            body.querySelectorAll('tbody tr').forEach(r => {
-              if (r !== row) r.addEventListener('mouseenter', clearHighlight);
-            });
-          }, 800);
+          setTimeout(() => body.addEventListener('mouseover', clearHighlight), 800);
           break;
         }
       }
@@ -1712,8 +1732,17 @@ function buildFlowsheetTable(cat, container) {
     for (const rowKey of byGroup[group]) {
       const test = rowKey.split('||')[0];
       const row = document.createElement('tr');
-      row.addEventListener('mouseenter', () => { if (!row.style.background) row.style.background = 'var(--surface)'; });
-      row.addEventListener('mouseleave', () => { if (row.style.background === 'var(--surface)') row.style.background = ''; });
+      row.addEventListener('mouseenter', () => {
+        row.querySelectorAll('td').forEach(td => {
+          td._origBg = td.style.background || '';
+          td.style.background = 'rgba(124,111,91,0.12)'; // warm tint over whatever color is there
+        });
+      });
+      row.addEventListener('mouseleave', () => {
+        row.querySelectorAll('td').forEach(td => {
+          td.style.background = td._origBg || '';
+        });
+      });
       const tdName = document.createElement('td');
       tdName.textContent = test;
       tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);';
@@ -1747,10 +1776,7 @@ function buildFlowsheetTable(cat, container) {
           if (entry.refLow != null && entry.refHigh != null) tooltip += '\nRef: ' + entry.refLow + '–' + entry.refHigh;
           if (abn && abn !== 'NEG' && abn !== 'NEGATIVE') tooltip += '\n⚠ ' + abn;
           td.title = tooltip;
-          td.addEventListener('click', () => {
-            const matchingVisit = { cat, date: entry.visitDate || date, driveFileIds: entry.driveFileId ? [entry.driveFileId] : [], sourceFiles: entry.sourceFile ? [entry.sourceFile] : [], narrative: `${test}: ${displayVal}${entry.unit?' '+entry.unit:''}${entry.refLow!=null?'\nRef: '+entry.refLow+'–'+entry.refHigh:''}${abn?' ['+abn+']':''}` };
-            openVisit(matchingVisit);
-          });
+          td.addEventListener('click', () => openLabDetail(entry, test, displayVal, abn));
           attachLabCtxMenu(td, entry, cat);
         }
         row.appendChild(td);
@@ -2008,6 +2034,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     tab.classList.add('active');
     _activeTab = tab.dataset.tab;
     $(`panel-${tab.dataset.tab}`).classList.add('active');
+    if (tab.dataset.tab === 'labs') renderLabsSidebar();
     // Reload Drive files on Files tab click — always, so stale token is caught immediately
     // Debounce: don't reload if we just loaded within the last 60 seconds
     if (tab.dataset.tab === 'files') {
@@ -4353,6 +4380,22 @@ function formatNarrative(text) {
   return chunks.join('\n\n').trim();
 }
 
+function openLabDetail(entry, test, displayVal, abn) {
+  const popup = document.getElementById('lab-detail-popup');
+  document.getElementById('lab-detail-test').textContent = test;
+  const valEl = document.getElementById('lab-detail-value');
+  valEl.textContent = displayVal + (entry.unit ? ' ' + entry.unit : '');
+  valEl.style.color = abn === 'HIGH' ? '#b91c1c' : abn === 'LOW' ? '#1d4ed8' : 'var(--ink)';
+  document.getElementById('lab-detail-unit').textContent = abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? '⚠ ' + abn : '';
+  document.getElementById('lab-detail-ref').textContent = entry.refLow != null && entry.refHigh != null ? 'Ref: ' + entry.refLow + '–' + entry.refHigh : '';
+  document.getElementById('lab-detail-date').textContent = entry.resultDate || entry.visitDate || '';
+  const footer = document.getElementById('lab-detail-footer');
+  footer.innerHTML = entry.driveFileId
+    ? `<a href="https://drive.google.com/file/d/${entry.driveFileId}/view" target="_blank" style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--accent);text-decoration:none;">↗ Open original in Drive</a>`
+    : `<span style="font-size:0.65rem;color:var(--ink-muted);">${entry.sourceFile || ''}</span>`;
+  popup.style.display = 'flex';
+}
+
 function openVisit(visit) {
   try {
   const title = `${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : ''}`;
@@ -4490,6 +4533,7 @@ $('flowsheet-modal-cat').addEventListener('change', () => {
 $('popup-close').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('popup-close-btn').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('record-popup').addEventListener('click', e => { if (e.target === $('record-popup')) $('record-popup').classList.remove('open'); });
+document.getElementById('lab-detail-popup').addEventListener('click', e => { if (e.target === document.getElementById('lab-detail-popup')) document.getElementById('lab-detail-popup').style.display = 'none'; });
 $('popup-search-input').addEventListener('input', runPopupSearch);
 $('popup-next').addEventListener('click', () => navigatePopup(1));
 $('popup-prev').addEventListener('click', () => navigatePopup(-1));
