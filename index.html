@@ -1075,22 +1075,6 @@ onAuthStateChanged(auth, async user => {
     $('sidebar-user-email').textContent = user.email;
     $('header-context').textContent = '';
     await loadApiKey();
-
-    // Check if we're returning from a Drive reconnect redirect
-    try {
-      const reconnecting = sessionStorage.getItem('pr_reconnect_drive');
-      if (reconnecting) {
-        sessionStorage.removeItem('pr_reconnect_drive');
-        const result = await getRedirectResult(auth);
-        const credential = result ? GoogleAuthProvider.credentialFromResult(result) : null;
-        if (credential?.accessToken) {
-          driveAccessToken = credential.accessToken;
-          try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
-          showToast('Drive reconnected ✓', 'journal');
-        }
-      }
-    } catch(e) { console.warn('Redirect result error:', e.message); }
-
     await loadInitialData();
     show('app');
     getPdfJs().catch(() => {}); // preload PDF.js in background
@@ -2221,20 +2205,46 @@ function updateSelectAllLabel() {
   sal.textContent = allChecked ? 'deselect all' : 'select all';
 }
 
-// ── DRIVE CONNECTION (fallback if token expired) ──
-// ── DRIVE RECONNECT ──
 async function reconnectDrive(triggerEl) {
-  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Redirecting…'; }
+  if (triggerEl) { 
+    triggerEl.disabled = true; 
+    triggerEl.textContent = 'Connecting…'; 
+  }
+  
   try {
     provider.setCustomParameters({ prompt: 'select_account' });
-    // Store intent so we know to load Drive after redirect completes
-    try { sessionStorage.setItem('pr_reconnect_drive', '1'); } catch(e) {}
-    await signInWithPopup(auth, provider);
-    // Page navigates away — code below won't run until page returns
+    
+    // 1. Trigger the Popup
+    const result = await signInWithPopup(auth, provider);
+    
+    // 2. Extract the Access Token (This is the bit from your old function)
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    
+    if (credential?.accessToken) {
+      driveAccessToken = credential.accessToken;
+      
+      // 3. Save to sessionStorage so it persists if they do a manual refresh later
+      try { 
+        sessionStorage.setItem('pr_drive_token', driveAccessToken); 
+      } catch(e) { console.warn("Storage failed", e); }
+      
+      showToast('Drive reconnected ✓', 'success');
+
+      // 4. Trigger the UI/Data refresh immediately
+      // Since the page didn't reload, we call these manually:
+      await loadInitialData(); 
+      
+      // If you have a specific function that toggles the "Drive Connected" footer status:
+      // updateStatusIndicators(); 
+    }
   } catch(e) {
     console.error('Reconnect error:', e.code, e.message);
-    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
-    showToast(`Reconnect failed: ${e.code || e.message}`, 'warning', null, 8000);
+    showToast(`Reconnect failed: ${e.message}`, 'warning');
+  } finally {
+    if (triggerEl) {
+      triggerEl.disabled = false;
+      triggerEl.textContent = 'Reconnect Drive';
+    }
   }
 }
 
