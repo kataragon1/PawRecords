@@ -593,7 +593,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div id="files-list" style="flex:1;overflow-y:auto;overflow-x:hidden;">
         <div class="files-connect-prompt" id="drive-connect-prompt" style="display:none;">
           <p>Drive token expired. Sign out and back in to reconnect, or click below.</p>
-          <button class="btn-icon free-icon" id="connect-drive-btn">
+          <button class="btn-icon free-icon" id="connect-drive-btn" type="button">
             <span class="free-dot"></span> Reconnect Drive
           </button>
         </div>
@@ -2224,17 +2224,31 @@ function updateSelectAllLabel() {
 // ── DRIVE CONNECTION (fallback if token expired) ──
 // ── DRIVE RECONNECT ──
 async function reconnectDrive(triggerEl) {
-  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Redirecting…'; }
+  if (triggerEl) { 
+    triggerEl.disabled = true; 
+    triggerEl.textContent = 'Connecting…'; 
+  }
   try {
     provider.setCustomParameters({ prompt: 'select_account' });
-    // Store intent so we know to load Drive after redirect completes
-    try { sessionStorage.setItem('pr_reconnect_drive', '1'); } catch(e) {}
-    await signInWithRedirect(auth, provider);
-    // Page navigates away — code below won't run until page returns
+    
+    // Switch to Popup so the page doesn't refresh
+    const result = await signInWithPopup(auth, provider);
+    
+    // Since the page didn't reload, we can trigger 
+    // your Drive initialization immediately right here:
+    if (typeof initDrive === 'function') {
+      await initDrive(); 
+    }
+    
+    showToast('Drive reconnected!', 'success');
   } catch(e) {
     console.error('Reconnect error:', e.code, e.message);
-    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
-    showToast(`Reconnect failed: ${e.code || e.message}`, 'warning', null, 8000);
+    showToast(`Reconnect failed: ${e.message}`, 'warning');
+  } finally {
+    if (triggerEl) {
+      triggerEl.disabled = false;
+      triggerEl.textContent = 'Reconnect Drive';
+    }
   }
 }
 
