@@ -106,8 +106,23 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 
 /* Journal panel */
 .journal-cat-section{border-bottom:1px solid var(--surface2);}
-.journal-cat-heading{padding:0.5rem 1rem;font-size:0.78rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:0.5rem;user-select:none;transition:background 0.15s;}
+.journal-cat-heading{padding:0.55rem 0.75rem 0.55rem 1rem;font-family:'Instrument Sans',sans-serif;font-size:0.78rem;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:0.5rem;user-select:none;transition:background 0.15s;position:sticky;top:0;background:white;z-index:1;}
 .journal-cat-heading:hover{background:var(--surface);}
+.journal-cat-body{display:none;}
+.journal-cat-body.open{display:block;}
+.journal-list-section{border-top:1px solid var(--surface2);margin:0;}
+.journal-list-heading{padding:0.35rem 0.75rem 0.35rem 1.25rem;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:0.4rem;user-select:none;transition:background 0.12s;}
+.journal-list-heading:hover{background:var(--surface);}
+.journal-list-body{display:none;}
+.journal-list-body.open{display:block;}
+.journal-status-label{padding:0.18rem 0.75rem 0.1rem 1.75rem;font-family:'JetBrains Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-top:0.15rem;}
+.journal-entry-full{padding:0.2rem 0.75rem 0.2rem 2rem;cursor:default;transition:background 0.12s;border-radius:4px;}
+.journal-entry-full:hover{background:var(--surface);}
+.journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.journal-entry-full:hover .journal-entry-text-full{color:var(--ink);}
+.journal-entry-dose{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--accent2);margin-top:0.05rem;}
+.journal-entry-date-full{font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);margin-top:0.04rem;}
+.journal-list-count{background:var(--surface2);border-radius:10px;padding:0 0.35rem;font-size:0.58rem;color:var(--ink-muted);margin-left:auto;}
 
 /* Files panel */
 #files-panel{overflow-y:auto;}
@@ -324,7 +339,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 .pause-continue-btn:hover{background:var(--btn-free-hover);}
 .journal-pending-section{border-bottom:1px solid var(--border);padding-bottom:0.5rem;margin-bottom:0.25rem;}
 .journal-pending-header{padding:0.45rem 1rem 0.3rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--amber);display:flex;align-items:center;justify-content:space-between;}
-.journal-pending-item{padding:0.22rem 1rem 0.22rem 1.5rem;display:flex;align-items:center;gap:0.4rem;}
+.journal-pending-item{padding:0.25rem 1rem 0.25rem 1.5rem;display:flex;align-items:flex-start;gap:0.4rem;}
 .journal-pending-text{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--amber);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .journal-pending-dismiss{background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0.1rem 0.2rem;border-radius:3px;flex-shrink:0;transition:color 0.15s;}
 .journal-pending-dismiss:hover{color:var(--red);}
@@ -1834,7 +1849,14 @@ function renderJournalSidebar(bycat) {
         : item.status === 'maybe'
         ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">maybe</span>`
         : '';
-      el.innerHTML = `<span class="journal-pending-text" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,28))}${item.text.length>28?'…':''}${autoBadge}${statusBadge}</span><button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
+      const listLabel = item.list || '?';
+      const badges = [autoBadge, statusBadge].filter(Boolean).join('');
+      el.innerHTML = `
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.52rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.1rem;">${escHtml(listLabel)} ${badges}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,32))}${item.text.length>32?'…':''}</div>
+        </div>
+        <button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
       el.querySelector('button').addEventListener('click', () => {
         pendingJournalItems = pendingJournalItems.filter(i => i !== item);
         updateJournalBadge();
@@ -1848,48 +1870,106 @@ function renderJournalSidebar(bycat) {
   if (!cats.length && !pendingJournalItems.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
   empty.style.display = 'none';
 
-  // Clear non-pending content
   container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
+
+  // List order — standard ones first, then any extras alphabetically
+  const LIST_ORDER = ['Medications', 'Supplements', 'Foods', 'Diet', 'Symptoms', 'Plans', 'Procedures', 'Weight Log'];
 
   for (const cat of cats.sort()) {
     const lists = bycat[cat];
     const sec = document.createElement('div');
     sec.className = 'journal-cat-section';
+
+    // Cat heading — collapsible
     const heading = document.createElement('div');
-    heading.className = 'journal-cat-heading open';
-    heading.innerHTML = `<span>🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
+    heading.className = 'journal-cat-heading';
+    const arrow = document.createElement('span');
+    arrow.className = 'cat-arrow';
+    arrow.textContent = '▶';
+    arrow.style.cssText = 'font-size:0.5rem;color:var(--ink-muted);transition:transform 0.2s;margin-left:auto;';
+    heading.innerHTML = `<span style="font-size:0.85rem;">🐱</span><span>${escHtml(cat)}</span>`;
+    heading.appendChild(arrow);
+
     const body = document.createElement('div');
     body.className = 'journal-cat-body open';
-    heading.onclick = () => { heading.classList.toggle('open'); body.classList.toggle('open'); };
+    arrow.style.transform = 'rotate(90deg)';
+
+    heading.addEventListener('click', () => {
+      const open = body.classList.toggle('open');
+      arrow.style.transform = open ? 'rotate(90deg)' : '';
+    });
     sec.appendChild(heading);
 
-    for (const [listName, items] of Object.entries(lists)) {
-      if (!items.length) continue;
+    // Sort lists
+    const allListNames = Object.keys(lists);
+    const orderedLists = [
+      ...LIST_ORDER.filter(l => allListNames.includes(l)),
+      ...allListNames.filter(l => !LIST_ORDER.includes(l)).sort()
+    ];
+
+    for (const listName of orderedLists) {
+      const items = lists[listName];
+      if (!items?.length) continue;
+
       const ls = document.createElement('div');
       ls.className = 'journal-list-section';
+
+      // List heading
       const lh = document.createElement('div');
       lh.className = 'journal-list-heading';
-      lh.innerHTML = `${listName} <span class="journal-list-count">${items.length}</span>`;
+      const listArrow = document.createElement('span');
+      listArrow.textContent = '▶';
+      listArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;';
+      const countBadge = document.createElement('span');
+      countBadge.className = 'journal-list-count';
+      countBadge.textContent = items.length;
+      const addBtn = document.createElement('button');
+      addBtn.title = `Add to ${listName}`;
+      addBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 0.2rem;margin-left:0.2rem;line-height:1;border-radius:3px;transition:color 0.12s;';
+      addBtn.textContent = '+';
+      addBtn.addEventListener('mouseenter', () => addBtn.style.color = 'var(--accent)');
+      addBtn.addEventListener('mouseleave', () => addBtn.style.color = 'var(--ink-muted)');
+      addBtn.addEventListener('click', e => { e.stopPropagation(); openJournalAddItem(cat, listName); });
+      lh.appendChild(listArrow);
+      lh.appendChild(document.createTextNode(' ' + listName));
+      lh.appendChild(countBadge);
+      lh.appendChild(addBtn);
+
       const lb = document.createElement('div');
       lb.className = 'journal-list-body open';
-      lh.onclick = () => lb.classList.toggle('open');
+      listArrow.style.transform = 'rotate(90deg)';
+      lh.addEventListener('click', () => {
+        const open = lb.classList.toggle('open');
+        listArrow.style.transform = open ? 'rotate(90deg)' : '';
+      });
 
-      // Group by status
+      // Group by status — order: current, plan, maybe, past
+      const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
+      const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Maybe', past: 'Past' };
       const groups = { current:[], plan:[], maybe:[], past:[] };
       for (const item of items) (groups[item.status] || groups.current).push(item);
-      for (const [grp, grpItems] of Object.entries(groups)) {
+
+      for (const grp of STATUS_ORDER) {
+        const grpItems = groups[grp];
         if (!grpItems.length) continue;
-        const gl = document.createElement('div');
-        gl.className = 'journal-group-label';
-        gl.textContent = grp === 'current' ? '▸ Current' : grp === 'past' ? '▸ Past' : grp === 'plan' ? '▸ Planned' : '▸ Maybe';
-        lb.appendChild(gl);
+
+        const sl = document.createElement('div');
+        sl.className = 'journal-status-label';
+        sl.textContent = STATUS_LABELS[grp];
+        lb.appendChild(sl);
+
         for (const item of grpItems) {
           const ee = document.createElement('div');
           ee.className = 'journal-entry-full';
           ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
+
           const textWrap = document.createElement('div');
           textWrap.style.cssText = 'flex:1;min-width:0;';
-          textWrap.innerHTML = `<div class="journal-entry-text-full">${escHtml((item.text||'').slice(0,44))}${(item.text||'').length>44?'…':''}</div><div class="journal-entry-date-full">${item.startDate||''}${item.endDate?' → '+item.endDate:''}</div>`;
+          let inner = `<div class="journal-entry-text-full" title="${escHtml(item.text||'')}">${escHtml((item.text||'').slice(0,46))}${(item.text||'').length>46?'…':''}</div>`;
+          if (item.dose) inner += `<div class="journal-entry-dose">${escHtml(item.dose)}</div>`;
+          if (item.startDate) inner += `<div class="journal-entry-date-full">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
+          textWrap.innerHTML = inner;
+
           const actions = document.createElement('span');
           actions.style.cssText = 'display:none;gap:0.15rem;flex-shrink:0;margin-top:0.1rem;';
           actions.innerHTML = `<button title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem;border-radius:3px;line-height:1;">✏</button><button title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--red);padding:0.1rem;border-radius:3px;line-height:1;">🗑</button>`;
@@ -1903,8 +1983,21 @@ function renderJournalSidebar(bycat) {
           lb.appendChild(ee);
         }
       }
-      ls.appendChild(lh); ls.appendChild(lb); body.appendChild(ls);
+
+      ls.appendChild(lh);
+      ls.appendChild(lb);
+      body.appendChild(ls);
     }
+
+    // "Add list" button at bottom of each cat
+    const addListBtn = document.createElement('button');
+    addListBtn.style.cssText = 'width:100%;background:none;border:none;border-top:1px solid var(--surface2);padding:0.35rem 1.25rem;font-family:JetBrains Mono,monospace;font-size:0.6rem;color:var(--ink-muted);cursor:pointer;text-align:left;letter-spacing:0.04em;transition:color 0.12s;';
+    addListBtn.textContent = '+ New list';
+    addListBtn.addEventListener('mouseenter', () => addListBtn.style.color = 'var(--accent)');
+    addListBtn.addEventListener('mouseleave', () => addListBtn.style.color = 'var(--ink-muted)');
+    addListBtn.addEventListener('click', () => openJournalAddList(cat));
+    body.appendChild(addListBtn);
+
     sec.appendChild(body);
     container.appendChild(sec);
   }
@@ -1912,6 +2005,22 @@ function renderJournalSidebar(bycat) {
 
 
 // ── JOURNAL EDIT / DELETE ──
+function openJournalAddList(cat) {
+  const name = prompt(`New list name for ${cat}:`);
+  if (!name?.trim()) return;
+  // Add a placeholder item so the list appears; user can edit or add real items after
+  openJournalAddItem(cat, name.trim());
+}
+
+function openJournalAddItem(cat, listName) {
+  const today = new Date().toISOString().split('T')[0];
+  // Reuse the edit popup with blank fields
+  openJournalEdit({
+    cat, list: listName, text: '', dose: '', status: 'current',
+    startDate: today, endDate: null, _isNew: true
+  });
+}
+
 function openJournalEdit(item) {
   $('popup-title').textContent = `Edit Journal — ${item.cat} · ${item.list}`;
   const body = $('popup-body');
@@ -1959,14 +2068,28 @@ function openJournalEdit(item) {
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn-icon free-icon';
   saveBtn.style.cssText = 'margin-top:0.5rem;';
-  saveBtn.innerHTML = '<span class="free-dot"></span> Save Changes';
+  saveBtn.innerHTML = item._isNew ? '<span class="free-dot"></span> Add Entry' : '<span class="free-dot"></span> Save Changes';
   saveBtn.onclick = async () => {
-    if (!item.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+    const today = new Date().toISOString().split('T')[0];
     try {
       const updates = {};
       for (const f of fields) updates[f.key] = inputs[f.key].value || null;
-      await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
-      showToast('Journal entry updated', 'journal');
+      if (item._isNew) {
+        if (!updates.text?.trim()) { showToast('Text is required', 'warning'); return; }
+        await setDoc(doc(collection(db, 'journal')), {
+          cat: item.cat, list: item.list,
+          text: updates.text, dose: updates.dose || null,
+          status: updates.status || 'current',
+          startDate: updates.startDate || today,
+          endDate: updates.endDate || null,
+          addedDate: today, updatedDate: today, updates: []
+        });
+        showToast('Journal entry added', 'journal');
+      } else {
+        if (!item.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+        await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
+        showToast('Journal entry updated', 'journal');
+      }
       $('record-popup').classList.remove('open');
       loadJournalSidebar();
     } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
@@ -4947,6 +5070,10 @@ function extractCatFromText(text) {
 const TRACKABLE_TERMS_RE = /\b([a-zA-Z][a-zA-Z0-9 \-]{2,30}?)\b(?=.*(?:supplement|vitamin|probiotic|fish oil|omega|cobalamin|b12|denamarin|miralax|pumpkin|fiber|lysine|fortiflora|azodyl|epakitin|tumil[- ]k|prednisolone|gabapentin|cerenia|convenia|metronidazole|mirtazapine|omeprazole|famotidine|sucralfate|atenolol|amlodipine|methimazole|cyclosporine|atopica|cytopoint|apoquel|solensia|buprenorphine|tramadol|meloxicam|adequan|dasuquin))/gi;
 
 function processMessageForJournal(userMsg, assistantMsg) {
+  // Skip client-side tracking for large pastes — Save Session handles these properly
+  // via Claude with full context. Client-side regex on a 3000+ char paste produces garbage.
+  if (userMsg.length > 1500) return;
+
   const today = new Date().toISOString().split('T')[0];
   const cat = extractCatFromText(userMsg + ' ' + assistantMsg);
   const fullText = userMsg + ' ' + assistantMsg;
@@ -4972,7 +5099,12 @@ function processMessageForJournal(userMsg, assistantMsg) {
     const match = fullText.match(pattern.re);
     if (match && match[1] && cat) {
       const term = match[1].trim().toLowerCase();
-      if (term.length < 3 || term.length > 40) continue;
+      if (term.length < 4 || term.length > 40) continue;
+      // Reject stopwords and non-medical fragments
+      const STOPWORDS = new Set(['the','and','that','this','with','from','have','been','they','will','what','when','which','your','some','also','just','into','then','than','more','very','over','such','each','about','after','these','those','where','there','their','other','would','could','should','might','still','well','like','here','only','both','back','even','how','her','him','its','she','was','were','are','had','has','not','but','for','can','may','all','any','few','new','old','now','his','out','use','our','you','who','get']);
+      if (STOPWORDS.has(term.split(' ')[0])) continue;
+      // Must look like a medical/care term — at least one real word of 4+ chars
+      if (!/[a-z]{4}/.test(term)) continue;
 
       // Determine list based on term type
       const list = guessListForTerm(term);
@@ -5304,62 +5436,84 @@ $('save-session-btn').addEventListener('click', async () => {
   $('save-session-btn').disabled = true;
   $('save-session-btn').innerHTML = '<span class="free-dot"></span> Saving…';
   try {
-    const today = new Date().toISOString().split('T')[0];
+    await runSaveSession();
+  } catch(err) {
+    console.error('Save session error:', err);
+    showToast('Save failed — ' + err.message, 'warning');
+  }
+  $('save-session-btn').disabled = false;
+  $('save-session-btn').innerHTML = '<span class="free-dot"></span> Save Session';
+});
 
-    // Load current journal state for Claude to reference
-    const jSnap = await getDocs(collection(db, 'journal'));
-    const existingJournal = [];
-    jSnap.forEach(d => existingJournal.push({ id: d.id, ...d.data() }));
-    const journalContext = existingJournal.length
-      ? existingJournal.map(j => `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' ('+j.dose+')':''}`).join('\n')
-      : '(empty)';
+async function callClaudeRaw(messages, systemPrompt, maxTokens) {
+  // Direct API call with explicit max_tokens — bypasses callClaude's hardcoded 2048
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
+      return { text: data.content.map(b => b.text||'').join('').trim(), stopReason: data.stop_reason };
+    }
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || `API error ${res.status}`;
+    if ((res.status === 429 || res.status === 529) && attempt < MAX_RETRIES) {
+      showToast(`Rate limited — retrying in ${15 * Math.pow(2, attempt)}s…`, 'warning');
+      await sleep(15 * Math.pow(2, attempt) * 1000);
+      continue;
+    }
+    throw new Error(msg);
+  }
+}
 
-    const pendingContext = pendingJournalItems.length
-      ? pendingJournalItems.map(p => `${p.cat} / ${p.list} [${p.status}]: ${p.text}${p._source==='auto'?' (auto-detected)':p._needsResolution?' (needs resolution)':''}`).join('\n')
-      : '(none)';
-
-    const notesContext = _notesCache.length
-      ? _notesCache.map(n => `${n.pinned?'[PINNED] ':''}${n.cats?.length?'['+n.cats.join('/')+'] ':''}${n.text}`).join('\n')
-      : '(empty)';
-
-    const prompt = `You are reviewing a veterinary care chat session to update the care journal and context notes for cats: ${APP_PETS.join(', ')}.
+function buildSaveSessionPrompt(journalContext, pendingContext, notesContext, conversationText, today) {
+  return `You are reviewing a veterinary care session to update the journal for cats: ${APP_PETS.join(', ')}.
+Accuracy is critical. Missing an item is as serious as an incorrect one. Extract EVERYTHING decided, current, planned, or stopped.
 
 EXISTING JOURNAL:
 ${journalContext}
 
-ALREADY PENDING (client-side detected — include these unless they're wrong):
+ALREADY PENDING (client-detected — confirm or correct):
 ${pendingContext}
 
-CURRENT CONTEXT NOTES (pinned notes cannot be suggested for removal):
+CURRENT CONTEXT NOTES:
 ${notesContext}
 
-FULL CONVERSATION:
-${convHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')}
-
-Tasks:
-1. Confirm, correct, or discard the pending journal items above
-2. Find any journal-worthy items the client-side detection missed
-3. Identify items that should be marked as PAST (stopped medications, ended treatments)
-4. For items marked "needs resolution", determine what they refer to using full conversation context
-5. Suggest additions or removals to ACTIVE (non-pinned) context notes — short fragments only, not full sentences
+CONVERSATION:
+${conversationText}
 
 Rules:
-- Only extract things that are actually decided/happening, not just mentioned in passing
-- Track which cat each item is for — use full conversation context to resolve pronouns
-- Medications/supplements: include dose and frequency if mentioned
+- Extract every medication, supplement, diet item, plan, symptom, and monitoring parameter that is decided or currently in effect
+- If the conversation contains a structured care summary, treat every item in it as decided/current unless explicitly rejected
+- Rejected/discontinued items → status "past", not omitted
+- Include dose and frequency whenever mentioned
 - Do NOT duplicate items already in the existing journal
-- Context note suggestions: add only genuinely new ongoing concerns; suggest removing ones that seem resolved
+- Track which cat each item belongs to — resolve all pronouns using context
 - Never suggest removing pinned notes
-- Be conservative — fewer accurate entries is better than many noisy ones
+- If uncertain about a cat assignment, use status "maybe" and note the ambiguity in the text
 
-Return ONLY valid JSON:
+Return ONLY valid JSON — no markdown fences, no preamble:
 {
   "journalUpdates": [
     {
       "cat": "Mocha",
       "list": "Medications|Supplements|Foods|Diet|Symptoms|Plans|Procedures|Weight Log|<custom>",
       "text": "terse factual entry",
-      "dose": "dose/frequency if known, else null",
+      "dose": "dose/frequency or null",
       "status": "current|past|plan|maybe",
       "startDate": "${today}",
       "endDate": "YYYY-MM-DD or null",
@@ -5370,100 +5524,204 @@ Return ONLY valid JSON:
     {
       "action": "add|remove",
       "text": "terse fragment",
-      "cats": ["Mocha"] or [],
+      "cats": ["Mocha"],
       "pinned": false,
-      "removeText": "exact text of note to remove if action=remove"
+      "removeText": "exact text to remove if action=remove"
     }
   ],
-  "highlights": ["key clinical decision or conclusion from this session"]
-}`;
+  "highlights": ["key clinical decision or conclusion"],
+  "incomplete": false
+}
 
-    const raw = await callClaude([{ role: 'user', content: prompt }], 1500);
-    const extracted = JSON.parse(raw.replace(/```json|```/g, '').trim());
+IMPORTANT: If you reach the end of the conversation and believe you may have missed items due to length, set "incomplete": true.`;
+}
 
-    // Write journal updates to Firestore
-    const updates = extracted.journalUpdates || [];
-    const fsBatch = writeBatch(db);
+function showConfirmDialog(title, message, confirmLabel, cancelLabel) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(42,37,32,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:white;border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(42,37,32,0.2);font-family:JetBrains Mono,monospace;';
+    box.innerHTML = `
+      <div style="font-size:0.85rem;font-weight:600;color:var(--ink);margin-bottom:0.6rem;">${escHtml(title)}</div>
+      <div style="font-size:0.72rem;color:var(--ink-dim);white-space:pre-wrap;margin-bottom:1.2rem;line-height:1.5;">${escHtml(message)}</div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+        <button id="_cdCancel" style="padding:0.4rem 0.9rem;border:1px solid var(--border);border-radius:7px;background:var(--surface);font-family:inherit;font-size:0.7rem;cursor:pointer;color:var(--ink-dim);">${escHtml(cancelLabel||'Cancel')}</button>
+        <button id="_cdConfirm" style="padding:0.4rem 0.9rem;border:none;border-radius:7px;background:var(--accent);font-family:inherit;font-size:0.7rem;cursor:pointer;color:white;font-weight:600;">${escHtml(confirmLabel||'OK')}</button>
+      </div>`;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    box.querySelector('#_cdConfirm').onclick = () => { overlay.remove(); resolve(true); };
+    box.querySelector('#_cdCancel').onclick = () => { overlay.remove(); resolve(false); };
+  });
+}
 
-    for (const item of updates) {
-      if (!item.cat || !item.text) continue;
+async function runSaveSession(resumeData) {
+  const today = new Date().toISOString().split('T')[0];
 
-      if (item.updateOf) {
-        // Find existing entry and update it
-        const existing = existingJournal.find(j =>
-          j.cat === item.cat && j.text === item.updateOf
-        );
-        if (existing) {
-          fsBatch.update(doc(db, 'journal', existing.id), {
-            status: item.status || existing.status,
-            endDate: item.endDate || existing.endDate,
-            dose: item.dose || existing.dose,
-            updatedDate: today,
-            updates: [...(existing.updates||[]), { date: today, note: item.text }]
-          });
-          continue;
-        }
+  // Load current state
+  const jSnap = await getDocs(collection(db, 'journal'));
+  const existingJournal = [];
+  jSnap.forEach(d => existingJournal.push({ id: d.id, ...d.data() }));
+  const journalContext = existingJournal.length
+    ? existingJournal.map(j => `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' ('+j.dose+')':''}`)
+        .join('\n')
+    : '(empty)';
+  const pendingContext = pendingJournalItems.length
+    ? pendingJournalItems.map(p => `${p.cat} / ${p.list} [${p.status}]: ${p.text}`).join('\n')
+    : '(none)';
+  const notesContext = _notesCache.length
+    ? _notesCache.map(n => `${n.pinned?'[PINNED] ':''}${n.cats?.length?'['+n.cats.join('/')+'] ':''}${n.text}`).join('\n')
+    : '(empty)';
+
+  // Chunk conversation if large — ~6000 chars per chunk to stay well within context
+  const CHUNK_SIZE = 6000;
+  const fullConv = convHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+  const chunks = [];
+  if (fullConv.length <= CHUNK_SIZE) {
+    chunks.push(fullConv);
+  } else {
+    // Split at message boundaries
+    let pos = 0;
+    while (pos < fullConv.length) {
+      let end = pos + CHUNK_SIZE;
+      if (end < fullConv.length) {
+        // Try to break at a message boundary
+        const boundary = fullConv.lastIndexOf('\nUSER:', end);
+        const boundary2 = fullConv.lastIndexOf('\nASSISTANT:', end);
+        const breakAt = Math.max(boundary, boundary2);
+        if (breakAt > pos) end = breakAt;
       }
-
-      fsBatch.set(doc(collection(db, 'journal')), {
-        cat: item.cat,
-        list: item.list || 'General',
-        text: item.text,
-        dose: item.dose || null,
-        status: item.status || 'current',
-        startDate: item.startDate || today,
-        endDate: item.endDate || null,
-        addedDate: today,
-        updatedDate: today,
-        updates: []
-      });
+      chunks.push(fullConv.slice(pos, end));
+      pos = end;
     }
-
-    await fsBatch.commit();
-
-    // Handle note suggestions from Claude
-    const noteSuggestions = extracted.noteSuggestions || [];
-    let noteAdds = 0, noteRemovals = 0;
-    for (const sug of noteSuggestions) {
-      if (!sug.text && sug.action !== 'remove') continue;
-      if (sug.action === 'add') {
-        await addNote(sug.text, sug.cats || [], sug.pinned || false);
-        noteAdds++;
-      } else if (sug.action === 'remove' && sug.removeText) {
-        // Find matching non-pinned note and remove it
-        const match = _notesCache.find(n => !n.pinned && n.text === sug.removeText);
-        if (match) { await deleteNote(match); noteRemovals++; }
-      }
-    }
-
-    // Save session record
-    await setDoc(doc(collection(db, 'sessions')), {
-      date: new Date().toISOString(),
-      userId: currentUser?.uid,
-      highlights: extracted.highlights || [],
-      journalChanges: updates.length,
-      noteChanges: noteAdds + noteRemovals,
-      messageCount: convHistory.length
-    });
-
-    // Clear pending
-    pendingJournalItems = [];
-    mentionTracker = {};
-    sessionActiveCat = null;
-    updateJournalBadge();
-    await loadJournalSidebar();
-
-    const count = updates.length;
-    const noteMsg = (noteAdds || noteRemovals) ? `, ${noteAdds + noteRemovals} note update${(noteAdds+noteRemovals)!==1?'s':''}` : '';
-    showToast(`Session saved — ${count} journal update${count !== 1 ? 's' : ''}${noteMsg} ✓`, 'journal');
-
-  } catch(err) {
-    console.error('Save session error:', err);
-    showToast('Save failed — ' + err.message, 'warning');
   }
-  $('save-session-btn').disabled = false;
-  $('save-session-btn').innerHTML = '<span class="free-dot"></span> Save Session';
-});
+
+  let allUpdates = resumeData?.updates || [];
+  let allHighlights = resumeData?.highlights || [];
+  let allNoteSuggestions = resumeData?.notes || [];
+  const startChunk = resumeData?.nextChunk || 0;
+
+  for (let i = startChunk; i < chunks.length; i++) {
+    const chunkLabel = chunks.length > 1 ? ` (part ${i+1}/${chunks.length})` : '';
+    $('save-session-btn').innerHTML = `<span class="free-dot"></span> Saving${chunkLabel}…`;
+
+    const priorContext = allUpdates.length
+      ? `\nALREADY EXTRACTED FROM PRIOR CHUNKS:\n${allUpdates.map(u => `${u.cat} / ${u.list}: ${u.text}`).join('\n')}\n`
+      : '';
+    const convText = priorContext + (chunks.length > 1 ? `[Conversation part ${i+1} of ${chunks.length}]\n` : '') + chunks[i];
+
+    const prompt = buildSaveSessionPrompt(journalContext, pendingContext, notesContext, convText, today);
+
+    let result;
+    try {
+      result = await callClaudeRaw([{ role: 'user', content: prompt }], '', 6000);
+    } catch(err) {
+      // Rate limit or network error — offer to resume
+      const resume = await showConfirmDialog(
+        `Save paused on part ${i+1}/${chunks.length}`,
+        `${err.message}\n\nItems extracted so far: ${allUpdates.length}. Resume from here?`,
+        'Resume', 'Cancel'
+      );
+      if (resume) {
+        await sleep(30000);
+        i--; // retry same chunk
+        continue;
+      } else {
+        throw err;
+      }
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+    } catch(parseErr) {
+      console.error('JSON parse error on chunk', i, result.text.slice(0, 200));
+      const skip = await showConfirmDialog(
+        `Parse error on part ${i+1}/${chunks.length}`,
+        `Could not read Claude's response for this chunk. Skip and continue, or abort?`,
+        'Skip chunk', 'Abort'
+      );
+      if (skip) continue;
+      else throw new Error('Aborted at parse error');
+    }
+
+    allUpdates = allUpdates.concat(parsed.journalUpdates || []);
+    allHighlights = allHighlights.concat(parsed.highlights || []);
+    allNoteSuggestions = allNoteSuggestions.concat(parsed.noteSuggestions || []);
+
+    // If Claude flagged incomplete output (hit token limit mid-response), pause and confirm
+    if (parsed.incomplete || result.stopReason === 'max_tokens') {
+      const cont = await showConfirmDialog(
+        'Response may be incomplete',
+        `Claude indicated it may have missed items in part ${i+1}/${chunks.length} (${allUpdates.length} items extracted so far). Continue to next part?`,
+        'Continue', 'Stop here'
+      );
+      if (!cont) break;
+    }
+  }
+
+  // Deduplicate updates by cat+text
+  const seen = new Set();
+  const deduped = allUpdates.filter(u => {
+    const key = (u.cat||'') + '||' + (u.text||'').toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+
+  // Write to Firestore
+  const fsBatch = writeBatch(db);
+  for (const item of deduped) {
+    if (!item.cat || !item.text) continue;
+    if (item.updateOf) {
+      const existing = existingJournal.find(j => j.cat === item.cat && j.text === item.updateOf);
+      if (existing) {
+        fsBatch.update(doc(db, 'journal', existing.id), {
+          status: item.status || existing.status,
+          endDate: item.endDate || existing.endDate,
+          dose: item.dose || existing.dose,
+          updatedDate: today,
+          updates: [...(existing.updates||[]), { date: today, note: item.text }]
+        });
+        continue;
+      }
+    }
+    fsBatch.set(doc(collection(db, 'journal')), {
+      cat: item.cat, list: item.list || 'General', text: item.text,
+      dose: item.dose || null, status: item.status || 'current',
+      startDate: item.startDate || today, endDate: item.endDate || null,
+      addedDate: today, updatedDate: today, updates: []
+    });
+  }
+  await fsBatch.commit();
+
+  // Handle note suggestions
+  let noteAdds = 0, noteRemovals = 0;
+  for (const sug of allNoteSuggestions) {
+    if (!sug.text && sug.action !== 'remove') continue;
+    if (sug.action === 'add') { await addNote(sug.text, sug.cats||[], sug.pinned||false); noteAdds++; }
+    else if (sug.action === 'remove' && sug.removeText) {
+      const match = _notesCache.find(n => !n.pinned && n.text === sug.removeText);
+      if (match) { await deleteNote(match); noteRemovals++; }
+    }
+  }
+
+  // Save session record
+  await setDoc(doc(collection(db, 'sessions')), {
+    date: new Date().toISOString(), userId: currentUser?.uid,
+    highlights: allHighlights, journalChanges: deduped.length,
+    noteChanges: noteAdds + noteRemovals, messageCount: convHistory.length
+  });
+
+  pendingJournalItems = [];
+  mentionTracker = {};
+  sessionActiveCat = null;
+  updateJournalBadge();
+  await loadJournalSidebar();
+
+  const noteMsg = (noteAdds||noteRemovals) ? `, ${noteAdds+noteRemovals} note update${(noteAdds+noteRemovals)!==1?'s':''}` : '';
+  showToast(`Session saved — ${deduped.length} journal update${deduped.length!==1?'s':''}${noteMsg} ✓`, 'journal');
+}
 
 // ══════════════════════════════════════════════
 // LAYER 8 — BATCH API
