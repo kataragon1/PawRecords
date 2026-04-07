@@ -391,7 +391,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #flowsheet-modal-title{font-family:'Instrument Serif',serif;font-size:1.1rem;color:var(--ink);flex:1;}
 .flowsheet-modal-cat-select{font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;}
 #flowsheet-modal-close{background:var(--surface);border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;}
-#flowsheet-modal-body{overflow:auto;padding:0.75rem;}
+#flowsheet-modal-body{overflow:auto;padding:0.75rem;flex:1;min-height:0;}
 #flowsheet-modal-body::-webkit-scrollbar{width:6px;height:6px;}
 #flowsheet-modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 .lab-expand-btn{width:100%;background:none;border:none;border-top:1px solid var(--border);padding:0.45rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);cursor:pointer;text-align:center;letter-spacing:0.04em;}
@@ -1433,7 +1433,7 @@ function renderLabsSidebar() {
   if (!cats.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
   empty.style.display = 'none';
   container.innerHTML = '';
-  if (!flowsheetCat) flowsheetCat = cats.sort()[0];
+  if (!flowsheetCat || !labDataCache[flowsheetCat]) flowsheetCat = cats.sort()[0];
 
   // Cat selector
   const controls = document.createElement('div');
@@ -1530,7 +1530,7 @@ function renderLabsSidebar() {
 
     // Group header — clickable if collapsible
     const header = document.createElement('div');
-    header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;border-top:1px solid var(--surface2);margin-top:0.25rem;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
+    header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;border-top:1px solid var(--surface2);margin-top:0.25rem;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
 
     if (isCollapsible) {
       const isCollapsed = true; // start collapsed
@@ -1605,16 +1605,23 @@ function openFlowsheetModal(cat, focusTest) {
   // Scroll to the focused test row after the modal renders
   if (focusTest) {
     requestAnimationFrame(() => {
-      // Find the td with the exact test name in the sticky first column
       const rows = body.querySelectorAll('tbody tr');
       for (const row of rows) {
         const nameCell = row.querySelector('td:first-child');
         if (nameCell && nameCell.textContent.trim() === focusTest) {
-          nameCell.closest('tr').scrollIntoView({ block: 'center', behavior: 'smooth' });
-          // Briefly highlight the row
-          row.style.transition = 'background 0.2s';
-          row.style.background = 'var(--amber-bg)';
-          setTimeout(() => { row.style.background = ''; }, 1400);
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          row.style.transition = 'background 0.3s';
+          row.style.background = 'var(--surface2)';
+          // Remove highlight when mouse enters any other row
+          const clearHighlight = () => {
+            row.style.background = '';
+            body.querySelectorAll('tbody tr').forEach(r => r.removeEventListener('mouseenter', clearHighlight));
+          };
+          setTimeout(() => {
+            body.querySelectorAll('tbody tr').forEach(r => {
+              if (r !== row) r.addEventListener('mouseenter', clearHighlight);
+            });
+          }, 800);
           break;
         }
       }
@@ -1656,7 +1663,7 @@ function buildFlowsheetTable(cat, container) {
   });
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'overflow:auto;padding:0.5rem;max-height:100%;';
+  wrap.style.cssText = 'overflow:auto;height:100%;';
   const table = document.createElement('table');
   table.style.cssText = 'border-collapse:collapse;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
 
@@ -1705,6 +1712,8 @@ function buildFlowsheetTable(cat, container) {
     for (const rowKey of byGroup[group]) {
       const test = rowKey.split('||')[0];
       const row = document.createElement('tr');
+      row.addEventListener('mouseenter', () => { if (!row.style.background) row.style.background = 'var(--surface)'; });
+      row.addEventListener('mouseleave', () => { if (row.style.background === 'var(--surface)') row.style.background = ''; });
       const tdName = document.createElement('td');
       tdName.textContent = test;
       tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);';
