@@ -2224,31 +2224,17 @@ function updateSelectAllLabel() {
 // ── DRIVE CONNECTION (fallback if token expired) ──
 // ── DRIVE RECONNECT ──
 async function reconnectDrive(triggerEl) {
-  if (triggerEl) { 
-    triggerEl.disabled = true; 
-    triggerEl.textContent = 'Connecting…'; 
-  }
+  if (triggerEl) { triggerEl.disabled = true; triggerEl.textContent = 'Redirecting…'; }
   try {
     provider.setCustomParameters({ prompt: 'select_account' });
-    
-    // Switch to Popup so the page doesn't refresh
-    const result = await signInWithPopup(auth, provider);
-    
-    // Since the page didn't reload, we can trigger 
-    // your Drive initialization immediately right here:
-    if (typeof initDrive === 'function') {
-      await initDrive(); 
-    }
-    
-    showToast('Drive reconnected!', 'success');
+    // Store intent so we know to load Drive after redirect completes
+    try { sessionStorage.setItem('pr_reconnect_drive', '1'); } catch(e) {}
+    await signInWithPopup(auth, provider);
+    // Page navigates away — code below won't run until page returns
   } catch(e) {
     console.error('Reconnect error:', e.code, e.message);
-    showToast(`Reconnect failed: ${e.message}`, 'warning');
-  } finally {
-    if (triggerEl) {
-      triggerEl.disabled = false;
-      triggerEl.textContent = 'Reconnect Drive';
-    }
+    if (triggerEl) { triggerEl.disabled = false; triggerEl.textContent = 'Reconnect Drive'; }
+    showToast(`Reconnect failed: ${e.code || e.message}`, 'warning', null, 8000);
   }
 }
 
