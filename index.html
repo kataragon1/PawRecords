@@ -90,6 +90,8 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .visit-entry:hover{background:var(--surface);}
 .visit-entry-type{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .visit-entry:hover .visit-entry-type{color:var(--accent);}
+.home-badge{font-family:'JetBrains Mono',monospace;font-size:0.52rem;background:#e8f4e8;color:#3a7c52;border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;border:1px solid rgba(58,124,82,0.2);}
+
 
 /* Labs panel */
 .lab-summary-row{display:flex;align-items:baseline;padding:0.2rem 1rem 0.2rem 1.5rem;gap:0.5rem;cursor:pointer;transition:background 0.1s;position:relative;}
@@ -515,7 +517,11 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 
     <!-- Records Panel -->
     <div class="sidebar-panel active" id="panel-records">
-      <div class="sidebar-empty" id="records-empty">
+      <div style="padding:0.45rem 0.75rem;border-bottom:1px solid var(--border);display:flex;gap:0.35rem;flex-shrink:0;align-items:center;">
+        <button class="btn-icon free-icon" id="add-home-issue-btn" style="font-size:0.6rem;padding:0.2rem 0.45rem;"><span class="free-dot"></span> + Issue</button>
+        <button class="btn-icon" id="open-trends-btn" style="font-size:0.6rem;padding:0.2rem 0.45rem;">📈 Trends</button>
+      </div>
+      <div class="sidebar-empty" id="records-empty" style="flex:1;">
         <div class="sidebar-empty-icon">📋</div>
         <div>No records yet.<br>Process files to get started.</div>
       </div>
@@ -557,7 +563,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div class="sidebar-panel" id="panel-files" style="overflow:hidden;flex-direction:column;">
       <div class="files-toolbar" id="files-toolbar">
         <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="unprocessed">Unprocessed</button>
+        <button class="filter-btn" data-filter="unprocessed">Unprocessed / Failed</button>
         <button class="filter-btn" data-filter="flagged">Needs review</button>
         <button class="filter-btn" data-filter="done">Done</button>
       </div>
@@ -692,6 +698,50 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div class="session-cost" id="session-cost" style="display:none">Session: $0.00</div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);"><span class="app-version">…</span></div>
     </div>
+  </div>
+</div>
+
+<!-- ══ LAB GROUP MANAGER MODAL ══ -->
+<div id="lab-group-manager" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:350;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:white;border-radius:14px;width:100%;max-width:580px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);flex:1;">Lab Group Manager</span>
+      <button id="lab-gm-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">✕</button>
+    </div>
+    <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+      <p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);line-height:1.65;">Rename or merge duplicate group names. Renaming applies to <strong>all labs</strong> with that group name — not just the current cat. Changes are saved immediately.</p>
+    </div>
+    <div style="flex:1;overflow-y:auto;" id="lab-gm-body"></div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0;">
+      <button class="btn-icon" id="lab-gm-done">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HOME ISSUE MODAL ══ -->
+<div id="home-issue-modal" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:300;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:white;border-radius:12px;width:100%;max-width:420px;box-shadow:0 8px 40px rgba(42,37,32,0.18);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);">Log Home Issue</span>
+      <button id="home-issue-modal-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">✕</button>
+    </div>
+    <div id="home-issue-form" style="padding:1rem 1.25rem;display:flex;flex-direction:column;gap:0.6rem;"></div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;">
+      <button class="btn-icon" id="home-issue-cancel-btn">Cancel</button>
+      <button class="btn-icon free-icon" id="home-issue-save-btn"><span class="free-dot"></span> Save Issue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TRENDS MODAL ══ -->
+<div id="trends-modal" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:300;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:white;border-radius:14px;width:100%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.75rem;flex-shrink:0;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);flex:1;">Body Condition Trends</span>
+      <select id="trends-cat-select" style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;"></select>
+      <button id="trends-modal-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;padding:1.25rem;" id="trends-body"></div>
   </div>
 </div>
 
@@ -1309,9 +1359,11 @@ function renderRecordsTree(tree) {
         const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
         const doctorDisplay = v.doctor ? v.doctor.replace(/^Dr\.?\s*/i, '') : '';
         const isInvoice = v.docType === 'Invoice';
+        const isHome = v.source === 'home';
         ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
             ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
-            <span style="color:var(--ink-dim);font-weight:400;">${escHtml(clinicDisplay)}</span>${doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;"> · ${escHtml(doctorDisplay)}</span>` : ''}
+            ${isHome ? '<span class="home-badge">🏠 home</span>' : ''}
+            <span style="color:var(--ink-dim);font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${!isHome && doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;"> · ${escHtml(doctorDisplay)}</span>` : ''}
           </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
@@ -1363,7 +1415,7 @@ function renderRecordsTree(tree) {
 }
 
 function openVisitEdit(v) {
-  $('popup-title').textContent = `Edit — ${v.cat} · ${v.date}`;
+  $('popup-title').textContent = v.source === 'home' ? `Edit Home Issue — ${v.cat} · ${v.date}` : `Edit — ${v.cat} · ${v.date}`;
   const body = $('popup-body');
   body.innerHTML = '';
 
@@ -1601,6 +1653,14 @@ function renderLabsSidebar() {
   });
   sel.addEventListener('change', () => { flowsheetCat = sel.value; renderLabsSidebar(); });
   controls.appendChild(sel);
+
+  const mgBtn = document.createElement('button');
+  mgBtn.className = 'btn-icon';
+  mgBtn.style.cssText = 'margin-top:0.4rem;width:100%;font-size:0.6rem;padding:0.2rem 0.5rem;justify-content:center;';
+  mgBtn.textContent = '⚙ Manage Groups & Duplicates';
+  mgBtn.addEventListener('click', openLabGroupManager);
+  controls.appendChild(mgBtn);
+
   container.appendChild(controls);
 
   const entries = labDataCache[flowsheetCat] || [];
@@ -2343,6 +2403,7 @@ function filterFiles(filter) {
     let show = false;
     if (filter === 'all') show = true;
     else if (filter === 'done') show = (status === 'complete' || status === 'flagged');
+    else if (filter === 'unprocessed') show = (status === 'unprocessed' || status === 'failed');
     else show = (status === filter);
     el.style.display = show ? 'flex' : 'none';
   });
@@ -2996,11 +3057,15 @@ async function startProcessingQueue(files) {
       updateProgress(done, total, done < total ? `Done: ${file.name}` : 'All complete!');
     } catch (err) {
       console.error(`Failed: ${file.name}`, err);
-      updateFileBadge(file.id, 'failed');
-      await writeFileStatus(file.id, file.name, 'failed', { error: err.message });
+      const isDriveAuth = err.message.includes('token expired') || err.message.includes('401');
+      const newStatus = isDriveAuth ? 'unprocessed' : 'failed';
+      updateFileBadge(file.id, newStatus);
+      await writeFileStatus(file.id, file.name, newStatus, { error: err.message });
       failed++;
       done++;
-      showAlert(`Processing failed: ${file.name.slice(0,40)} — ${err.message.slice(0,80)}`, 'warning');
+      if (!isDriveAuth) {
+        showAlert(`Processing failed: ${file.name.slice(0,40)} — ${err.message.slice(0,80)}`, 'warning');
+      }
     }
     // Uncheck file after processing
     const fileCb = document.querySelector(`.file-item-checkbox[data-file-id="${file.id}"]`);
@@ -3670,6 +3735,16 @@ async function fetchDriveFileBlob(fileId) {
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${driveAccessToken}` } }
   );
+  if (res.status === 401) {
+    // Token expired mid-processing — clear it, stop the queue, surface a reconnect prompt
+    driveAccessToken = null;
+    try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
+    processingStop = true; // halt the queue after current file
+    $('drive-dot').className = 'status-dot amber';
+    $('drive-status').textContent = 'Drive token expired';
+    showDriveConnectPrompt('Drive access token expired during processing. Reconnect and re-run to continue.');
+    throw new Error('Drive token expired (401) — reconnect Drive and retry');
+  }
   if (!res.ok) throw new Error(`Drive fetch failed: ${res.status}`);
   return res.blob();
 }
@@ -4159,6 +4234,215 @@ async function saveLabCorrection(testName, labGroup) {
     await loadLabsSidebar();
   } catch(e) { showAlert('Correction failed: ' + e.message, 'warning'); }
 }
+
+// ── LAB GROUP MANAGER ──
+// Discovers all distinct labGroup values across all labs and lets the user
+// rename or merge them. "Chemistry(1)" → "Chemistry", "Hematology" → "CBC", etc.
+
+async function openLabGroupManager() {
+  $('lab-group-manager').style.display = 'flex';
+  const body = $('lab-gm-body');
+  body.innerHTML = '<div style="padding:1.25rem;font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">Loading all lab groups…</div>';
+
+  try {
+    // Discover all distinct labGroup values across ALL labs
+    const snap = await getDocs(collection(db, 'labs'));
+    const groupCounts = {}; // groupName → count
+    snap.forEach(d => {
+      const g = (d.data().labGroup || 'Other').trim();
+      groupCounts[g] = (groupCounts[g] || 0) + 1;
+    });
+
+    const allGroups = Object.keys(groupCounts).sort((a, b) => a.localeCompare(b));
+
+    if (!allGroups.length) {
+      body.innerHTML = '<div style="padding:1.25rem;font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">No lab groups found.</div>';
+      return;
+    }
+
+    // Auto-detect likely duplicates: similar names (case/punctuation variants, trailing numbers)
+    const normalize = s => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/\d+$/, '');
+    const dupGroups = new Set();
+    for (let i = 0; i < allGroups.length; i++) {
+      for (let j = i + 1; j < allGroups.length; j++) {
+        if (normalize(allGroups[i]) === normalize(allGroups[j])) {
+          dupGroups.add(allGroups[i]);
+          dupGroups.add(allGroups[j]);
+        }
+      }
+    }
+
+    body.innerHTML = '';
+
+    // ── Suspected duplicates section ──
+    if (dupGroups.size) {
+      const dupSection = document.createElement('div');
+      dupSection.style.cssText = 'border-bottom:1px solid var(--border);';
+
+      const dupHdr = document.createElement('div');
+      dupHdr.style.cssText = 'padding:0.6rem 1.25rem 0.4rem;font-family:"JetBrains Mono",monospace;font-size:0.6rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--amber);background:var(--amber-bg);border-bottom:1px solid rgba(156,107,30,0.15);';
+      dupHdr.textContent = `⚠ Suspected duplicates (${dupGroups.size} groups)`;
+      dupSection.appendChild(dupHdr);
+
+      const dupNote = document.createElement('div');
+      dupNote.style.cssText = 'padding:0.45rem 1.25rem 0.35rem;font-family:"JetBrains Mono",monospace;font-size:0.62rem;color:var(--ink-muted);';
+      dupNote.textContent = 'These group names look like variants of the same panel. Use → to merge into another group.';
+      dupSection.appendChild(dupNote);
+
+      [...dupGroups].sort().forEach(g => {
+        dupSection.appendChild(makeGroupRow(g, groupCounts[g], allGroups, true));
+      });
+
+      body.appendChild(dupSection);
+    }
+
+    // ── All groups section ──
+    const allSection = document.createElement('div');
+    const allHdr = document.createElement('div');
+    allHdr.style.cssText = 'padding:0.55rem 1.25rem 0.35rem;font-family:"JetBrains Mono",monospace;font-size:0.6rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:1;';
+    allHdr.textContent = `All groups (${allGroups.length})`;
+    allSection.appendChild(allHdr);
+
+    allGroups.forEach(g => {
+      allSection.appendChild(makeGroupRow(g, groupCounts[g], allGroups, false));
+    });
+    body.appendChild(allSection);
+
+  } catch(err) {
+    body.innerHTML = `<div style="padding:1.25rem;font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--red);">Error: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function makeGroupRow(groupName, count, allGroups, highlight) {
+  const row = document.createElement('div');
+  row.style.cssText = `display:flex;align-items:center;gap:0.5rem;padding:0.55rem 1.25rem;border-bottom:1px solid var(--surface2);${highlight ? 'background:rgba(156,107,30,0.03);' : ''}`;
+  row.id = 'gmrow-' + CSS.escape(groupName);
+
+  // Group name + count
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.68rem;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  nameEl.textContent = groupName;
+  row.appendChild(nameEl);
+
+  const countEl = document.createElement('span');
+  countEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);background:var(--surface2);border-radius:8px;padding:0 0.35rem;flex-shrink:0;';
+  countEl.textContent = count + ' test' + (count !== 1 ? 's' : '');
+  row.appendChild(countEl);
+
+  // Arrow + target selector
+  const arrow = document.createElement('span');
+  arrow.style.cssText = 'font-size:0.7rem;color:var(--ink-muted);flex-shrink:0;';
+  arrow.textContent = '→';
+  row.appendChild(arrow);
+
+  const sel = document.createElement('select');
+  sel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.65rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.25rem 0.4rem;color:var(--ink);outline:none;cursor:pointer;max-width:160px;';
+  const placeholder = document.createElement('option');
+  placeholder.value = ''; placeholder.textContent = 'keep as-is';
+  sel.appendChild(placeholder);
+  allGroups.filter(g => g !== groupName).forEach(g => {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = g;
+    sel.appendChild(o);
+  });
+  // Add "rename…" option
+  const renameOpt = document.createElement('option');
+  renameOpt.value = '__rename__'; renameOpt.textContent = '✏ Rename…';
+  sel.appendChild(renameOpt);
+  row.appendChild(sel);
+
+  // Apply button
+  const applyBtn = document.createElement('button');
+  applyBtn.className = 'btn-icon free-icon';
+  applyBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.45rem;flex-shrink:0;opacity:0.35;pointer-events:none;';
+  applyBtn.innerHTML = '<span class="free-dot"></span> Apply';
+  row.appendChild(applyBtn);
+
+  // Enable apply only when a target is selected
+  sel.addEventListener('change', () => {
+    const hasTarget = sel.value !== '';
+    applyBtn.style.opacity = hasTarget ? '1' : '0.35';
+    applyBtn.style.pointerEvents = hasTarget ? 'auto' : 'none';
+  });
+
+  applyBtn.addEventListener('click', async () => {
+    const target = sel.value;
+    if (!target) return;
+
+    if (target === '__rename__') {
+      const newName = prompt(`Rename "${groupName}" to:`, groupName);
+      if (!newName || newName.trim() === groupName) return;
+      await mergeLabGroup(groupName, newName.trim(), row, allGroups);
+    } else {
+      if (!confirm(`Merge all "${groupName}" labs into "${target}"?\n\nThis will update ${count} lab result(s) and cannot be undone.`)) return;
+      await mergeLabGroup(groupName, target, row, allGroups);
+    }
+  });
+
+  return row;
+}
+
+async function mergeLabGroup(fromGroup, toGroup, rowEl, allGroups) {
+  const applyBtn = rowEl.querySelector('button');
+  applyBtn.textContent = 'Saving…';
+  applyBtn.disabled = true;
+
+  try {
+    // Find all labs with this group name
+    const snap = await getDocs(query(collection(db, 'labs'), where('labGroup', '==', fromGroup)));
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.update(d.ref, { labGroup: toGroup }));
+      await batch.commit();
+    }
+
+    // Also update any lab_corrections that point to the old group
+    const corrSnap = await getDocs(collection(db, 'lab_corrections'));
+    const corrBatch = writeBatch(db);
+    let corrCount = 0;
+    corrSnap.forEach(d => {
+      if (d.data().labGroup === fromGroup) {
+        corrBatch.update(d.ref, { labGroup: toGroup });
+        corrCount++;
+      }
+    });
+    if (corrCount) await corrBatch.commit();
+
+    // Update _labGroups ordering list — replace old with new (if new isn't already there)
+    const idx = _labGroups.indexOf(fromGroup);
+    if (idx !== -1) {
+      if (!_labGroups.includes(toGroup)) {
+        _labGroups[idx] = toGroup;
+      } else {
+        _labGroups.splice(idx, 1);
+      }
+      await setDoc(doc(db, 'app_config', 'lab_groups'), { groups: _labGroups });
+    }
+
+    // Visual feedback — strike through the row
+    rowEl.style.opacity = '0.4';
+    rowEl.style.textDecoration = 'line-through';
+    rowEl.style.pointerEvents = 'none';
+
+    const msg = snap.size > 0
+      ? `"${fromGroup}" → "${toGroup}" — ${snap.size} result(s) updated ✓`
+      : `"${fromGroup}" renamed to "${toGroup}" ✓`;
+    showToast(msg, 'journal');
+
+    invalidateFlowsheetCache();
+    await loadLabsSidebar();
+
+  } catch(err) {
+    showAlert('Merge failed: ' + err.message, 'warning');
+    applyBtn.textContent = 'Apply';
+    applyBtn.disabled = false;
+  }
+}
+
+$('lab-gm-close').addEventListener('click', () => { $('lab-group-manager').style.display = 'none'; });
+$('lab-gm-done').addEventListener('click', () => { $('lab-group-manager').style.display = 'none'; });
+$('lab-group-manager').addEventListener('click', e => { if (e.target === $('lab-group-manager')) $('lab-group-manager').style.display = 'none'; });
+
 
 function attachLabCtxMenu(el, entry, cat) {
   el.addEventListener('contextmenu', e => {
@@ -4766,7 +5050,7 @@ function openLabDetail(entry, test, displayVal, abn) {
 
 function openVisit(visit) {
   try {
-  const title = `${visit.cat} · ${formatDate(visit.date)}${visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : ''}`;
+  const title = `${visit.cat} · ${formatDate(visit.date)}${visit.source === 'home' ? ' · 🏠 Home' : (visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : '')}`;
   let content = '';
   if (visit.synopsis) content += `${visit.synopsis}\n\n`;
   if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
@@ -6979,7 +7263,8 @@ async function buildChatContext(userMessage) {
 
       // Most recent 3: full synopsis
       for (const v of visits.slice(0, 3)) {
-        context += `\n### ${v.date}${v.clinic ? ' · ' + v.clinic : ''}${v.doctor ? ' · ' + v.doctor : ''}\n`;
+        const location = v.source === 'home' ? '🏠 Home' : (v.clinic || '');
+        context += `\n### ${v.date}${location ? ' · ' + location : ''}${v.doctor ? ' · ' + v.doctor : ''}${v.homeStatus ? ' [' + v.homeStatus + ']' : ''}\n`;
         if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
         if (v.synopsis) context += `${v.synopsis}\n`;
         if (v.medications?.length) {
@@ -6993,7 +7278,8 @@ async function buildChatContext(userMessage) {
         context += `\nOlder visits:\n`;
         for (const v of visits.slice(3)) {
           const synopsis = v.synopsis ? v.synopsis.split('.')[0] : (v.chiefComplaint || 'visit');
-          context += `- ${v.date}${v.clinic ? ' · ' + v.clinic : ''}: ${synopsis}\n`;
+          const location = v.source === 'home' ? '🏠 Home' : (v.clinic || '');
+          context += `- ${v.date}${location ? ' · ' + location : ''}${v.homeStatus ? ' [' + v.homeStatus + ']' : ''}: ${synopsis}\n`;
         }
       }
     }
@@ -7027,6 +7313,349 @@ async function buildChatContext(userMessage) {
 
   return context;
 }
+
+// ══════════════════════════════════════════════
+// HOME ISSUE LOGGING
+// ══════════════════════════════════════════════
+
+function openHomeIssueModal() {
+  const form = $('home-issue-form');
+  form.innerHTML = '';
+
+  const mkField = (label, id, type = 'text', opts = {}) => {
+    const wrap = document.createElement('div');
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.style.cssText = 'display:block;font-family:"JetBrains Mono",monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.2rem;';
+    lbl.setAttribute('for', id);
+    wrap.appendChild(lbl);
+    let el;
+    if (type === 'select') {
+      el = document.createElement('select');
+      el.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
+      (opts.options || []).forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o; opt.textContent = o;
+        el.appendChild(opt);
+      });
+    } else if (type === 'textarea') {
+      el = document.createElement('textarea');
+      el.rows = opts.rows || 3;
+      el.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;outline:none;color:var(--ink);line-height:1.6;';
+    } else {
+      el = document.createElement('input');
+      el.type = type;
+      el.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;outline:none;color:var(--ink);background:var(--bg);';
+    }
+    if (opts.placeholder) el.placeholder = opts.placeholder;
+    if (opts.value !== undefined) el.value = opts.value;
+    el.id = id;
+    wrap.appendChild(el);
+    return wrap;
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+  form.appendChild(mkField('Cat', 'hi-cat', 'select', { options: APP_PETS.length ? APP_PETS : ['Cat'] }));
+  form.appendChild(mkField('Date', 'hi-date', 'date', { value: today }));
+  form.appendChild(mkField('Issue / Chief Complaint', 'hi-complaint', 'text', { placeholder: 'e.g. hotspot on left flank' }));
+  form.appendChild(mkField('What I observed', 'hi-synopsis', 'textarea', { rows: 2, placeholder: 'Describe what you noticed…' }));
+  form.appendChild(mkField('Treatment / Action taken', 'hi-treatment', 'textarea', { rows: 2, placeholder: 'e.g. Cleaned with chlorhexidine, applied Neosporin, cone on' }));
+
+  // Status row
+  const statusWrap = document.createElement('div');
+  statusWrap.style.cssText = 'display:flex;gap:0.5rem;align-items:center;';
+  const statusLbl = document.createElement('label');
+  statusLbl.textContent = 'Status';
+  statusLbl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap;';
+  const statusSel = document.createElement('select');
+  statusSel.id = 'hi-status';
+  statusSel.style.cssText = 'flex:1;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
+  ['Ongoing', 'Resolved', 'Monitoring'].forEach(s => {
+    const o = document.createElement('option'); o.value = s.toLowerCase(); o.textContent = s;
+    statusSel.appendChild(o);
+  });
+  statusWrap.appendChild(statusLbl);
+  statusWrap.appendChild(statusSel);
+  form.appendChild(statusWrap);
+
+  $('home-issue-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('hi-complaint')?.focus(), 80);
+}
+
+async function saveHomeIssue() {
+  const cat = $('hi-cat')?.value?.trim();
+  const date = $('hi-date')?.value?.trim();
+  const complaint = $('hi-complaint')?.value?.trim();
+  const synopsis = $('hi-synopsis')?.value?.trim();
+  const treatment = $('hi-treatment')?.value?.trim();
+  const status = $('hi-status')?.value || 'ongoing';
+
+  if (!cat || !date || !complaint) {
+    showToast('Cat, date, and issue are required', 'warning');
+    return;
+  }
+
+  const narrative = [
+    synopsis ? `OBSERVED\n${synopsis}` : '',
+    treatment ? `TREATMENT\n${treatment}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  const record = sanitizeForFirestore({
+    cat,
+    date,
+    source: 'home',
+    chiefComplaint: complaint,
+    issueType: complaint,
+    synopsis: [synopsis, treatment ? `Treatment: ${treatment}` : ''].filter(Boolean).join(' '),
+    narrative: narrative || null,
+    homeStatus: status,
+    createdAt: new Date().toISOString(),
+    vitals: {},
+    medications: [],
+    procedures: [],
+  });
+
+  try {
+    await addDoc(collection(db, 'visits'), record);
+    _allVisitsCache = null;
+    $('home-issue-modal').style.display = 'none';
+    showToast(`Home issue logged for ${cat} ✓`, 'journal');
+    loadRecordsSidebar();
+  } catch(err) {
+    showAlert('Failed to save: ' + err.message, 'warning');
+  }
+}
+
+$('add-home-issue-btn').addEventListener('click', openHomeIssueModal);
+$('home-issue-modal-close').addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
+$('home-issue-cancel-btn').addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
+$('home-issue-save-btn').addEventListener('click', saveHomeIssue);
+$('home-issue-modal').addEventListener('click', e => { if (e.target === $('home-issue-modal')) $('home-issue-modal').style.display = 'none'; });
+
+// ══════════════════════════════════════════════
+// BODY CONDITION TRENDS
+// ══════════════════════════════════════════════
+
+function parseLbsFromWeight(w) {
+  if (!w) return null;
+  const m = String(w).match(/([0-9]+\.?[0-9]*)\s*(?:lbs?|lb)/i);
+  if (m) return parseFloat(m[1]);
+  // Fallback: just a number
+  const n = parseFloat(w);
+  return isNaN(n) ? null : n;
+}
+
+function parseBCS(v) {
+  if (!v) return null;
+  const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*9/i);
+  if (m) return parseFloat(m[1]);
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+function parseMCS(v) {
+  if (!v) return null;
+  const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*[34]/i);
+  if (m) return parseFloat(m[1]);
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+async function openTrendsModal() {
+  $('trends-modal').style.display = 'flex';
+
+  // Populate cat selector
+  const sel = $('trends-cat-select');
+  sel.innerHTML = '';
+  const cats = APP_PETS.length ? APP_PETS : Object.keys(labDataCache);
+  cats.forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = '🐱 ' + c;
+    sel.appendChild(o);
+  });
+
+  sel.onchange = () => renderTrends(sel.value);
+  renderTrends(cats[0] || '');
+}
+
+async function renderTrends(cat) {
+  const body = $('trends-body');
+  body.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);padding:1rem;">Loading…</div>';
+
+  try {
+    // Pull all visits for this cat — use cache if available
+    let visits;
+    if (_allVisitsCache) {
+      visits = _allVisitsCache.filter(v => v.cat === cat);
+    } else {
+      const snap = await getDocs(query(collection(db, 'visits'), where('cat', '==', cat), orderBy('date', 'asc')));
+      visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    // Extract datapoints — skip missing values
+    const points = visits
+      .filter(v => v.date && v.vitals)
+      .map(v => ({
+        date: v.date,
+        weight: parseLbsFromWeight(v.vitals?.weight),
+        bcs: parseBCS(v.vitals?.BCS),
+        mcs: parseMCS(v.vitals?.muscleConditionScore),
+        source: v.source === 'home' ? 'home' : 'vet',
+        label: v.source === 'home' ? (v.chiefComplaint || 'Home') : (v.clinic ? abbreviateClinic(v.clinic) : 'Visit'),
+      }))
+      .filter(p => p.weight || p.bcs || p.mcs)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    body.innerHTML = '';
+
+    if (!points.length) {
+      body.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);padding:1rem;text-align:center;">No weight or BCS data found for ' + cat + '.<br><br>Weight and BCS are extracted automatically from vet records during processing.</div>';
+      return;
+    }
+
+    // ── Chart section builder ──
+    const buildChart = (title, metric, color, yLabel, refLow, refHigh, refLabel) => {
+      const pts = points.filter(p => p[metric] !== null && p[metric] !== undefined);
+      if (pts.length < 1) return null;
+
+      const section = document.createElement('div');
+      section.style.cssText = 'margin-bottom:2rem;';
+
+      const h = document.createElement('div');
+      h.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:0.85rem;';
+      h.textContent = title;
+      section.appendChild(h);
+
+      const W = 680, H = 180, PAD = { top: 14, right: 16, bottom: 44, left: 42 };
+      const chartW = W - PAD.left - PAD.right;
+      const chartH = H - PAD.top - PAD.bottom;
+
+      const vals = pts.map(p => p[metric]);
+      const minVal = Math.min(...vals, refLow ?? Infinity);
+      const maxVal = Math.max(...vals, refHigh ?? -Infinity);
+      const valRange = maxVal - minVal || 1;
+      const yPad = valRange * 0.18;
+      const yMin = minVal - yPad;
+      const yMax = maxVal + yPad;
+
+      const dates = pts.map(p => new Date(p.date + 'T12:00:00').getTime());
+      const tMin = Math.min(...dates);
+      const tMax = Math.max(...dates);
+      const tRange = tMax - tMin || 1;
+
+      const xOf = d => PAD.left + ((new Date(d + 'T12:00:00').getTime() - tMin) / tRange) * chartW;
+      const yOf = v => PAD.top + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+      let svgContent = '';
+
+      // Reference band
+      if (refLow != null && refHigh != null) {
+        const ry1 = yOf(refHigh), ry2 = yOf(refLow);
+        svgContent += `<rect x="${PAD.left}" y="${ry1}" width="${chartW}" height="${ry2 - ry1}" fill="${color}18" />`;
+        svgContent += `<line x1="${PAD.left}" y1="${ry1}" x2="${PAD.left + chartW}" y2="${ry1}" stroke="${color}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.5"/>`;
+        svgContent += `<line x1="${PAD.left}" y1="${ry2}" x2="${PAD.left + chartW}" y2="${ry2}" stroke="${color}" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.5"/>`;
+        if (refLabel) {
+          svgContent += `<text x="${PAD.left + chartW - 2}" y="${ry1 - 3}" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="8" fill="${color}" opacity="0.7">${escHtml(refLabel)}</text>`;
+        }
+      }
+
+      // Grid lines + y-axis labels (3 ticks)
+      for (let i = 0; i <= 4; i++) {
+        const v = yMin + (yMax - yMin) * (i / 4);
+        const y = yOf(v);
+        svgContent += `<line x1="${PAD.left}" y1="${y}" x2="${PAD.left + chartW}" y2="${y}" stroke="#d4cfc5" stroke-width="0.5"/>`;
+        svgContent += `<text x="${PAD.left - 5}" y="${y + 3}" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="8" fill="#9e9288">${v.toFixed(metric === 'weight' ? 1 : 1)}</text>`;
+      }
+
+      // Line path
+      const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.date).toFixed(1)},${yOf(p[metric]).toFixed(1)}`).join(' ');
+      svgContent += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+
+      // Dots + labels
+      pts.forEach((p, i) => {
+        const cx = xOf(p.date), cy = yOf(p[metric]);
+        const isHome = p.source === 'home';
+        const dotColor = isHome ? '#3a7c52' : color;
+        svgContent += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${isHome ? 3.5 : 4}" fill="${dotColor}" stroke="white" stroke-width="1.5">
+          <title>${escHtml(p.date)} · ${escHtml(p.label)}: ${p[metric]}${metric === 'weight' ? ' lbs' : '/9'}</title>
+        </circle>`;
+
+        // Value label — alternate above/below to avoid overlap
+        const labelY = i % 2 === 0 ? cy - 9 : cy + 16;
+        svgContent += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8" fill="${dotColor}" font-weight="600">${p[metric]}</text>`;
+      });
+
+      // X-axis date labels (show every nth to avoid crowding)
+      const step = Math.max(1, Math.ceil(pts.length / 6));
+      pts.forEach((p, i) => {
+        if (i % step !== 0 && i !== pts.length - 1) return;
+        const cx = xOf(p.date);
+        const label = formatDateShort(p.date);
+        svgContent += `<text x="${cx.toFixed(1)}" y="${PAD.top + chartH + 14}" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8" fill="#9e9288">${escHtml(label)}</text>`;
+      });
+
+      // Axes
+      svgContent += `<line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${PAD.top + chartH}" stroke="#d4cfc5" stroke-width="1"/>`;
+      svgContent += `<line x1="${PAD.left}" y1="${PAD.top + chartH}" x2="${PAD.left + chartW}" y2="${PAD.top + chartH}" stroke="#d4cfc5" stroke-width="1"/>`;
+
+      // y-axis label
+      svgContent += `<text transform="rotate(-90)" x="${-(PAD.top + chartH / 2)}" y="11" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8" fill="#9e9288">${escHtml(yLabel)}</text>`;
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      svg.setAttribute('width', '100%');
+      svg.style.cssText = 'display:block;max-width:100%;';
+      svg.innerHTML = svgContent;
+      section.appendChild(svg);
+
+      // Most recent value callout
+      const last = pts[pts.length - 1];
+      const callout = document.createElement('div');
+      callout.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.63rem;color:var(--ink-muted);margin-top:0.3rem;';
+      const delta = pts.length > 1 ? last[metric] - pts[pts.length - 2][metric] : null;
+      const deltaStr = delta !== null ? (delta > 0 ? ` ▲${delta.toFixed(1)}` : delta < 0 ? ` ▼${Math.abs(delta).toFixed(1)}` : ' →') : '';
+      const isOutOfRange = refLow != null && refHigh != null && (last[metric] < refLow || last[metric] > refHigh);
+      callout.innerHTML = `Latest: <strong style="color:${isOutOfRange ? 'var(--red)' : 'var(--ink)'};">${last[metric]}${metric === 'weight' ? ' lbs' : '/9'}</strong>${deltaStr} <span style="color:var(--ink-muted);">(${formatDate(last.date)})</span>${isOutOfRange ? ' <span style="color:var(--red);">⚠ outside ideal</span>' : ''}`;
+      section.appendChild(callout);
+
+      return section;
+    };
+
+    const hasWeight = points.some(p => p.weight != null);
+    const hasBCS = points.some(p => p.bcs != null);
+    const hasMCS = points.some(p => p.mcs != null);
+
+    if (hasWeight) {
+      const s = buildChart('Weight (lbs)', 'weight', '#7c6f5b', 'lbs', null, null, null);
+      if (s) body.appendChild(s);
+    }
+    if (hasBCS) {
+      const s = buildChart('Body Condition Score (BCS/9)', 'bcs', '#9c6b1e', 'BCS', 4, 5, 'ideal 4–5/9');
+      if (s) body.appendChild(s);
+    }
+    if (hasMCS) {
+      const s = buildChart('Muscle Condition Score (MCS/4)', 'mcs', '#0d47a1', 'MCS', 2, 3, 'ideal 2–3/4');
+      if (s) body.appendChild(s);
+    }
+
+    if (!hasWeight && !hasBCS && !hasMCS) {
+      body.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);padding:1rem;text-align:center;">No trend data found for ' + cat + '.</div>';
+    }
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.style.cssText = 'display:flex;gap:1rem;font-family:"JetBrains Mono",monospace;font-size:0.6rem;color:var(--ink-muted);margin-top:0.5rem;padding-top:0.75rem;border-top:1px solid var(--surface2);';
+    legend.innerHTML = `<span>● vet visit</span><span style="color:#3a7c52;">● home issue</span>`;
+    body.appendChild(legend);
+
+  } catch(err) {
+    body.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--red);padding:1rem;">Error loading trends: ' + escHtml(err.message) + '</div>';
+    console.error('Trends error:', err);
+  }
+}
+
+$('open-trends-btn').addEventListener('click', openTrendsModal);
+$('trends-modal-close').addEventListener('click', () => { $('trends-modal').style.display = 'none'; });
+$('trends-modal').addEventListener('click', e => { if (e.target === $('trends-modal')) $('trends-modal').style.display = 'none'; });
 
 // ── CLAUDE CHAT API ──
 async function callClaude(history, context) {
