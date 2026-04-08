@@ -1137,7 +1137,7 @@ async function loadInitialData() {
     setLoading('Ready');
   } catch (err) {
     console.error('Load error:', err);
-    showToast('Some data failed to load — check console', 'warning');
+    showAlert('Some data failed to load on startup — check console for details', 'warning');
   }
 }
 
@@ -1518,8 +1518,8 @@ function renderLabsSidebar() {
     ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)).sort()
   ];
 
-  // All groups collapse by default — click header to expand
-  const COLLAPSIBLE_GROUPS = new Set(GROUP_ORDER);
+  // All groups are collapsible — known ones are in GROUP_ORDER, unknown ones (e.g. Hematology) too
+  const COLLAPSIBLE_GROUPS = new Set(orderedGroups);
 
   for (const group of orderedGroups) {
     const keysInGroup = byGroup[group];
@@ -2824,6 +2824,10 @@ async function startProcessingQueue(files) {
   processingQueue = [...files];
   await requestWakeLock();
 
+  // Ensure visits cache is fresh for duplicate detection during this run
+  _allVisitsCache = null;
+  await ensureDataCache();
+
   const progress = $('process-progress');
   progress.classList.add('active');
   $('process-all-btn').disabled = true;
@@ -2856,7 +2860,7 @@ async function startProcessingQueue(files) {
       await writeFileStatus(file.id, file.name, 'failed', { error: err.message });
       failed++;
       done++;
-      showToast(`Failed: ${file.name.slice(0,30)} — ${err.message.slice(0,60)}`, 'warning');
+      showAlert(`Processing failed: ${file.name.slice(0,40)} — ${err.message.slice(0,80)}`, 'warning');
     }
     // Uncheck file after processing
     const fileCb = document.querySelector(`.file-item-checkbox[data-file-id="${file.id}"]`);
@@ -3026,7 +3030,7 @@ async function processFile(file) {
         }
       }
       if (finalChunks.length > 1) {
-        chunks = finalChunks.map(t => ({ text: t, isImage: false }));
+        chunks = finalChunks.map((t, i) => ({ text: t, isImage: false, _chunkIndex: i, _totalChunks: finalChunks.length, _isBulkHistory: isBulkSummary }));
         updateProgress(0, chunks.length, `${file.name}: split into ${chunks.length} chunks`);
       }
     }
@@ -3052,6 +3056,9 @@ async function processFile(file) {
     if (ci > 0 && chunkContext) {
       chunk._context = chunkContext;
       chunk._isContinuation = true;
+      chunk._chunkIndex = chunk._chunkIndex ?? ci;
+      chunk._totalChunks = chunk._totalChunks ?? chunks.length;
+      chunk._isBulkHistory = chunk._isBulkHistory ?? chunks[0]?._isBulkHistory ?? false;
     }
 
     // ── SINGLE COMBINED PASS ──
@@ -3096,8 +3103,9 @@ async function processFile(file) {
     if (result.flags?.length) allFlags.push(...result.flags);
     if (result.isAmendment) isAmendment = true;
 
-    // After chunk 0 succeeds, capture patient context for injection into later chunks
-    if (ci === 0 && !chunkContext) {
+    // After each chunk succeeds, update patient context for injection into later chunks
+    // Use chunk 0 to establish primary patient, but update cat/clinic if later chunks clarify
+    if (!chunkContext) {
       const v0 = result.visits?.[0];
       const cat0 = v0?.cat || result.cats?.[0] || null;
       const date0 = v0?.date || result.dates?.[0] || null;
@@ -3109,6 +3117,12 @@ async function processFile(file) {
           doctor: v0?.doctor || null
         };
       }
+    } else {
+      // Update with any newly confirmed cat or clinic from this chunk
+      const newCat = result.visits?.[0]?.cat || result.cats?.[0];
+      const newClinic = result.visits?.[0]?.clinic;
+      if (newCat && !chunkContext.cat) chunkContext.cat = newCat;
+      if (newClinic && !chunkContext.clinic) chunkContext.clinic = newClinic;
     }
   }
 
@@ -3161,42 +3175,40 @@ async function processFile(file) {
     }
 
     // ── CRITICAL: Apparent duplicate visit ──
+    // Same cat + date + clinic → merge into existing (collect any missing fields, add labs)
+    // Same cat + date + different clinic → different encounter, allow as new entry
     if (_allVisitsCache && allVisits.length > 0) {
       for (const v of allVisits) {
-        const existing = _allVisitsCache.find(e =>
+        const clinicMatch = _allVisitsCache.find(e =>
           e.cat?.toLowerCase() === v.cat?.toLowerCase() &&
           e.date === v.date &&
-          e.clinic?.toLowerCase() === v.clinic?.toLowerCase()
+          (!e.clinic || !v.clinic || e.clinic?.toLowerCase() === v.clinic?.toLowerCase())
         );
-        if (existing) {
-          // Same cat + date + clinic — check if content is similar
-          const simScore = textSimilarity(v.narrative || v.synopsis || '', existing.narrative || existing.synopsis || '');
-          if (simScore > 0.5) {
-            // High similarity — mark as duplicate and skip silently
-            v._skipDuplicate = true;
-            qualityFlags.push({
-              type: 'duplicate_visit',
-              description: `Duplicate detected: ${v.cat} visit on ${v.date} already exists with ${Math.round(simScore*100)}% similar content. Skipped.`,
-              bestGuess: null
-            });
-          } else if (simScore > 0.2) {
-            // Partial overlap — likely an amendment, mark it
+        if (clinicMatch) {
+          const simScore = textSimilarity(v.narrative || v.synopsis || '', clinicMatch.narrative || clinicMatch.synopsis || '');
+          if (simScore > 0.2) {
+            // Same clinic, overlapping content → merge. Flag the visit for amendment handling,
+            // labs from this file will still be written (they may be the new part).
+            v._mergeInto = clinicMatch.id;
             isAmendment = true;
           }
-          // Low similarity with same cat+date+clinic — could be legitimate separate record, proceed
+          // Low similarity same clinic — unusual but proceed as new record
         }
+        // Different clinic same day → legitimate separate encounter, no action needed
       }
-      // Remove visits marked as duplicates
-      const dupCount = allVisits.filter(v => v._skipDuplicate).length;
-      allVisits.splice(0, allVisits.length, ...allVisits.filter(v => !v._skipDuplicate));
-      if (dupCount && allVisits.length === 0 && allLabs.length === 0) {
-        // Everything was a duplicate — skip file entirely
+
+      // For visits flagged as merge targets, don't write new visit docs — the amendment
+      // path in writeExtractionToFirestore will update the existing doc instead.
+      // Labs from these files ARE still written — they may be the new content.
+      const mergeCount = allVisits.filter(v => v._mergeInto).length;
+      if (mergeCount > 0 && mergeCount === allVisits.length && allLabs.length === 0) {
+        // Everything merges and no new labs — nothing new to add
         await writeFileStatus(file.id, file.name, 'complete', {
-          extractionPasses: ['duplicate_skipped'],
+          extractionPasses: ['merged_into_existing'],
           fileHash: fileHash || null
         });
         updateFileBadge(file.id, 'complete');
-        showToast(`${file.name.slice(0,30)}: exact duplicate — skipped ✓`, 'journal');
+        showToast(`${file.name.slice(0,30)}: merged into existing record ✓`, 'journal');
         return;
       }
     }
@@ -3302,6 +3314,37 @@ async function processFile(file) {
   await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes, isAmendment, fileHash);
 }
 
+// Recursively sanitize a value for Firestore:
+// - undefined → null
+// - NaN / Infinity → null
+// - arrays: sanitize each element, filter out undefined
+// - objects: sanitize each value, drop keys with undefined
+// - strings > 900KB → truncated (Firestore field limit is 1MB but safe margin)
+function sanitizeForFirestore(val, depth = 0) {
+  if (depth > 10) return null; // guard against circular refs
+  if (val === undefined || val === null) return null;
+  if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val)) return null;
+    return val;
+  }
+  if (typeof val === 'string') {
+    return val.length > 900000 ? val.slice(0, 900000) + '…[truncated]' : val;
+  }
+  if (typeof val === 'boolean') return val;
+  if (Array.isArray(val)) {
+    return val.map(v => sanitizeForFirestore(v, depth + 1)).filter(v => v !== undefined);
+  }
+  if (typeof val === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) {
+      const clean = sanitizeForFirestore(v, depth + 1);
+      if (clean !== undefined) out[k] = clean;
+    }
+    return out;
+  }
+  return val;
+}
+
 async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes, isAmendment = false, fileHash = null) {
   // Save raw extraction result to Firestore immediately — free, enables write-only retry
   const extractionCache = { allVisits, allLabs, allFlags, cats: [...allCats], dates: [...allDates], passes: [...new Set(passes)] };
@@ -3331,6 +3374,14 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     for (const visit of allVisits) {
       if (!visit.cat || visit.cat === 'SKIP') continue;
       try {
+        // Use _mergeInto id directly if set by duplicate detection — more reliable
+        if (visit._mergeInto) {
+          const existDoc = await getDoc(doc(db, 'visits', visit._mergeInto));
+          if (existDoc.exists()) {
+            amendmentMatches[`${visit.cat}_${visit.date}`] = existDoc;
+            continue;
+          }
+        }
         const existingSnap = await getDocs(query(
           collection(db, 'visits'),
           where('cat', '==', visit.cat),
@@ -3355,22 +3406,29 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (isAmendment && amendmentMatches[matchKey]) {
         const existDoc = amendmentMatches[matchKey];
         const existData = existDoc.data();
-        fsBatch.update(existDoc.ref, {
-          synopsis: visit.synopsis || existData.synopsis,
-          narrative: visit.narrative || existData.narrative,
-          medications: visit.medications?.length ? visit.medications : existData.medications,
-          procedures: visit.procedures?.length ? visit.procedures : existData.procedures,
-          vitals: visit.vitals || existData.vitals,
+        // Merge: prefer existing non-empty values, fill in anything missing from new extraction
+        const merged = {
+          synopsis: existData.synopsis || visit.synopsis,
+          narrative: existData.narrative?.length > (visit.narrative?.length || 0) ? existData.narrative : (visit.narrative || existData.narrative),
+          chiefComplaint: existData.chiefComplaint || visit.chiefComplaint,
+          medications: existData.medications?.length ? existData.medications : (visit.medications || []),
+          procedures: existData.procedures?.length ? existData.procedures : (visit.procedures || []),
+          vitals: existData.vitals || visit.vitals,
+          doctor: existData.doctor || visit.doctor,
+          docType: existData.docType || visit.docType,
           updatedAt: new Date().toISOString(),
           sourceFiles: [...new Set([...(existData.sourceFiles||[]), file.name])],
           driveFileIds: [...new Set([...(existData.driveFileIds||[]), file.id])]
-        });
+        };
+        // Remove nulls so we don't overwrite existing data with null
+        Object.keys(merged).forEach(k => merged[k] === null && delete merged[k]);
+        fsBatch.update(existDoc.ref, sanitizeForFirestore(merged));
         if (visit.cat) allCats.add(visit.cat);
         if (visit.date) allDates.add(visit.date);
         continue;
       }
 
-      fsBatch.set(doc(collection(db, 'visits')), {
+      fsBatch.set(doc(collection(db, 'visits')), sanitizeForFirestore({
         cat: visit.cat, date: visit.date || 'unknown',
         clinic: visit.clinic || null, doctor: visit.doctor || null,
         chiefComplaint: visit.chiefComplaint || null,
@@ -3383,7 +3441,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         visitCluster: `${visit.date||'unknown'}_${(visit.clinic||'unknown').toLowerCase().replace(/\s+/g,'_').slice(0,20)}`,
         confidence: visit.confidence || 0.8, flags: visit.flags || [],
         createdAt: new Date().toISOString()
-      });
+      }));
       if (visit.cat) allCats.add(visit.cat);
       if (visit.date) allDates.add(visit.date);
     }
@@ -3392,26 +3450,36 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (!lab.test || lab.value === undefined || lab.value === null) continue;
       const cat = lab.cat || (allCats.size === 1 ? [...allCats][0] : null);
       if (!cat) continue;
-      // If resultDate is missing, fall back to visitDate, then to the most recent known date from this file
       const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
-      fsBatch.set(doc(collection(db, 'labs')), {
+
+      // Skip if this exact test+cat+date already exists in Firestore (from a merged file)
+      if (isAmendment && _allLabsCache) {
+        const alreadyExists = _allLabsCache.some(l =>
+          l.cat === cat &&
+          l.test === lab.test &&
+          (l.resultDate === resolvedDate || l.visitDate === resolvedDate)
+        );
+        if (alreadyExists) continue;
+      }
+
+      fsBatch.set(doc(collection(db, 'labs')), sanitizeForFirestore({
         cat, test: lab.test, value: lab.value, unit: lab.unit || null,
         refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
         resultDate: resolvedDate, visitDate: resolvedDate,
         labName: lab.labName || null, labGroup: lab.labGroup || null,
         sourceFile: file.name, driveFileId: file.id,
         createdAt: new Date().toISOString()
-      });
+      }));
     }
 
     for (const flag of allFlags) {
-      fsBatch.set(doc(collection(db, 'flags')), {
+      fsBatch.set(doc(collection(db, 'flags')), sanitizeForFirestore({
         fileId: file.id, filename: file.name, type: flag.type || 'unclear_structure',
         description: flag.description || '', bestGuess: flag.bestGuess || null,
         options: ['Accept guess', 'Enter manually', 'View original'],
         resolved: false, resolvedAt: null, resolution: null,
         createdAt: new Date().toISOString()
-      });
+      }));
     }
 
     await fsBatch.commit();
@@ -3700,7 +3768,7 @@ ${newText.slice(0, 4000)}`;
   } catch(err) {
     clearVerifying();
     console.error('Verify error:', err);
-    showToast(`Verify failed: ${err.message.slice(0,60)}`, 'warning');
+    showAlert('Verify failed: ' + err.message, 'warning');
   }
 }
 
@@ -4077,14 +4145,14 @@ async function confirmDeleteJournalEntry(item) {
 
 async function writeFileStatus(fileId, filename, status, extra = {}) {
   const ref = doc(db, 'files', fileId);
-  await setDoc(ref, {
+  await setDoc(ref, sanitizeForFirestore({
     driveFileId: fileId,
     filename,
     driveUrl: `https://drive.google.com/file/d/${fileId}/view`,
     status,
     updatedAt: new Date().toISOString(),
     ...extra
-  }, { merge: true });
+  }), { merge: true });
 }
 
 // ── CLAUDE EXTRACTION PASSES ──
@@ -4148,9 +4216,16 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     if (maxTokens < 16000) {
       return callExtractionClaude(messages, Math.min(maxTokens * 2, 16000));
     }
-    // At 16k limit and still truncating — chunk was too large
-    console.error('Response still truncating at 16k tokens — chunk may be too large');
-    return null;
+    // At 16k and still truncating — return partial result with a flag rather than null
+    console.error('Response still truncating at 16k tokens — returning partial result');
+    try {
+      const partial = JSON.parse(raw.replace(/^```json\n?|^```\n?|```$/gm, '').trim());
+      if (!partial.flags) partial.flags = [];
+      partial.flags.push({ type: 'chunk_skipped', description: 'Response truncated at 16k tokens — some data in this chunk may be missing. Consider splitting the file.' });
+      return partial;
+    } catch {
+      return { skip: false, visits: [], labs: [], pcr: [], flags: [{ type: 'chunk_skipped', description: 'Response truncated and could not be parsed — chunk data lost.' }] };
+    }
   }
   const raw = data.content.map(b => b.text || '').join('').trim();
   try {
@@ -4172,22 +4247,40 @@ function buildUserContent(chunk, promptText) {
 }
 
 async function detectBulkSummary(textSnippet) {
-  // Heuristic: bulk summaries often have a dense problem list or multiple dates in header
-  const hasMultipleDates = (textSnippet.match(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/g) || []).length > 3;
-  const hasProblemList = /problem list|active diagnoses|current medications|visit history/i.test(textSnippet);
-  return hasMultipleDates && hasProblemList;
+  // Date range pattern: "01/01/2023 - 04/01/2026" or "2023-01-01 to 2026-04-01" — strong signal of history export
+  const hasDateRange = /(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})\s*[-–—to]+\s*(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/i.test(textSnippet);
+  const dateMatches = (textSnippet.match(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/g) || []);
+  const hasMultipleDates = dateMatches.length > 3;
+  const hasProblemList = /problem list|active diagnoses|current medications|visit history|medical history|patient history/i.test(textSnippet);
+  const hasPortalExport = /medical record|visit summary|discharge summary.*\n.*discharge summary/i.test(textSnippet);
+  // Date range alone is sufficient — it definitively means multi-visit history
+  return hasDateRange || (hasMultipleDates && (hasProblemList || hasPortalExport));
 }
 
 async function splitByDate(fullText) {
-  // Simple heuristic split by date headers before AI processing
-  const datePattern = /(?:^|\n)(?:Date of Service|Visit Date|DOS|Date):\s*(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})/gi;
-  const splits = [];
-  let lastIdx = 0;
+  // Split at visit boundary headers — covers common portal export formats
+  const datePattern = /(?:^|\n)(?:Date of Service|Service Date|Visit Date|DOS|Date|Appointment Date|Exam Date|Discharge Date):\s*(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})/gi;
+  // Also split at standalone date lines that look like visit headers (date alone on a line)
+  const standaloneDatePattern = /(?:^|\n)(\d{1,2}\/\d{1,2}\/\d{4})\s*\n/g;
+  
+  const splitPoints = new Set();
   let match;
   while ((match = datePattern.exec(fullText)) !== null) {
-    if (match.index > lastIdx + 100) {
-      splits.push(fullText.slice(lastIdx, match.index));
-      lastIdx = match.index;
+    if (match.index > 100) splitPoints.add(match.index);
+  }
+  while ((match = standaloneDatePattern.exec(fullText)) !== null) {
+    if (match.index > 100) splitPoints.add(match.index);
+  }
+
+  const sortedPoints = [...splitPoints].sort((a, b) => a - b);
+  if (sortedPoints.length < 2) return [fullText]; // not enough split points — treat as one chunk
+
+  const splits = [];
+  let lastIdx = 0;
+  for (const pt of sortedPoints) {
+    if (pt > lastIdx + 100) {
+      splits.push(fullText.slice(lastIdx, pt));
+      lastIdx = pt;
     }
   }
   splits.push(fullText.slice(lastIdx));
@@ -4230,17 +4323,25 @@ function stripBPFromLabs(labs) {
 }
 
 async function runCombinedPass(file, chunk) {
-  const continuationHeader = (chunk._isContinuation && chunk._context)
-    ? `CONTINUATION CHUNK — This is a later section of the same document.
-Patient context already established:
-  Cat/Patient: ${chunk._context.cat || 'see earlier section'}
-  Visit date: ${chunk._context.date || 'see earlier section'}
-  Clinic: ${chunk._context.clinic || 'see earlier section'}
-  Doctor: ${chunk._context.doctor || 'see earlier section'}
+  const isContinuation = chunk._isContinuation && chunk._context;
+  const continuationHeader = isContinuation
+    ? chunk._isBulkHistory
+      ? `MULTI-VISIT HISTORY EXPORT — chunk ${(chunk._chunkIndex||0) + 1} of ${chunk._totalChunks||'?'}.
+Known patient: ${chunk._context.cat || 'see document'}. Clinic: ${chunk._context.clinic || 'see document'}.
 
-IMPORTANT: Do NOT create a new visit entry for this chunk. This chunk contains ONLY additional
-diagnostic results (labs, blood pressure, urinalysis, endocrinology) that belong to the visit
-above. Return visits:[] and put all findings into the labs array using the cat/date from context.
+This file is a multi-year history export. Each chunk contains one or more complete dated visit records.
+Extract EVERY visit in this chunk fully — with its own date, clinic, doctor, labs, medications, vitals.
+Do NOT skip visits. Do NOT merge visits from different dates.
+Strip any cumulative header blocks (Active Diagnoses, Problem List, Current Medications) — these are
+running aggregates, not visit records.
+`
+      : `DOCUMENT CONTEXT — chunk ${(chunk._chunkIndex||0) + 1} of ${chunk._totalChunks||'?'} from the same file.
+Patient/account: ${chunk._context.cat || 'see document'}
+First visit seen: ${chunk._context.date || 'see document'} at ${chunk._context.clinic || 'see document'}
+
+This chunk may contain a continuation of the previous visit (additional labs for the same date) OR
+new visits from different dates. Use judgment: if there's a new date header, extract as a new visit.
+If it's clearly a lab continuation with no new date, return visits:[] and put labs under the established date.
 `
     : '';
 
@@ -4329,8 +4430,14 @@ Preserve ALL clinical detail. Do NOT summarize or truncate.
 
 SKIP entirely: costs/billing, boilerplate legal text, portal instructions, appointment reminders,
 product marketing copy (Solensia description paragraphs, etc.), feeding plans, kcal targets.
+BULK HISTORY EXPORTS: Many files are multi-year history exports with a summary header block at the
+top, followed by individual dated visit entries. The header block typically contains:
+  - "Active Diagnoses" / "Problem List" / "Current Medications" / "Allergies" sections
+  - A cumulative list of every condition, drug, or problem ever recorded
+  - A date range (e.g. "01/01/2023 - 04/01/2026") indicating the export period
+STRIP THIS HEADER BLOCK ENTIRELY. It is a running aggregate, not a clinical encounter.
+Extract ONLY the individual dated visit entries that follow it.
 INVOICES: keep only meds dispensed, vaccines, procedures + dates.
-BULK SUMMARIES: skip header problem-list block, extract only individual dated visit entries.
 AMENDED/UPDATED DOCUMENTS: if this appears to be an updated version of a previous record
 (same cat + same date), set "isAmendment":true so the system can handle deduplication correctly.
 
@@ -4784,6 +4891,15 @@ function promptClarification(filename, issues) {
     </div>`;
 
     box.innerHTML = html;
+
+    // Wire mutual-clear between cat dropdown and new-cat text field
+    const _catSel = document.getElementById('clarify-cat');
+    const _catInp = document.getElementById('clarify-cat-new');
+    if (_catSel && _catInp) {
+      _catSel.addEventListener('change', () => { if (_catSel.value) _catInp.value = ''; });
+      _catInp.addEventListener('input', () => { if (_catInp.value.trim()) _catSel.value = ''; });
+    }
+
     $('pause-overlay').classList.add('open');
 
     const cleanup = (result) => {
@@ -4804,7 +4920,19 @@ function promptClarification(filename, issues) {
       const catNewEl = document.getElementById('clarify-cat-new');
       const dateEl = document.getElementById('clarify-date');
       if (catEl || catNewEl) {
-        const catVal = (catEl?.value) || (catNewEl?.value?.trim()) || '';
+        const catVal = (catEl?.value?.trim()) || (catNewEl?.value?.trim()) || '';
+        if (!catVal && issues.some(i => i.type === 'cat')) {
+          // Show inline error — don't allow import with no cat
+          let errEl = document.getElementById('clarify-cat-error');
+          if (!errEl) {
+            errEl = document.createElement('div');
+            errEl.id = 'clarify-cat-error';
+            errEl.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.65rem;color:#b91c1c;margin-top:0.3rem;';
+            errEl.textContent = 'Please select or enter a cat name before importing.';
+            (catNewEl || catEl).insertAdjacentElement('afterend', errEl);
+          }
+          return; // don't close
+        }
         if (catVal) corrections.cat = catVal;
       }
       if (dateEl?.value) corrections.date = dateEl.value;
@@ -5437,7 +5565,7 @@ $('save-session-btn').addEventListener('click', async () => {
     await runSaveSession();
   } catch(err) {
     console.error('Save session error:', err);
-    showToast('Save failed — ' + err.message, 'warning');
+    showAlert('Save session failed: ' + err.message, 'warning');
   }
   $('save-session-btn').disabled = false;
   $('save-session-btn').innerHTML = '<span class="free-dot"></span> Save Session';
@@ -5814,7 +5942,7 @@ async function submitBatchJob(files) {
 
   } catch(err) {
     console.error('Batch submit error:', err);
-    showToast('Batch failed: ' + err.message, 'warning');
+    showAlert('Batch failed: ' + err.message, 'warning');
     // Revert file statuses
     for (const file of files) {
       await writeFileStatus(file.id, file.name, 'unprocessed');
