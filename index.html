@@ -1269,8 +1269,6 @@ function renderRecordsTree(tree) {
     vlist.className = 'visit-list open';
     for (const date of Object.keys(dates).sort().reverse()) {
       const visits = dates[date];
-    for (const date of Object.keys(dates).sort().reverse()) {
-      const visits = dates[date];
       const dg = document.createElement('div');
       dg.className = 'visit-date-group';
 
@@ -1333,7 +1331,15 @@ function renderRecordsTree(tree) {
       }
       dg.appendChild(entriesEl);
 
-      // Click handler: single visit → open directly; multiple → expand/collapse
+      // Arrow click always toggles expand/collapse
+      dlArrow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = entriesEl.style.display === 'none';
+        entriesEl.style.display = open ? 'block' : 'none';
+        dlArrow.style.transform = open ? 'rotate(90deg)' : '';
+      });
+
+      // Date label click: single visit → open directly; multiple → expand/collapse
       dl.addEventListener('click', () => {
         if (visits.length === 1) {
           try { openVisit(visits[0]); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
@@ -1345,7 +1351,6 @@ function renderRecordsTree(tree) {
       });
 
       vlist.appendChild(dg);
-    }
     }
     heading.onclick = () => {
       heading.classList.toggle('open');
