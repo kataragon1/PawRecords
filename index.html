@@ -84,7 +84,8 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .visit-list{display:none;padding-bottom:0.25rem;}
 .visit-list.open{display:block;}
 .visit-date-group{margin-bottom:0.1rem;}
-.visit-date-label{padding:0.3rem 1rem 0.2rem 1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);font-weight:500;}
+.visit-date-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);font-weight:600;transition:background 0.12s;}
+.visit-date-label:hover{background:var(--surface);}
 .visit-entry{padding:0.18rem 1rem 0.18rem 2rem;cursor:pointer;transition:background 0.12s;display:flex;align-items:center;justify-content:space-between;gap:0.3rem;border-radius:4px;margin:0 0.25rem;}
 .visit-entry:hover{background:var(--surface);}
 .visit-entry-type{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -654,6 +655,11 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
     </div>
 
+    <!-- Cat focus pills -->
+    <div id="cat-focus-bar" style="display:none;padding:0.3rem 1.25rem 0;align-items:center;gap:0.4rem;flex-wrap:wrap;border-top:1px solid var(--surface2);background:white;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);letter-spacing:0.06em;text-transform:uppercase;margin-right:0.2rem;flex-shrink:0;">Context:</span>
+    </div>
+
     <!-- Chat input -->
     <div class="chat-input-wrap">
       <div class="input-row">
@@ -908,6 +914,7 @@ let apiKey = (() => { try { return localStorage.getItem('pr_apikey') || ''; } ca
 let driveAccessToken = (() => { try { return sessionStorage.getItem('pr_drive_token') || null; } catch(e) { return null; } })();
 let sessionCost = 0;
 let convHistory = [];
+let _chatFocusCats = null; // null = all cats; Set = focused subset
 let pendingJournalItems = []; // queued during session, saved in batch
 let APP_PETS = []; // populated from visits collection on load — never hardcoded
 // mentionTracker and sessionActiveCat declared in journal section below
@@ -1135,6 +1142,11 @@ async function loadInitialData() {
       }
     } catch(e) { /* non-critical */ }
     setLoading('Ready');
+    // Auto-load Drive files in the background if we have a token — don't block app load
+    if (driveAccessToken) {
+      window._driveLastLoaded = Date.now();
+      loadDriveFiles().catch(e => console.warn('Background Drive load failed:', e.message));
+    }
   } catch (err) {
     console.error('Load error:', err);
     showAlert('Some data failed to load on startup — check console for details', 'warning');
@@ -1155,6 +1167,7 @@ async function updatePetList() {
     if (pets.length) {
       APP_PETS = pets; // update global — used by prompts, context builder, dropdowns
       if (window._renderNoteChips) window._renderNoteChips();
+      renderCatFocusPills();
       const list = pets.length === 1 ? pets[0]
         : pets.slice(0, -1).join(', ') + ' & ' + pets[pets.length - 1];
       $('welcome-subtitle').textContent =
@@ -1162,6 +1175,62 @@ async function updatePetList() {
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
   } catch(e) { /* non-critical */ }
+}
+
+// ── CAT FOCUS PILLS ──
+function renderCatFocusPills() {
+  const bar = document.getElementById('cat-focus-bar');
+  if (!bar || !APP_PETS.length) return;
+  const label = bar.querySelector('span:first-child');
+  bar.innerHTML = '';
+  if (label) bar.appendChild(label);
+
+  const allActive = !_chatFocusCats;
+
+  const allPill = document.createElement('span');
+  allPill.textContent = 'All cats';
+  allPill.title = 'Include all cats in context';
+  pillStyle(allPill, allActive);
+  allPill.addEventListener('click', () => { _chatFocusCats = null; renderCatFocusPills(); });
+  bar.appendChild(allPill);
+
+  for (const cat of APP_PETS) {
+    const active = !allActive && _chatFocusCats.has(cat);
+    const pill = document.createElement('span');
+    pill.textContent = cat;
+    pill.title = active ? `Remove ${cat} from context` : `Focus on ${cat}`;
+    pillStyle(pill, active && !allActive);
+    pill.addEventListener('click', () => {
+      if (!_chatFocusCats) {
+        // All → focus just this one
+        _chatFocusCats = new Set([cat]);
+      } else if (_chatFocusCats.has(cat)) {
+        _chatFocusCats.delete(cat);
+        if (_chatFocusCats.size === 0) _chatFocusCats = null;
+      } else {
+        _chatFocusCats.add(cat);
+        if (_chatFocusCats.size === APP_PETS.length) _chatFocusCats = null;
+      }
+      renderCatFocusPills();
+    });
+    bar.appendChild(pill);
+  }
+  bar.style.display = 'flex';
+}
+
+function pillStyle(el, active) {
+  el.style.cssText = [
+    'font-family:\'JetBrains Mono\',monospace',
+    'font-size:0.6rem',
+    'padding:0.18rem 0.55rem',
+    'border-radius:10px',
+    'cursor:pointer',
+    'user-select:none',
+    'transition:all 0.15s',
+    `border:1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+    `background:${active ? 'var(--accent)' : 'transparent'}`,
+    `color:${active ? 'white' : 'var(--ink-muted)'}`,
+  ].join(';');
 }
 
 // ── RECORDS SIDEBAR ──
@@ -1200,12 +1269,41 @@ function renderRecordsTree(tree) {
     vlist.className = 'visit-list open';
     for (const date of Object.keys(dates).sort().reverse()) {
       const visits = dates[date];
+    for (const date of Object.keys(dates).sort().reverse()) {
+      const visits = dates[date];
       const dg = document.createElement('div');
       dg.className = 'visit-date-group';
+
       const dl = document.createElement('div');
       dl.className = 'visit-date-label';
-      dl.textContent = formatDate(date);
+      dl.style.cssText = 'display:flex;align-items:center;gap:0.4rem;cursor:pointer;user-select:none;padding:0.28rem 1rem 0.28rem 1.5rem;';
+
+      const dlArrow = document.createElement('span');
+      dlArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;flex-shrink:0;';
+      dlArrow.textContent = '▶';
+
+      const dlText = document.createElement('span');
+      dlText.textContent = formatDate(date);
+      dlText.style.cssText = 'flex:1;';
+
+      // Show count badge if multiple visits on same date
+      if (visits.length > 1) {
+        const badge = document.createElement('span');
+        badge.textContent = visits.length;
+        badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);';
+        dl.appendChild(dlArrow);
+        dl.appendChild(dlText);
+        dl.appendChild(badge);
+      } else {
+        dl.appendChild(dlArrow);
+        dl.appendChild(dlText);
+      }
       dg.appendChild(dl);
+
+      // Visit entries container — hidden by default
+      const entriesEl = document.createElement('div');
+      entriesEl.style.display = 'none';
+
       for (const v of visits) {
         const ve = document.createElement('div');
         ve.className = 'visit-entry';
@@ -1215,7 +1313,7 @@ function renderRecordsTree(tree) {
         const isInvoice = v.docType === 'Invoice';
         ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
             ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
-            <span style="color:var(--accent);font-weight:500;">${escHtml(clinicDisplay)}</span>${doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;"> · ${escHtml(doctorDisplay)}</span>` : ''}
+            <span style="color:var(--ink-dim);font-weight:400;">${escHtml(clinicDisplay)}</span>${doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;"> · ${escHtml(doctorDisplay)}</span>` : ''}
           </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
@@ -1226,14 +1324,28 @@ function renderRecordsTree(tree) {
         ve.addEventListener('click', (e) => {
           if (e.target.closest('[data-action]')) return;
           e.stopPropagation();
-          try { openVisit(v); } catch(err) { showToast('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
+          try { openVisit(v); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
         });
         ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
         ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
         attachVisitCtxMenu(ve, v);
-        dg.appendChild(ve);
+        entriesEl.appendChild(ve);
       }
+      dg.appendChild(entriesEl);
+
+      // Click handler: single visit → open directly; multiple → expand/collapse
+      dl.addEventListener('click', () => {
+        if (visits.length === 1) {
+          try { openVisit(visits[0]); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
+        } else {
+          const open = entriesEl.style.display === 'none';
+          entriesEl.style.display = open ? 'block' : 'none';
+          dlArrow.style.transform = open ? 'rotate(90deg)' : '';
+        }
+      });
+
       vlist.appendChild(dg);
+    }
     }
     heading.onclick = () => {
       heading.classList.toggle('open');
@@ -1371,7 +1483,7 @@ function openVisitEdit(v) {
   saveBtn.style.cssText = 'margin-top:0.5rem;';
   saveBtn.innerHTML = '<span class="free-dot"></span> Save Changes';
   saveBtn.onclick = async () => {
-    if (!v.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+    if (!v.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
     const updates = {};
     form.querySelectorAll('[data-key]').forEach(el => {
       updates[el.dataset.key] = el.value;
@@ -1384,7 +1496,7 @@ function openVisitEdit(v) {
       showToast('Visit updated ✓', 'journal');
       $('record-popup').classList.remove('open');
       loadRecordsSidebar();
-    } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
+    } catch(err) { showAlert('Save failed: ' + err.message, 'warning'); }
   };
   body.appendChild(saveBtn);
 
@@ -1392,7 +1504,8 @@ function openVisitEdit(v) {
   const linkEl = $('popup-drive-link');
   if (linkEl) {
     if (v.driveFileIds?.[0]) {
-      linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${v.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+      const fname = v.sourceFiles?.[0] || v.driveFileIds[0];
+      linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${v.driveFileIds[0]}/view" target="_blank" title="${escHtml(fname)}" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
     } else {
       linkEl.textContent = v.sourceFiles?.[0] || '';
     }
@@ -1451,7 +1564,7 @@ function makeLabRow(test, e, targetContainer, onClick) {
     <span class="lab-date">${formatDateShort(e.resultDate)}</span>
     <button class="lab-group-edit-btn" title="Change group">✏</button>`;
   row.title = (e.refLow != null ? `Ref: ${e.refLow}–${e.refHigh != null ? e.refHigh : ''}` : '') + (abn && abn !== 'NEG' && abn !== 'NEGATIVE' ? ` ⚠ ${abn}` : '');
-  row.addEventListener('click', onClick);
+  row.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
   row.querySelector('.lab-group-edit-btn').addEventListener('click', (ev) => {
     ev.stopPropagation();
     showLabGroupPicker(e, ev.currentTarget);
@@ -1497,7 +1610,7 @@ function renderLabsSidebar() {
   // Most recent value per test+group combination
   const latest = {};
   for (const e of entries) {
-    const g = e.labGroup || inferLabGroup(e.test, e.labName) || 'Other';
+    const g = (e.labGroup || inferLabGroup(e.test, e.labName) || 'Other').trim().toLowerCase().replace(/\s+/g, ' ');
     const key = e.test + '||' + g;
     if (!latest[key] || (e.resultDate||'') > (latest[key].resultDate||'')) latest[key] = e;
   }
@@ -1508,14 +1621,22 @@ function renderLabsSidebar() {
   const byGroup = {};
   for (const key of allRowKeys) {
     const e = latest[key];
-    const g = e.labGroup || inferLabGroup(e.test, e.labName);
+    const g = (e.labGroup || inferLabGroup(e.test, e.labName) || 'Other').trim().toLowerCase().replace(/\s+/g, ' ');
     if (!byGroup[g]) byGroup[g] = [];
     byGroup[g].push(key);
   }
 
+  const GROUP_ORDER_NORM_SB = GROUP_ORDER.map(g => g.trim().toLowerCase().replace(/\s+/g, ' '));
+  const sbGroupDisplay = {}; // normKey → display name
+  for (const [normKey] of Object.entries(byGroup)) {
+    const match = GROUP_ORDER.find(g => g.trim().toLowerCase().replace(/\s+/g, ' ') === normKey);
+    // Try to find a nice display name from actual data
+    const sampleEntry = latest[byGroup[normKey]?.[0]];
+    sbGroupDisplay[normKey] = match || (sampleEntry?.labGroup?.trim()) || normKey;
+  }
   const orderedGroups = [
-    ...GROUP_ORDER.filter(g => byGroup[g]),
-    ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)).sort()
+    ...GROUP_ORDER_NORM_SB.filter(g => byGroup[g]),
+    ...Object.keys(byGroup).filter(g => !GROUP_ORDER_NORM_SB.includes(g)).sort()
   ];
 
   // All groups are collapsible — known ones are in GROUP_ORDER, unknown ones (e.g. Hematology) too
@@ -1534,8 +1655,9 @@ function renderLabsSidebar() {
     const isCollapsible = COLLAPSIBLE_GROUPS.has(group);
 
     // Build summary text for collapsible groups
+    const groupNorm = group; // already normalized
     let summary = '';
-    if (group === 'Urinalysis') {
+    if (groupNorm === 'urinalysis') {
       const usgKey = ordered.find(k => { const t = k.split('||')[0].toLowerCase(); return t.includes('gravity') || t === 'usg'; });
       const abnormals = ordered.filter(k => {
         const abn = (latest[k].abnormal||'').toUpperCase();
@@ -1544,7 +1666,7 @@ function renderLabsSidebar() {
       summary = usgKey ? `USG ${latest[usgKey].value}` : '';
       if (abnormals.length) summary += (summary ? ' · ' : '') + abnormals.map(k => k.split('||')[0].split(' ')[0]).join(', ') + ' ⚠';
       else if (summary) summary += ' · normal';
-    } else if (group === 'PCR') {
+    } else if (groupNorm === 'pcr') {
       const positives = ordered.filter(k => {
         const v = String(latest[k].value||'').toUpperCase();
         return v === 'POSITIVE' || v === 'DETECTED' || (latest[k].abnormal||'').toUpperCase() === 'HIGH';
@@ -1552,7 +1674,7 @@ function renderLabsSidebar() {
       summary = positives.length
         ? `${positives.length} positive: ${positives.map(k => k.split('||')[0].split(' ')[0]).join(', ')}`
         : `${ordered.length} tests — all negative`;
-    } else if (group === 'Endocrinology') {
+    } else if (groupNorm === 'endocrinology') {
       const keyTests = ['Total T4','T4','TLI','PLI'];
       const keyKeys = keyTests.flatMap(t => ordered.filter(k => k.startsWith(t + '||')));
       summary = keyKeys.map(k => {
@@ -1575,7 +1697,7 @@ function renderLabsSidebar() {
       header.style.color = 'var(--ink-dim)';
 
       const groupLabel = document.createElement('span');
-      groupLabel.textContent = group;
+      groupLabel.textContent = sbGroupDisplay[group] || group;
 
       const summaryEl = document.createElement('span');
       summaryEl.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.57rem;color:var(--ink-muted);font-weight:400;letter-spacing:0;text-transform:none;margin-left:0.4rem;';
@@ -1676,9 +1798,10 @@ function buildFlowsheetTable(cat, container) {
 
   // Key rows by "test||labGroup" so same-named tests in different groups (e.g. Glucose in
   // Chemistry vs Urinalysis, Bilirubin in Chemistry vs Urinalysis) get separate rows.
+  const normalizeGroup = g => (g || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const rowKeyOf = e => {
     const g = e.labGroup || inferLabGroup(e.test, e.labName) || 'Other';
-    return e.test + '||' + g;
+    return e.test + '||' + normalizeGroup(g);
   };
   const allRowKeys = [...new Set(entries.map(rowKeyOf))];
   const lookup = {}; // rowKey → { date → entry }
@@ -1721,18 +1844,26 @@ function buildFlowsheetTable(cat, container) {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
-  // Body — grouped by labGroup
+  // Body — grouped by labGroup (normalized to merge Chemistry vs Chemistry  etc.)
   const GROUP_ORDER = _labGroups.length ? _labGroups : ['CBC', 'Chemistry', 'Urinalysis', 'Endocrinology', 'PCR', 'Imaging', 'Other'];
-  const byGroup = {};
+  const GROUP_ORDER_NORM = GROUP_ORDER.map(g => normalizeGroup(g));
+  const byGroup = {}; // normalizedGroup → rowKeys
+  const groupDisplayName = {}; // normalizedGroup → best display name
   for (const rowKey of orderedRowKeys) {
     const mostRecent = Object.values(lookup[rowKey]).sort((a,b)=>(b.resultDate||'')>(a.resultDate||'')?1:-1)[0];
-    const g = mostRecent?.labGroup || inferLabGroup(mostRecent?.test, mostRecent?.labName);
-    if (!byGroup[g]) byGroup[g] = [];
-    byGroup[g].push(rowKey);
+    const rawG = mostRecent?.labGroup || inferLabGroup(mostRecent?.test, mostRecent?.labName) || 'Other';
+    const normG = normalizeGroup(rawG);
+    if (!byGroup[normG]) byGroup[normG] = [];
+    byGroup[normG].push(rowKey);
+    // Prefer title-case display name from GROUP_ORDER if available
+    if (!groupDisplayName[normG]) {
+      const ordered = GROUP_ORDER.find(g => normalizeGroup(g) === normG);
+      groupDisplayName[normG] = ordered || rawG.trim();
+    }
   }
   const orderedGroups = [
-    ...GROUP_ORDER.filter(g => byGroup[g]),
-    ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)).sort()
+    ...GROUP_ORDER_NORM.filter(g => byGroup[g]),
+    ...Object.keys(byGroup).filter(g => !GROUP_ORDER_NORM.includes(g)).sort()
   ];
 
   const tbody = document.createElement('tbody');
@@ -1741,7 +1872,7 @@ function buildFlowsheetTable(cat, container) {
     const sepRow = document.createElement('tr');
     const sepTd = document.createElement('td');
     sepTd.colSpan = dates.length + 1;
-    sepTd.textContent = group;
+    sepTd.textContent = groupDisplayName[group] || group;
     sepTd.style.cssText = 'background:var(--surface2);color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--border);';
     sepRow.appendChild(sepTd);
     tbody.appendChild(sepRow);
@@ -2088,13 +2219,13 @@ function openJournalEdit(item) {
         });
         showToast('Journal entry added', 'journal');
       } else {
-        if (!item.id) { showToast('Cannot edit — no Firestore ID', 'warning'); return; }
+        if (!item.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
         await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
         showToast('Journal entry updated', 'journal');
       }
       $('record-popup').classList.remove('open');
       loadJournalSidebar();
-    } catch(err) { showToast('Save failed: ' + err.message, 'warning'); }
+    } catch(err) { showAlert('Save failed: ' + err.message, 'warning'); }
   };
   form.appendChild(saveBtn);
   body.appendChild(form);
@@ -2234,8 +2365,12 @@ async function reconnectDrive(triggerEl) {
     if (credential?.accessToken) {
       driveAccessToken = credential.accessToken;
       try { sessionStorage.setItem('pr_drive_token', driveAccessToken); } catch(e) {}
+      $('drive-dot').className = 'status-dot green';
+      $('drive-status').textContent = 'Drive connected';
       showToast('Drive reconnected ✓', 'journal');
-      await loadInitialData();
+      // Just reload Drive files — don't reload the whole app (that switches screens)
+      window._driveLastLoaded = Date.now();
+      await loadDriveFiles();
     } else {
       showAlert('Drive reconnect did not return an access token. Please try again.', 'warning');
     }
@@ -2546,7 +2681,7 @@ async function uploadFilesToDrive(files) {
     updateProcessButtons();
   }
   if (results.ok) showToast(`${results.ok} file${results.ok > 1 ? 's' : ''} uploaded to Drive ✓`, 'journal');
-  if (results.fail) showToast(`${results.fail} file${results.fail > 1 ? 's' : ''} failed to upload`, 'warning');
+  if (results.fail) showAlert(`${results.fail} file${results.fail > 1 ? 's' : ''} failed to upload — check Drive connection`, 'warning');
 }
 
 function renderFilesList(driveFiles, statusMap) {
@@ -3494,7 +3629,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       error: 'Write failed — extraction cached. Click reprocess to retry write only.',
       extractionCached: true
     });
-    showToast(`Write failed for ${file.name.slice(0,25)} — extraction saved, click reprocess to retry`, 'warning');
+    showAlert(`Write failed for ${file.name.slice(0,25)} — extraction saved. Click reprocess to retry.`, 'warning');
     return;
   }
 
@@ -4017,7 +4152,7 @@ async function saveLabCorrection(testName, labGroup) {
     showToast(`"${testName}" → ${labGroup} saved ✓`, 'journal');
     invalidateFlowsheetCache();
     await loadLabsSidebar();
-  } catch(e) { showToast('Correction failed: ' + e.message, 'warning'); }
+  } catch(e) { showAlert('Correction failed: ' + e.message, 'warning'); }
 }
 
 function attachLabCtxMenu(el, entry, cat) {
@@ -4619,7 +4754,7 @@ function openLabDetail(entry, test, displayVal, abn) {
   document.getElementById('lab-detail-date').textContent = entry.resultDate || entry.visitDate || '';
   const footer = document.getElementById('lab-detail-footer');
   footer.innerHTML = entry.driveFileId
-    ? `<a href="https://drive.google.com/file/d/${entry.driveFileId}/view" target="_blank" style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--accent);text-decoration:none;">↗ Open original in Drive</a>`
+    ? `<a href="https://drive.google.com/file/d/${entry.driveFileId}/view" target="_blank" title="${escHtml(entry.sourceFile || entry.driveFileId)}" style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--accent);text-decoration:none;">↗ Open original in Drive</a>`
     : `<span style="font-size:0.65rem;color:var(--ink-muted);">${entry.sourceFile || ''}</span>`;
   popup.style.display = 'flex';
 }
@@ -4663,7 +4798,8 @@ function openVisit(visit) {
 
   const linkEl = $('popup-drive-link');
   if (visit.driveFileIds?.[0]) {
-    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+    const fname = visit.sourceFiles?.[0] || visit.driveFileIds[0];
+    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" title="${escHtml(fname)}" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
   } else {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
@@ -4671,7 +4807,7 @@ function openVisit(visit) {
   setTimeout(() => $('popup-search-input').focus(), 80);
   } catch(e) {
     console.error('openVisit error:', e);
-    showToast('Could not open visit: ' + e.message, 'warning');
+    showAlert('Could not open visit: ' + e.message, 'warning');
   }
 }
 
@@ -5455,7 +5591,7 @@ async function toggleNotePin(note) {
     await setDoc(doc(db, 'context_notes', note.id), { pinned: !note.pinned }, { merge: true });
     note.pinned = !note.pinned;
     renderNotes();
-  } catch(e) { showToast('Pin failed: ' + e.message, 'warning'); }
+  } catch(e) { showAlert('Pin failed: ' + e.message, 'warning'); }
 }
 
 async function saveNoteText(note, newText) {
@@ -5463,7 +5599,7 @@ async function saveNoteText(note, newText) {
   try {
     await setDoc(doc(db, 'context_notes', note.id), { text: newText }, { merge: true });
     note.text = newText;
-  } catch(e) { showToast('Save failed: ' + e.message, 'warning'); }
+  } catch(e) { showAlert('Save failed: ' + e.message, 'warning'); }
 }
 
 async function deleteNote(note) {
@@ -5472,7 +5608,7 @@ async function deleteNote(note) {
     await deleteDoc(doc(db, 'context_notes', note.id));
     _notesCache = _notesCache.filter(n => n.id !== note.id);
     renderNotes();
-  } catch(e) { showToast('Delete failed: ' + e.message, 'warning'); }
+  } catch(e) { showAlert('Delete failed: ' + e.message, 'warning'); }
 }
 
 async function addNote(text, cats, pinned) {
@@ -5484,7 +5620,7 @@ async function addNote(text, cats, pinned) {
     await setDoc(ref, note);
     _notesCache.unshift(note);
     renderNotes();
-  } catch(e) { showToast('Add failed: ' + e.message, 'warning'); }
+  } catch(e) { showAlert('Add failed: ' + e.message, 'warning'); }
 }
 
 // Build notes context for chat injection
@@ -6106,7 +6242,7 @@ async function processBatchResults(batchId) {
 
   } catch(err) {
     console.error('Batch results error:', err);
-    showToast('Error processing batch results: ' + err.message, 'warning');
+    showAlert('Error processing batch results: ' + err.message, 'warning');
   }
 }
 
@@ -6487,7 +6623,7 @@ async function openFlagsModal(filterFileId = null) {
             } catch(e) {
               applyBtn.disabled = false;
               applyBtn.innerHTML = '<span class="free-dot"></span> Apply fix';
-              showToast('Could not apply fix: ' + e.message, 'warning');
+              showAlert('Could not apply fix: ' + e.message, 'warning');
             }
           });
           actions.appendChild(applyBtn);
@@ -6557,7 +6693,7 @@ async function openFlagsModal(filterFileId = null) {
               // Trigger reprocess
               await startProcessingQueue([fileObj]);
             } catch(e) {
-              showToast('Reprocess failed: ' + e.message, 'warning');
+              showAlert('Reprocess failed: ' + e.message, 'warning');
             }
           });
           actions.appendChild(reprocessBtn);
@@ -6758,7 +6894,10 @@ const JOURNAL_CACHE_TTL = 60000; // 1 minute
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
   const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
-  const targetCats = mentioned.length ? mentioned : knownCats;
+  // Cat focus pills take priority; fall back to message mentions, then all cats
+  const targetCats = _chatFocusCats
+    ? [..._chatFocusCats]
+    : (mentioned.length ? mentioned : knownCats);
   if (!targetCats.length) return '';
 
   await ensureDataCache();
