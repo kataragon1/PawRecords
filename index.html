@@ -1373,6 +1373,7 @@ async function loadRecordsSidebar() {
 }
 
 // Returns a short complaint string for display — strips common filler phrases
+// Returns a short complaint string for display — strips common filler phrases
 function briefComplaint(v) {
   if (v.source === 'home') return ''; // home issues already show complaint as main label
   if (v.docType === 'Invoice') return '';
@@ -1382,6 +1383,22 @@ function briefComplaint(v) {
   const trimmed = raw.split(/[,;]/)[0].trim();
   return trimmed.length > 28 ? trimmed.slice(0, 26) + '…' : trimmed;
 }
+
+// Classifies a visit as 'routine', 'vaccine', or 'sick' based on complaint/procedures/meds.
+// Returns an object { type, color } for rendering, or null for unclassified/sick.
+function visitTypeStyle(v) {
+  if (v.source === 'home') return null;
+  if (v.docType === 'Invoice') return null;
+
+  // Positive match only — if the chief complaint explicitly says routine/wellness/vaccine,
+  // color it. Anything else (no matter how benign it sounds) stays uncolored.
+  // This avoids the impossible task of enumerating all sick visit keywords.
+  const cc = (v.chiefComplaint || '').toLowerCase();
+  const isRoutine = /\b(wellness|well\s*(exam|visit|check)|annual\s*(exam|visit|check|wellness)|routine\s*(exam|visit|check)|preventive|preventative|health\s*(exam|check)|check.?up|physical\s*exam|vacc(ine|ination)?s?|booster|fvrcp|rabies|felv\s*vacc)\b/.test(cc);
+
+  return isRoutine ? { type: 'routine', color: '#5a6e8c' } : null;
+}
+
 
 function renderRecordsTree(tree) {
   const container = $('records-tree');
@@ -1416,13 +1433,21 @@ function renderRecordsTree(tree) {
       dlText.textContent = formatDate(date);
       dlText.style.cssText = 'flex-shrink:0;';
 
-      // For single visits, show a brief complaint snippet after the date
-      const singleVisit = visits.length === 1 ? visits[0] : null;
+      // Treat as single if only one non-invoice visit (invoice siblings are noise)
+      const nonInvoiceVisits = visits.filter(v => v.docType !== 'Invoice');
+      const effectiveSingle = nonInvoiceVisits.length === 1 ? nonInvoiceVisits[0] : null;
+      const singleVisit = visits.length === 1 ? visits[0] : effectiveSingle;
       const complaint = singleVisit ? briefComplaint(singleVisit) : '';
+      const singleStyle = singleVisit ? visitTypeStyle(singleVisit) : null;
+      if (singleStyle) {
+        dl.style.borderLeft = `2px solid ${singleStyle.color}`;
+        dl.style.paddingLeft = '0.85rem';
+        dlText.style.color = singleStyle.color;
+      }
       if (complaint) {
         const cc = document.createElement('span');
         cc.textContent = complaint;
-        cc.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;';
+        cc.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:${singleStyle ? singleStyle.color : 'var(--ink-muted)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:0.8;`;
         dl.appendChild(dlArrow);
         dl.appendChild(dlText);
         dl.appendChild(cc);
@@ -1431,13 +1456,18 @@ function renderRecordsTree(tree) {
         dl.appendChild(dlText);
       }
 
-      // Show count badge if multiple non-invoice visits on same date
-      const nonInvoiceCount = visits.filter(v => v.docType !== 'Invoice').length;
-      if (visits.length > 1) {
+      // Show count badge only when multiple non-invoice visits exist
+      if (nonInvoiceVisits.length > 1) {
         const badge = document.createElement('span');
-        badge.textContent = nonInvoiceCount > 1 ? nonInvoiceCount : visits.length;
+        badge.textContent = nonInvoiceVisits.length;
         badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);flex-shrink:0;';
         dl.appendChild(badge);
+      } else if (visits.length > 1 && nonInvoiceVisits.length <= 1) {
+        // Has invoices but effectively one real visit — show inv badge only
+        const invBadge = document.createElement('span');
+        invBadge.textContent = 'inv';
+        invBadge.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;flex-shrink:0;';
+        dl.appendChild(invBadge);
       }
       dg.appendChild(dl);
 
@@ -1452,12 +1482,18 @@ function renderRecordsTree(tree) {
         const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
         const isInvoice = v.docType === 'Invoice';
         const isHome = v.source === 'home';
+        const vStyle = visitTypeStyle(v);
+        if (vStyle) {
+          ve.style.borderLeft = `2px solid ${vStyle.color}`;
+          ve.style.paddingLeft = '0.85rem';
+        }
         const cc = (!isInvoice && !isHome && visits.filter(x => x.docType !== 'Invoice').length > 1)
           ? briefComplaint(v) : '';
+        const clinicColor = vStyle ? vStyle.color : 'var(--ink-dim)';
         ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
             ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
             ${isHome ? '<span class="home-badge">🏠 home</span>' : ''}
-            <span style="color:var(--ink-dim);font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${cc ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;font-family:'JetBrains Mono',monospace;"> · ${escHtml(cc)}</span>` : ''}
+            <span style="color:${clinicColor};font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${cc ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;font-family:'JetBrains Mono',monospace;"> · ${escHtml(cc)}</span>` : ''}
           </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
@@ -1485,10 +1521,10 @@ function renderRecordsTree(tree) {
         dlArrow.style.transform = open ? 'rotate(90deg)' : '';
       });
 
-      // Date label click: single visit → open directly; multiple → expand/collapse
+      // Date label click: single real visit (ignoring invoices) → open directly; multiple → expand/collapse
       dl.addEventListener('click', () => {
-        if (visits.length === 1) {
-          try { openVisit(visits[0]); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
+        if (singleVisit && nonInvoiceVisits.length <= 1) {
+          try { openVisit(singleVisit); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
         } else {
           const open = entriesEl.style.display === 'none';
           entriesEl.style.display = open ? 'block' : 'none';
