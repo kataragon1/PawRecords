@@ -505,6 +505,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div id="sidebar-resize-handle" style="position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:100;background:transparent;transition:background 0.15s;" title="Drag to resize"></div>
     <div class="sidebar-top">
       <span class="sidebar-wordmark">🐾 Paw Records</span>
+      <button onclick="openPetProfilesModal()" title="Pet profiles & birthdates" style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--ink-muted);padding:0.1rem 0.3rem;border-radius:4px;transition:color 0.15s;line-height:1;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--ink-muted)'">🐱</button>
       <span class="sidebar-user" id="sidebar-user-email"></span>
     </div>
     <div class="sidebar-tabs">
@@ -1177,6 +1178,7 @@ async function loadInitialData() {
     await loadLabCorrections();
     await loadLabGroups();
     await loadClinicAbbrev(); // pre-load all visits+labs into memory for search
+    await loadPetProfiles();
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -1225,6 +1227,75 @@ async function updatePetList() {
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
   } catch(e) { /* non-critical */ }
+}
+
+// ── PET PROFILES (birthdates) ──
+let _petProfiles = {}; // { catName: { birthdate: 'YYYY-MM-DD' } }
+
+async function loadPetProfiles() {
+  try {
+    const d = await getDoc(doc(db, 'app_config', 'pet_profiles'));
+    if (d.exists()) _petProfiles = d.data().profiles || {};
+  } catch(e) { console.warn('Pet profiles load failed:', e.message); }
+}
+
+async function savePetProfiles() {
+  await setDoc(doc(db, 'app_config', 'pet_profiles'), { profiles: _petProfiles });
+}
+
+function isCatKitten(catName, visitDate) {
+  const profile = _petProfiles[catName];
+  if (!profile?.birthdate || !visitDate) return false;
+  try {
+    const birth = new Date(profile.birthdate + 'T12:00:00');
+    const visit = new Date(visitDate + 'T12:00:00');
+    const ageMs = visit - birth;
+    return ageMs >= 0 && ageMs < 365.25 * 24 * 3600 * 1000;
+  } catch(e) { return false; }
+}
+
+function openPetProfilesModal() {
+  document.getElementById('pet-profiles-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'pet-profiles-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:400;display:flex;align-items:center;justify-content:center;padding:2rem;';
+  const cats = APP_PETS.length ? APP_PETS : [];
+  const rows = cats.map(cat => {
+    const bd = _petProfiles[cat]?.birthdate || '';
+    return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--surface2);">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink);flex:1;">${escHtml(cat)}</span>
+      <input type="date" data-cat="${escHtml(cat)}" value="${escHtml(bd)}"
+        style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;">
+    </div>`;
+  }).join('');
+  modal.innerHTML = `<div style="background:white;border-radius:12px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(42,37,32,0.18);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);">Pet Profiles</span>
+      <button id="pet-profiles-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);font-size:0.8rem;">✕</button>
+    </div>
+    <div style="padding:1rem 1.25rem;">
+      <p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-muted);margin-bottom:0.85rem;line-height:1.6;">Birthdates are used to correctly interpret weights — kittens under 1 year may have sub-5.5 weights that are lbs, not kg.</p>
+      ${rows || '<p style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">No pets found — process some records first.</p>'}
+    </div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;">
+      <button class="btn-icon" id="pet-profiles-cancel">Cancel</button>
+      <button class="btn-icon free-icon" id="pet-profiles-save"><span class="free-dot"></span> Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#pet-profiles-close').onclick = () => modal.remove();
+  modal.querySelector('#pet-profiles-cancel').onclick = () => modal.remove();
+  modal.querySelector('#pet-profiles-save').onclick = async () => {
+    modal.querySelectorAll('input[data-cat]').forEach(input => {
+      const cat = input.dataset.cat;
+      if (!_petProfiles[cat]) _petProfiles[cat] = {};
+      _petProfiles[cat].birthdate = input.value || null;
+    });
+    await savePetProfiles();
+    modal.remove();
+    showToast('Pet profiles saved ✓', 'journal');
+  };
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
 // ── CAT FOCUS PILLS ──
@@ -2363,7 +2434,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
       const lastLoad = window._driveLastLoaded || 0;
       if (!driveAccessToken) {
         showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
-      } else if (now - lastLoad > 60000) {
+      } else if (!processingActive && now - lastLoad > 60000) {
         window._driveLastLoaded = now;
         loadDriveFiles();
       }
@@ -2476,7 +2547,8 @@ async function loadDriveFiles() {
     showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
     return;
   }
-  $('drive-connect-prompt').style.display = 'none';
+  const connectPrompt = $('drive-connect-prompt');
+  if (connectPrompt) connectPrompt.style.display = 'none';
   $('drive-dot').className = 'status-dot green';
   $('drive-status').textContent = 'Drive connected';
   $('files-actions').style.display = 'none';
@@ -3236,7 +3308,7 @@ async function processFile(file) {
       }
       if (finalChunks.length > 1) {
         chunks = finalChunks.map((t, i) => ({ text: t, isImage: false, _chunkIndex: i, _totalChunks: finalChunks.length, _isBulkHistory: isBulkSummary }));
-        updateProgress(0, chunks.length, `${file.name}: split into ${chunks.length} chunks`);
+        $('progress-current').textContent = `${file.name}: split into ${chunks.length} chunks`;
       }
     }
   }
@@ -3255,7 +3327,10 @@ async function processFile(file) {
   for (let ci = 0; ci < chunks.length; ci++) {
     const chunk = chunks[ci];
     if (processingStop) break;
-    if (chunks.length > 1) $('progress-current').textContent = `${file.name}: chunk ${ci+1}/${chunks.length}`;
+    if (chunks.length > 1) {
+      $('progress-current').textContent = `${file.name}: chunk ${ci+1}/${chunks.length}`;
+      $('progress-label').textContent = `Processing… (chunk ${ci+1}/${chunks.length})`;
+    }
 
     // Inject patient context into continuation chunks so the model never loses the patient anchor
     if (ci > 0 && chunkContext) {
@@ -3333,6 +3408,8 @@ async function processFile(file) {
 
 
   // ── REALTIME PRE-WRITE CHECKS ──
+  // Reset chunk label back to standard if we were multi-chunk
+  if (chunks.length > 1) $('progress-label').textContent = 'Processing…';
   // Run before writing anything to Firestore. Critical issues pause for clarification,
   // quality issues add flags but don't block writing.
   {
@@ -3514,6 +3591,12 @@ async function processFile(file) {
       });
     }
     allCats.add(chunkContext.cat);
+  }
+
+  // If the user aborted and we collected nothing useful, don't mark complete — leave unprocessed
+  if (processingStop && !allVisits.length && !allLabs.length) {
+    await writeFileStatus(file.id, file.name, 'unprocessed');
+    return 'skipped';
   }
 
   await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, passes, isAmendment, fileHash);
@@ -5370,38 +5453,37 @@ function promptClarification(filename, issues) {
 
 function promptChunkFailure(filename, chunkSize, estimatedCost) {
   return new Promise(resolve => {
-    // Reuse pause overlay with custom content
-    $('pause-file-info').textContent = `${filename.slice(0,40)} — section of ${chunkSize.toLocaleString()} chars`;
-    const box = document.querySelector('.pause-box');
-    const origContent = box.innerHTML;
+    // Remove any stale instance
+    document.getElementById('chunk-fail-overlay')?.remove();
 
-    box.innerHTML = `
-      <div class="pause-icon">⚠</div>
-      <div class="pause-title">Extraction Failed</div>
-      <div class="pause-desc">A section of this file failed twice. How would you like to proceed?<br><br>
-        Splitting will retry at ~$${estimatedCost} additional cost.</div>
-      <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:0.5rem;">
-        <button class="pause-continue-btn" id="chunk-split-btn">Split & Retry</button>
-        <button class="pause-continue-btn" id="chunk-skip-btn" style="background:var(--surface);color:var(--ink);">Skip Section</button>
-        <button class="pause-continue-btn" id="chunk-abort-btn" style="background:var(--red-bg);color:var(--red);">Abort</button>
+    const overlay = document.createElement('div');
+    overlay.id = 'chunk-fail-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(42,37,32,0.58);z-index:600;display:flex;align-items:center;justify-content:center;padding:2rem;';
+
+    overlay.innerHTML = `
+      <div style="background:white;border-radius:14px;padding:2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 8px 40px rgba(42,37,32,0.2);">
+        <div style="font-size:2rem;margin-bottom:0.75rem;">⚠</div>
+        <div style="font-family:'Instrument Serif',serif;font-size:1.2rem;margin-bottom:0.5rem;color:var(--ink);">Extraction Failed</div>
+        <div style="font-size:0.82rem;color:var(--ink-muted);line-height:1.6;margin-bottom:0.35rem;">${escHtml(filename.slice(0,40))}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink-dim);background:var(--surface);border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:1rem;">Section of ${chunkSize.toLocaleString()} chars failed twice.</div>
+        <div style="font-size:0.82rem;color:var(--ink-muted);line-height:1.6;margin-bottom:1.25rem;">Splitting will retry at ~$${estimatedCost} additional cost.</div>
+        <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+          <button id="chunk-split-btn" style="flex:1;min-width:100px;background:var(--green);color:white;border:none;border-radius:8px;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:0.9rem;padding:0.7rem;cursor:pointer;">Split &amp; Retry</button>
+          <button id="chunk-skip-btn" style="flex:1;min-width:100px;background:var(--surface);color:var(--ink);border:1px solid var(--border);border-radius:8px;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:0.9rem;padding:0.7rem;cursor:pointer;">Skip Section</button>
+          <button id="chunk-abort-btn" style="flex:1;min-width:100px;background:var(--red-bg);color:var(--red);border:1px solid rgba(192,36,42,0.2);border-radius:8px;font-family:'Instrument Sans',sans-serif;font-weight:600;font-size:0.9rem;padding:0.7rem;cursor:pointer;">Abort</button>
+        </div>
       </div>`;
 
-    $('pause-overlay').classList.add('open');
+    document.body.appendChild(overlay);
 
     const cleanup = (choice) => {
-      $('pause-overlay').classList.remove('open');
-      box.innerHTML = origContent;
-      // Re-wire the original continue button
-      $('pause-continue-btn').addEventListener('click', () => {
-        if (pauseResolver) { pauseResolver(); pauseResolver = null; }
-        hidePauseOverlay();
-      });
+      overlay.remove();
       resolve(choice);
     };
 
-    document.getElementById('chunk-split-btn').onclick = () => cleanup('split');
-    document.getElementById('chunk-skip-btn').onclick = () => cleanup('skip');
-    document.getElementById('chunk-abort-btn').onclick = () => cleanup('abort');
+    overlay.querySelector('#chunk-split-btn').onclick = () => cleanup('split');
+    overlay.querySelector('#chunk-skip-btn').onclick = () => cleanup('skip');
+    overlay.querySelector('#chunk-abort-btn').onclick = () => cleanup('abort');
   });
 }
 
@@ -7436,29 +7518,44 @@ $('home-issue-modal').addEventListener('click', e => { if (e.target === $('home-
 // BODY CONDITION TRENDS
 // ══════════════════════════════════════════════
 
-function parseLbsFromWeight(w) {
+function parseKgFromWeight(w, isKitten) {
   if (!w) return null;
-  const m = String(w).match(/([0-9]+\.?[0-9]*)\s*(?:lbs?|lb)/i);
-  if (m) return parseFloat(m[1]);
-  // Fallback: just a number
-  const n = parseFloat(w);
-  return isNaN(n) ? null : n;
+  const s = String(w);
+  // 1. Explicit kg — always trust
+  const kgMatch = s.match(/([0-9]+\.?[0-9]*)\s*(?:kgs?|kg)\b/i);
+  if (kgMatch) return parseFloat(kgMatch[1]);
+  // 2. Explicit lbs — convert to kg
+  const lbsMatch = s.match(/([0-9]+\.?[0-9]*)\s*(?:lbs?|lb)\b/i);
+  if (lbsMatch) return Math.round(parseFloat(lbsMatch[1]) / 2.20462 * 100) / 100;
+  // 3. Bare number — apply threshold unless kitten (< 1yo)
+  const n = parseFloat(s);
+  if (isNaN(n) || n <= 0) return null;
+  if (isKitten) return Math.round(n / 2.20462 * 100) / 100; // kittens: assume lbs
+  if (n > 5.5) return Math.round(n / 2.20462 * 100) / 100;  // adult: clearly lbs → convert
+  if (n >= 1.5) return n;                                     // adult: plausible kg
+  return null; // < 1.5 kg — implausible, skip
 }
 
 function parseBCS(v) {
   if (!v) return null;
+  // Explicit /9 scale
   const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*9/i);
   if (m) return parseFloat(m[1]);
+  // Bare number only if unambiguously BCS range (1–9, no decimal suggesting /4 confusion)
   const n = parseFloat(v);
-  return isNaN(n) ? null : n;
+  if (!isNaN(n) && n >= 1 && n <= 9) return n;
+  return null;
 }
 
 function parseMCS(v) {
   if (!v) return null;
+  // MCS is scored /4 — match explicit /4 or /3 denominator
   const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*[34]/i);
   if (m) return parseFloat(m[1]);
+  // Bare number only if clearly /4 range and not also a valid BCS value
   const n = parseFloat(v);
-  return isNaN(n) ? null : n;
+  if (!isNaN(n) && n >= 0 && n <= 4 && !String(v).includes('/9')) return n;
+  return null;
 }
 
 async function openTrendsModal() {
@@ -7496,7 +7593,7 @@ async function renderTrends(cat) {
       .filter(v => v.date && v.vitals)
       .map(v => ({
         date: v.date,
-        weight: parseLbsFromWeight(v.vitals?.weight),
+        weight: parseKgFromWeight(v.vitals?.weight, isCatKitten(v.cat, v.date)),
         bcs: parseBCS(v.vitals?.BCS),
         mcs: parseMCS(v.vitals?.muscleConditionScore),
         source: v.source === 'home' ? 'home' : 'vet',
@@ -7576,7 +7673,7 @@ async function renderTrends(cat) {
         const isHome = p.source === 'home';
         const dotColor = isHome ? '#3a7c52' : color;
         svgContent += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${isHome ? 3.5 : 4}" fill="${dotColor}" stroke="white" stroke-width="1.5">
-          <title>${escHtml(p.date)} · ${escHtml(p.label)}: ${p[metric]}${metric === 'weight' ? ' lbs' : '/9'}</title>
+          <title>${escHtml(p.date)} · ${escHtml(p.label)}: ${p[metric]}${metric === 'weight' ? ' kg' : metric === 'mcs' ? '/4' : '/9'}</title>
         </circle>`;
 
         // Value label — alternate above/below to avoid overlap
@@ -7614,7 +7711,7 @@ async function renderTrends(cat) {
       const delta = pts.length > 1 ? last[metric] - pts[pts.length - 2][metric] : null;
       const deltaStr = delta !== null ? (delta > 0 ? ` ▲${delta.toFixed(1)}` : delta < 0 ? ` ▼${Math.abs(delta).toFixed(1)}` : ' →') : '';
       const isOutOfRange = refLow != null && refHigh != null && (last[metric] < refLow || last[metric] > refHigh);
-      callout.innerHTML = `Latest: <strong style="color:${isOutOfRange ? 'var(--red)' : 'var(--ink)'};">${last[metric]}${metric === 'weight' ? ' lbs' : '/9'}</strong>${deltaStr} <span style="color:var(--ink-muted);">(${formatDate(last.date)})</span>${isOutOfRange ? ' <span style="color:var(--red);">⚠ outside ideal</span>' : ''}`;
+      callout.innerHTML = `Latest: <strong style="color:${isOutOfRange ? 'var(--red)' : 'var(--ink)'};">${last[metric]}${metric === 'weight' ? ' kg' : metric === 'mcs' ? '/4' : '/9'}</strong>${deltaStr} <span style="color:var(--ink-muted);">(${formatDate(last.date)})</span>${isOutOfRange ? ' <span style="color:var(--red);">⚠ outside ideal</span>' : ''}`;
       section.appendChild(callout);
 
       return section;
@@ -7625,7 +7722,7 @@ async function renderTrends(cat) {
     const hasMCS = points.some(p => p.mcs != null);
 
     if (hasWeight) {
-      const s = buildChart('Weight (lbs)', 'weight', '#7c6f5b', 'lbs', null, null, null);
+      const s = buildChart('Weight (kg)', 'weight', '#7c6f5b', 'kg', null, null, null);
       if (s) body.appendChild(s);
     }
     if (hasBCS) {
