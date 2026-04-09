@@ -1414,7 +1414,17 @@ function briefComplaint(v) {
 function briefInvoice(v) {
   if (!v) return '';
   // Use cached Claude summary or chiefComplaint if available
-  if (v.invoiceSummary) return v.invoiceSummary;
+  // But clear cached summaries that look like food-as-diagnosis false positives
+  if (v.invoiceSummary) {
+    const isFoodDiagnosis = /gi upset|gastrointestinal|digestive|stomach|intestinal|bowel/i.test(v.invoiceSummary) &&
+      (v.medications||[]).concat(v.procedures||[]).every(x =>
+        /food|diet|hills|royal canin|purina|instinct|hydrolyzed|ultamino|z\/d|i\/d|gastrointestinal/i.test(x.name||'')
+      );
+    if (!isFoodDiagnosis) return v.invoiceSummary;
+    // Clear bad cache and re-queue
+    setDoc(doc(db, 'visits', v.id), { invoiceSummary: null }, { merge: true });
+    v.invoiceSummary = null;
+  }
   if (v.chiefComplaint) return v.chiefComplaint;
   // Queue lazy generation (rate-limited — processes one at a time)
   if (apiKey && (v.medications?.length || v.procedures?.length)) {
@@ -1529,13 +1539,14 @@ function renderRecordsTree(tree) {
       const invoiceOnlyVisits = visits.filter(v => v.docType === 'Invoice');
       const isInvoiceOnly = nonInvoiceVisits.length === 0 && invoiceOnlyVisits.length > 0;
       const effectiveSingle = nonInvoiceVisits.length === 1 ? nonInvoiceVisits[0] : null;
+      const isMultiple = nonInvoiceVisits.length > 1;
       // For invoice-only dates, use the invoice as the display source
       const singleVisit = visits.length === 1 ? visits[0] : (effectiveSingle || (isInvoiceOnly ? invoiceOnlyVisits[0] : null));
-      const complaint = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : (singleVisit ? briefComplaint(singleVisit) : '');
-      const complaintFull = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : (singleVisit?.chiefComplaint || complaint);
+      const complaint = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit ? briefComplaint(singleVisit) : '');
+      const complaintFull = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit?.chiefComplaint || complaint);
       // Don't color the date label as well if it's a mixed date (well + problem siblings)
-      const dateSuppressWell = nonInvoiceVisits.length > 1 && nonInvoiceVisits.some(v => v.visitClass === 'problem' || visitTypeStyle(v) === null);
-      const singleStyle = (!isInvoiceOnly && singleVisit && !dateSuppressWell) ? visitTypeStyle(singleVisit) : null;
+      const dateSuppressWell = isMultiple && nonInvoiceVisits.some(v => v.visitClass === 'problem' || visitTypeStyle(v) === null);
+      const singleStyle = (!isInvoiceOnly && !isMultiple && singleVisit && !dateSuppressWell) ? visitTypeStyle(singleVisit) : null;
       if (singleStyle) {
         dl.style.borderLeft = `2px solid ${singleStyle.color}`;
         dl.style.paddingLeft = '0.85rem';
@@ -1545,9 +1556,9 @@ function renderRecordsTree(tree) {
         const cc = document.createElement('span');
         cc.textContent = complaint;
         if (complaintFull && complaintFull !== complaint) cc.title = complaintFull;
-        const ccColor = isInvoiceOnly ? 'var(--amber)' : (singleStyle ? singleStyle.color : 'var(--ink-muted)');
-        cc.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:${ccColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:0.85;cursor:default;`;
-        if (isInvoiceOnly) dlText.style.color = 'var(--amber)';
+        const ccColor = isInvoiceOnly ? 'var(--ink-muted)' : isMultiple ? 'var(--ink-dim)' : (singleStyle ? singleStyle.color : 'var(--ink)');
+        cc.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:${ccColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:${isInvoiceOnly ? '0.75' : '1'};cursor:default;${isMultiple ? 'font-style:italic;' : ''}`;
+        if (isInvoiceOnly) dlText.style.color = 'var(--ink-muted)';
         dl.appendChild(dlArrow);
         dl.appendChild(dlText);
         dl.appendChild(cc);
@@ -4788,18 +4799,30 @@ async function getInvoiceSummary(invoice) {
   const procs = (invoice.procedures || []).map(p => p.name).filter(Boolean);
   if (!meds.length && !procs.length) return '';
 
-  const prompt = `A cat had a vet visit. Based on what was administered/performed, write a 3-8 word clinical description of why they were likely there. Focus on the medical reason, not administrative items. Skip syringes, disposal fees, exam fees, blood draw fees.
+  const prompt = `A cat had a vet visit. Based on what was dispensed/performed, write a 3-8 word description of why they were likely there.
 
-Administered/performed: ${[...meds, ...procs].join(', ')}
+Rules:
+- Prescription/therapeutic food alone (Hills, Royal Canin, Purina rx diets, any "diet" food) = "prescription food pickup" — do NOT infer a diagnosis from the food name
+- Prescription food + acute meds (anti-nausea, antibiotics, steroids, fluids) = describe the acute reason
+- Vaccines only = "vaccine booster"
+- Skip: syringes, disposal fees, exam fees, blood draw fees
+- Respond with ONLY the short description, nothing else
 
-Respond with ONLY the short description, nothing else. Examples: "anti-nausea treatment and fluids", "dental cleaning", "vaccine booster", "wound treatment"`;
+Examples: "anti-nausea treatment and fluids", "dental cleaning", "vaccine booster", "prescription food pickup", "wound treatment"
+
+Dispensed/performed: ${[...meds, ...procs].join(', ')}`;
 
   try {
-    const summary = await callPlainClaude(prompt, 60);
-    if (summary && summary.length < 80) {
-      // Cache it back to Firestore
+    const summary = await callPlainClaude(prompt, 40);
+    if (summary && summary.length < 60) {
       await setDoc(doc(db, 'visits', invoice.id), { invoiceSummary: summary }, { merge: true });
       return summary;
+    }
+    // Too long — truncate at word boundary and cache that
+    if (summary) {
+      const trimmed = summary.slice(0, 55).replace(/\s+\S*$/, '');
+      await setDoc(doc(db, 'visits', invoice.id), { invoiceSummary: trimmed }, { merge: true });
+      return trimmed;
     }
   } catch(e) { console.warn('Invoice summary failed:', e.message); }
   return '';
@@ -5505,6 +5528,7 @@ Preserve ALL clinical detail. Do NOT summarize or truncate.
 
 SKIP entirely: costs/billing, boilerplate legal text, portal instructions, appointment reminders,
 product marketing copy (Solensia description paragraphs, etc.), feeding plans, kcal targets.
+REMINDER/DUE SECTIONS: Multi-year exports often contain "Reminders", "Services Due", "Upcoming Appointments", "Due Date" sections listing future or overdue preventive care (vaccines due, heartworm tests due, etc.). These are NOT clinical encounters — do NOT create visit records from them. A reminder section has no clinical findings, no exam, no diagnosis, no treatment — only future due dates. Skip entirely.
 BULK HISTORY EXPORTS: Many files are multi-year history exports with a summary header block at the
 top, followed by individual dated visit entries. The header block typically contains:
   - "Active Diagnoses" / "Problem List" / "Current Medications" / "Allergies" sections
@@ -5561,7 +5585,7 @@ Return JSON only, no markdown:
 INVOICES: Extract meds dispensed, vaccines given, prescription foods, and procedures with dates.
 Store as a visit with docType:"Invoice". Do NOT skip invoices — they often contain vaccine records,
 dispensed medications, and procedures not found in clinical notes. Remove all costs/fees/billing.
-Set chiefComplaint to a 3-8 word clinical description of why the cat was likely there, based on what was dispensed/performed — ignore syringes, fees, and administrative items (e.g. "anti-nausea treatment and fluids", "dental cleaning", "vaccine booster"). Set visitClass to "problem" unless it's clearly vaccines-only in which case "well".
+Set chiefComplaint to a 3-8 word clinical description of why the cat was likely there, based on what was dispensed/performed — ignore syringes, fees, and administrative items; prescription food alone = "prescription food pickup" not a diagnosis (e.g. "anti-nausea treatment and fluids", "dental cleaning", "vaccine booster", "prescription food pickup"). Set visitClass to "problem" unless it's clearly vaccines-only in which case "well".
 If an invoice has literally no clinical content at all (no meds, no vaccines, no procedures) → {"skip":true}
 
 --- FILE: ${file.name} ---
@@ -7058,7 +7082,7 @@ procedures, vitals, ALL lab values from ALL panels, PCR results, parasite preven
 SYNOPSIS: 2-4 factual sentences — what happened at this visit, what was found, what was decided.
 NARRATIVE: Structure with labeled sections: HISTORY, PHYSICAL EXAM, ASSESSMENT, PLAN. Preserve all details.
 MEDICATIONS: tag supplement:true for vitamins/supplements/nutraceuticals. Deduplicate.
-SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing, feeding plans, kcal.
+SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing, feeding plans, kcal. "Reminders", "Services Due", "Due Date" sections listing future preventive care are NOT visits — skip entirely.
 
 Return JSON only, no markdown:
 {"skip":false,"isAmendment":false,"cats":["Mocha"],"dates":["2025-05-13"],"visits":[{"cat":"Mocha","date":"2025-05-13","clinic":"Morrisville","doctor":"Dr. Beth Hraban","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
