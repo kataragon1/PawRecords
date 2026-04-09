@@ -2723,7 +2723,7 @@ async function loadFileStatuses(driveFileIds) {
 }
 
 // ── FILE SORT STATE ──
-let _fileSort = 'name'; // 'name' | 'date'
+let _fileSort = 'name'; // 'name' | 'date' | 'size'
 let _fileSortDir = 1;   // 1 = asc, -1 = desc
 
 // ── DRIVE UPLOAD ──
@@ -2833,7 +2833,10 @@ function renderFilesList(driveFiles, statusMap) {
     if (_fileSort === 'date') {
       const da = new Date(a.modifiedTime || 0).getTime();
       const db2 = new Date(b.modifiedTime || 0).getTime();
-      return (db2 - da) * _fileSortDir * -1; // default desc (newest first), flip with dir
+      return (db2 - da) * _fileSortDir * -1;
+    }
+    if (_fileSort === 'size') {
+      return ((a.size || 0) - (b.size || 0)) * _fileSortDir;
     }
     return a.name.localeCompare(b.name) * _fileSortDir;
   });
@@ -2851,7 +2854,8 @@ function renderFilesList(driveFiles, statusMap) {
   hdr.innerHTML = `
     <input type="checkbox" style="opacity:0;pointer-events:none;flex-shrink:0;">
     <span id="sort-name-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='name'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex:1;user-select:none;" title="Sort by name">Name${arrow('name')}</span>
-    <span id="sort-date-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='date'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex-shrink:0;user-select:none;margin-left:auto;" title="Sort by date">Date${arrow('date')}</span>
+    <span id="sort-size-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='size'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex-shrink:0;user-select:none;" title="Sort by size">Size${arrow('size')}</span>
+    <span id="sort-date-btn" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:${_fileSort==='date'?'var(--accent)':'var(--ink-muted)'};cursor:pointer;flex-shrink:0;user-select:none;" title="Sort by date">Date${arrow('date')}</span>
     <span style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);flex-shrink:0;cursor:pointer;" id="select-all-link">select all</span>`;
   filesList.appendChild(hdr);
 
@@ -2861,6 +2865,11 @@ function renderFilesList(driveFiles, statusMap) {
     const dateBtn = $('sort-date-btn');
     if (nameBtn) nameBtn.addEventListener('click', () => {
       if (_fileSort === 'name') _fileSortDir *= -1; else { _fileSort = 'name'; _fileSortDir = 1; }
+      if (window._driveFiles && window._statusMap) renderFilesList(window._driveFiles, window._statusMap);
+    });
+    const sizeBtn = $('sort-size-btn');
+    if (sizeBtn) sizeBtn.addEventListener('click', () => {
+      if (_fileSort === 'size') _fileSortDir *= -1; else { _fileSort = 'size'; _fileSortDir = -1; } // default desc (largest first)
       if (window._driveFiles && window._statusMap) renderFilesList(window._driveFiles, window._statusMap);
     });
     if (dateBtn) dateBtn.addEventListener('click', () => {
@@ -5002,7 +5011,7 @@ If an invoice has literally no clinical content at all (no meds, no vaccines, no
 
   const result = await callExtractionClaude([
     { role: 'user', content: buildUserContent(chunk, prompt) }
-  ], 8000);
+  ], 12000);
 
   if (!result || result.skip) return null;
   return result;
