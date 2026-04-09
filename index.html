@@ -1372,6 +1372,17 @@ async function loadRecordsSidebar() {
   }
 }
 
+// Returns a short complaint string for display — strips common filler phrases
+function briefComplaint(v) {
+  if (v.source === 'home') return ''; // home issues already show complaint as main label
+  if (v.docType === 'Invoice') return '';
+  const raw = v.chiefComplaint || '';
+  if (!raw) return '';
+  // Truncate at first comma or semicolon, then cap length
+  const trimmed = raw.split(/[,;]/)[0].trim();
+  return trimmed.length > 28 ? trimmed.slice(0, 26) + '…' : trimmed;
+}
+
 function renderRecordsTree(tree) {
   const container = $('records-tree');
   const empty = $('records-empty');
@@ -1403,19 +1414,30 @@ function renderRecordsTree(tree) {
 
       const dlText = document.createElement('span');
       dlText.textContent = formatDate(date);
-      dlText.style.cssText = 'flex:1;';
+      dlText.style.cssText = 'flex-shrink:0;';
 
-      // Show count badge if multiple visits on same date
-      if (visits.length > 1) {
-        const badge = document.createElement('span');
-        badge.textContent = visits.length;
-        badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);';
+      // For single visits, show a brief complaint snippet after the date
+      const singleVisit = visits.length === 1 ? visits[0] : null;
+      const complaint = singleVisit ? briefComplaint(singleVisit) : '';
+      if (complaint) {
+        const cc = document.createElement('span');
+        cc.textContent = complaint;
+        cc.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;';
         dl.appendChild(dlArrow);
         dl.appendChild(dlText);
-        dl.appendChild(badge);
+        dl.appendChild(cc);
       } else {
         dl.appendChild(dlArrow);
         dl.appendChild(dlText);
+      }
+
+      // Show count badge if multiple non-invoice visits on same date
+      const nonInvoiceCount = visits.filter(v => v.docType !== 'Invoice').length;
+      if (visits.length > 1) {
+        const badge = document.createElement('span');
+        badge.textContent = nonInvoiceCount > 1 ? nonInvoiceCount : visits.length;
+        badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);flex-shrink:0;';
+        dl.appendChild(badge);
       }
       dg.appendChild(dl);
 
@@ -1428,13 +1450,14 @@ function renderRecordsTree(tree) {
         ve.className = 'visit-entry';
         ve.style.cssText = 'position:relative;cursor:pointer;';
         const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
-        const doctorDisplay = v.doctor ? v.doctor.replace(/^Dr\.?\s*/i, '') : '';
         const isInvoice = v.docType === 'Invoice';
         const isHome = v.source === 'home';
+        const cc = (!isInvoice && !isHome && visits.filter(x => x.docType !== 'Invoice').length > 1)
+          ? briefComplaint(v) : '';
         ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
             ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
             ${isHome ? '<span class="home-badge">🏠 home</span>' : ''}
-            <span style="color:var(--ink-dim);font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${!isHome && doctorDisplay ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;"> · ${escHtml(doctorDisplay)}</span>` : ''}
+            <span style="color:var(--ink-dim);font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${cc ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;font-family:'JetBrains Mono',monospace;"> · ${escHtml(cc)}</span>` : ''}
           </span>
           <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
             <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
