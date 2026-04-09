@@ -1359,7 +1359,7 @@ async function loadRecordsSidebar() {
   try {
     const q = query(collection(db, 'visits'), orderBy('date', 'desc'));
     const snap = await getDocs(q);
-    const tree = {}; // {cat: {date: [{id, clinic, doctor, chiefComplaint}]}}
+    const tree = {};
     snap.forEach(d => {
       const v = d.data();
       if (!tree[v.cat]) tree[v.cat] = {};
@@ -1367,21 +1367,99 @@ async function loadRecordsSidebar() {
       tree[v.cat][v.date].push({id: d.id, ...v});
     });
     renderRecordsTree(tree);
+
+    // One-time backfill: derive chiefComplaint from synopsis for visits that have none.
+    // Runs once per account, then sets a flag to skip forever.
+    backfillChiefComplaints(snap.docs).catch(e => console.warn('Backfill skipped:', e.message));
   } catch (err) {
     console.error('Records load error:', err);
   }
 }
 
+let _backfillDone = false;
+async function backfillChiefComplaints(docs) {
+  if (_backfillDone) return;
+  if (!apiKey) return;
+  try {
+    const flag = await getDoc(doc(db, 'app_config', 'backfills'));
+    if (flag.exists() && flag.data().chiefComplaint2) { _backfillDone = true; return; }
+  } catch(e) { return; }
+
+  // Find visits missing chiefComplaint or visitClass (excludes invoices and home issues)
+  const toFix = docs.filter(d => {
+    const v = d.data();
+    return v.synopsis && v.docType !== 'Invoice' && v.source !== 'home'
+      && (!v.chiefComplaint || !v.visitClass);
+  });
+  if (!toFix.length) {
+    _backfillDone = true;
+    await setDoc(doc(db, 'app_config', 'backfills'), { chiefComplaint2: true }, { merge: true });
+    return;
+  }
+
+  const BATCH = 20;
+  const allUpdates = {};
+  for (let i = 0; i < toFix.length; i += BATCH) {
+    const chunk = toFix.slice(i, i + BATCH);
+    const lines = chunk.map((d, idx) => {
+      const v = d.data();
+      return `${idx}: ${(v.chiefComplaint ? 'CC: ' + v.chiefComplaint + ' | ' : '')}${(v.synopsis || '').slice(0, 120)}`;
+    }).join('\n');
+
+    const prompt = `For each veterinary visit below, return a JSON array of objects with two fields:
+- "cc": chief complaint in 2-6 words. Be specific about the actual condition — if it's a recheck or follow-up, name what's being rechecked (e.g. "eye infection recheck" not "recheck", "IBD follow-up" not "follow-up visit"). For wellness use "annual wellness" or "vaccine booster" etc.
+- "vc": visit class — "well" if purely preventive with no active problem (annual wellness, vaccines only), "problem" for everything else (specialty visits, chronic disease management, acute illness, injury, rechecks for known conditions).
+
+Return ONLY the JSON array, no markdown.
+
+${lines}`;
+
+    try {
+      const result = await callPlainClaude(prompt, 600);
+      const clean = result.replace(/^```json\n?|^```\n?|```$/gm, '').trim();
+      const items = JSON.parse(clean);
+      chunk.forEach((d, idx) => {
+        const item = items[idx];
+        if (item) allUpdates[d.id] = {
+          chiefComplaint: (item.cc || '').slice(0, 50) || null,
+          visitClass: item.vc === 'well' ? 'well' : 'problem'
+        };
+      });
+    } catch(e) { console.warn('Backfill chunk failed:', e.message); }
+  }
+
+  if (Object.keys(allUpdates).length) {
+    const batch = writeBatch(db);
+    for (const [id, updates] of Object.entries(allUpdates)) {
+      const upd = {};
+      if (updates.chiefComplaint) upd.chiefComplaint = updates.chiefComplaint;
+      if (updates.visitClass) upd.visitClass = updates.visitClass;
+      if (Object.keys(upd).length) batch.update(doc(db, 'visits', id), upd);
+    }
+    await batch.commit();
+    console.log(`Backfilled ${Object.keys(allUpdates).length} visits`);
+    loadRecordsSidebar();
+  }
+
+  await setDoc(doc(db, 'app_config', 'backfills'), { chiefComplaint2: true }, { merge: true });
+  _backfillDone = true;
+}
+
 // Returns a short complaint string for display — strips common filler phrases
 // Returns a short complaint string for display — strips common filler phrases
 function briefComplaint(v) {
-  if (v.source === 'home') return ''; // home issues already show complaint as main label
+  if (v.source === 'home') return '';
   if (v.docType === 'Invoice') return '';
-  const raw = v.chiefComplaint || '';
+  let raw = (v.chiefComplaint || '').trim();
   if (!raw) return '';
-  // Truncate at first comma or semicolon, then cap length
-  const trimmed = raw.split(/[,;]/)[0].trim();
-  return trimmed.length > 28 ? trimmed.slice(0, 26) + '…' : trimmed;
+  // Strip leading recheck/follow-up prefixes at display time — backfill handles this
+  // for stored records, but catches any that slipped through
+  raw = raw.replace(/^(recheck|re-check|follow[\s\-]?up|f\/u|followup)[\s\-:,–—]+/i, '').trim();
+  // Truncate at word boundary
+  if (raw.length <= 30) return raw;
+  const cut = raw.slice(0, 29);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 15 ? cut.slice(0, lastSpace) : cut) + '…';
 }
 
 // Classifies a visit as 'routine', 'vaccine', or 'sick' based on complaint/procedures/meds.
@@ -1389,14 +1467,16 @@ function briefComplaint(v) {
 function visitTypeStyle(v) {
   if (v.source === 'home') return null;
   if (v.docType === 'Invoice') return null;
-
-  // Positive match only — if the chief complaint explicitly says routine/wellness/vaccine,
-  // color it. Anything else (no matter how benign it sounds) stays uncolored.
-  // This avoids the impossible task of enumerating all sick visit keywords.
-  const cc = (v.chiefComplaint || '').toLowerCase();
-  const isRoutine = /\b(wellness|well\s*(exam|visit|check)|annual\s*(exam|visit|check|wellness)|routine\s*(exam|visit|check)|preventive|preventative|health\s*(exam|check)|check.?up|physical\s*exam|vacc(ine|ination)?s?|booster|fvrcp|rabies|felv\s*vacc)\b/.test(cc);
-
-  return isRoutine ? { type: 'routine', color: '#5a6e8c' } : null;
+  // Prefer stored visitClass from extraction/backfill
+  if (v.visitClass === 'well') return { type: 'well', color: '#5a6e8c' };
+  if (v.visitClass === 'problem') return null;
+  // Fallback for records not yet backfilled: positive-match on chiefComplaint only
+  const raw = v.chiefComplaint || (v.synopsis || '').split(/[.!?]/)[0];
+  const cc = raw.toLowerCase();
+  const isSpecialty = /\b(derm|dermatol|cardio|oncol|neuro|ophth|ortho|renal|ckd|ibd|giardia|recheck|follow.?up|thyroid|diabetes|hypertens|hyperth|cancer|tumor|mass|allerg|colitis|pancreatitis)\b/.test(cc);
+  if (isSpecialty) return null;
+  const isWell = /\b(wellness|well\s*(exam|visit|check)|annual\s*(wellness|exam|visit|check)|routine\s*(exam|visit|check)|preventive|preventative|health\s*(exam|check)|check.?up|vacc(ine|ination)?s?\s*(only|booster|due)?|booster|fvrcp)\b/.test(cc);
+  return isWell ? { type: 'well', color: '#5a6e8c' } : null;
 }
 
 
@@ -2611,7 +2691,28 @@ async function loadDriveFiles() {
   $('drive-dot').className = 'status-dot green';
   $('drive-status').textContent = 'Drive connected';
   $('files-actions').style.display = 'none';
-  filesList.innerHTML = '<div class="files-loading">Loading files from Drive…</div>';
+
+  // Show loading with elapsed time so you know it's working
+  const loadStart = Date.now();
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'files-loading';
+  loadingEl.textContent = 'Loading files from Drive…';
+  filesList.innerHTML = '';
+  filesList.appendChild(loadingEl);
+
+  // Tick elapsed time every second
+  const ticker = setInterval(() => {
+    const secs = Math.round((Date.now() - loadStart) / 1000);
+    if (loadingEl.isConnected) loadingEl.textContent = `Loading files from Drive… ${secs}s`;
+  }, 1000);
+
+  // Auto-surface retry after 20s in case it's silently stuck
+  const timeout = setTimeout(() => {
+    clearInterval(ticker);
+    if (loadingEl.isConnected) {
+      loadingEl.innerHTML = `Taking longer than expected. <button class="btn-icon" onclick="window._driveLastLoaded=0;loadDriveFiles()" style="margin-left:0.5rem;">Retry</button> <button class="btn-icon" onclick="try{localStorage.removeItem('pr_uploads_folder_id')}catch(e){}window._driveLastLoaded=0;loadDriveFiles()" style="margin-left:0.25rem;">Clear cache &amp; retry</button>`;
+    }
+  }, 20000);
 
   // Helper: fetch with a 15 second timeout so we never hang silently
   const fetchWithTimeout = (url, opts, ms = 15000) => {
@@ -2677,6 +2778,7 @@ async function loadDriveFiles() {
     );
 
     if (filesRes.status === 401) {
+      clearInterval(ticker); clearTimeout(timeout);
       try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
       driveAccessToken = null;
       try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
@@ -2687,11 +2789,13 @@ async function loadDriveFiles() {
     const filesData = await filesRes.json();
     const driveFiles = filesData.files || [];
     const statusMap = await loadFileStatuses(driveFiles.map(f => f.id));
+    clearInterval(ticker); clearTimeout(timeout);
     renderFilesList(driveFiles, statusMap);
     $('files-secondary-toolbar').style.display = 'flex';
     $('files-actions').style.display = 'flex';
     updateProcessButtons();
   } catch (err) {
+    clearInterval(ticker); clearTimeout(timeout);
     console.error('Drive load error:', err);
     filesList.innerHTML = `<div class="files-loading" style="color:var(--red);">
       ${err.name === 'AbortError' ? 'Drive timed out — connection may be slow or the token expired.' : 'Drive error: ' + escHtml(err.message)}
@@ -3764,6 +3868,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
           synopsis: existData.synopsis || visit.synopsis,
           narrative: existData.narrative?.length > (visit.narrative?.length || 0) ? existData.narrative : (visit.narrative || existData.narrative),
           chiefComplaint: existData.chiefComplaint || visit.chiefComplaint,
+          visitClass: existData.visitClass || visit.visitClass || null,
           medications: existData.medications?.length ? existData.medications : (visit.medications || []),
           procedures: existData.procedures?.length ? existData.procedures : (visit.procedures || []),
           vitals: existData.vitals || visit.vitals,
@@ -3785,6 +3890,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         cat: visit.cat, date: visit.date || 'unknown',
         clinic: visit.clinic || null, doctor: visit.doctor || null,
         chiefComplaint: visit.chiefComplaint || null,
+        visitClass: visit.visitClass || null,
         synopsis: visit.synopsis || null,
         docType: visit.docType || null,
         medications: visit.medications || [],
@@ -5060,7 +5166,8 @@ WEIGHT: If recorded in both lbs and kg, include both: "8.25 lbs / 3.74 kg". Pref
 
 EXTRACT:
 - Cat name, visit date, clinic (abbreviated), attending vet
-- Chief complaint (owner's words, what brought them in)
+- Chief complaint: the reason for the visit in 2-6 words. Use owner's words if present. Be specific about the actual condition — if it's a recheck, name what's being rechecked (e.g. "eye infection recheck", "IBD bloodwork recheck", "weight recheck"). For wellness use "annual wellness exam" or "vaccine booster". Never just say "recheck" or "follow-up" alone. Never leave blank.
+- visitClass: classify as "well" or "problem". "well" = purely preventive/routine with no active problem being managed (annual wellness, vaccines only, healthy recheck with no ongoing issues). "problem" = anything else including specialty visits, chronic disease management, acute illness, injury, recheck for a known condition.
 - ALL medications with dose, frequency, route, dispensed flag, supplement flag, continuing flag
 - Parasite prevention: product, last dose date
 - Muscle condition score if noted
@@ -5119,6 +5226,7 @@ Return JSON only, no markdown:
     "clinic": "Morrisville",
     "doctor": "Dr. Beth Hraban",
     "chiefComplaint": "weight loss, alopecia, occasional limping",
+    "visitClass": "problem",
     "docType": null,
     "synopsis": "2-4 sentence factual summary of the visit",
     "medications": [
@@ -7598,26 +7706,9 @@ function openHomeIssueModal() {
   const today = new Date().toISOString().slice(0, 10);
   form.appendChild(mkField('Cat', 'hi-cat', 'select', { options: APP_PETS.length ? APP_PETS : ['Cat'] }));
   form.appendChild(mkField('Date', 'hi-date', 'date', { value: today }));
-  form.appendChild(mkField('Issue / Chief Complaint', 'hi-complaint', 'text', { placeholder: 'e.g. hotspot on left flank' }));
-  form.appendChild(mkField('What I observed', 'hi-synopsis', 'textarea', { rows: 2, placeholder: 'Describe what you noticed…' }));
-  form.appendChild(mkField('Treatment / Action taken', 'hi-treatment', 'textarea', { rows: 2, placeholder: 'e.g. Cleaned with chlorhexidine, applied Neosporin, cone on' }));
-
-  // Status row
-  const statusWrap = document.createElement('div');
-  statusWrap.style.cssText = 'display:flex;gap:0.5rem;align-items:center;';
-  const statusLbl = document.createElement('label');
-  statusLbl.textContent = 'Status';
-  statusLbl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);white-space:nowrap;';
-  const statusSel = document.createElement('select');
-  statusSel.id = 'hi-status';
-  statusSel.style.cssText = 'flex:1;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
-  ['Ongoing', 'Resolved', 'Monitoring'].forEach(s => {
-    const o = document.createElement('option'); o.value = s.toLowerCase(); o.textContent = s;
-    statusSel.appendChild(o);
-  });
-  statusWrap.appendChild(statusLbl);
-  statusWrap.appendChild(statusSel);
-  form.appendChild(statusWrap);
+  form.appendChild(mkField('Issue', 'hi-complaint', 'text', { placeholder: 'Describe the issue' }));
+  form.appendChild(mkField('Observed', 'hi-synopsis', 'textarea', { rows: 2, placeholder: '' }));
+  form.appendChild(mkField('Treatment', 'hi-treatment', 'textarea', { rows: 2, placeholder: '' }));
 
   $('home-issue-modal').style.display = 'flex';
   setTimeout(() => document.getElementById('hi-complaint')?.focus(), 80);
@@ -7629,7 +7720,6 @@ async function saveHomeIssue() {
   const complaint = $('hi-complaint')?.value?.trim();
   const synopsis = $('hi-synopsis')?.value?.trim();
   const treatment = $('hi-treatment')?.value?.trim();
-  const status = $('hi-status')?.value || 'ongoing';
 
   if (!cat || !date || !complaint) {
     showToast('Cat, date, and issue are required', 'warning');
@@ -7649,7 +7739,6 @@ async function saveHomeIssue() {
     issueType: complaint,
     synopsis: [synopsis, treatment ? `Treatment: ${treatment}` : ''].filter(Boolean).join(' '),
     narrative: narrative || null,
-    homeStatus: status,
     createdAt: new Date().toISOString(),
     vitals: {},
     medications: [],
@@ -7747,9 +7836,9 @@ async function renderTrends(cat) {
       visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
 
-    // Extract datapoints — skip missing values
+    // Extract datapoints — skip invoices (no actual exam performed) and missing values
     const points = visits
-      .filter(v => v.date && v.vitals)
+      .filter(v => v.date && v.vitals && v.docType !== 'Invoice')
       .map(v => ({
         date: v.date,
         weight: parseKgFromWeight(v.vitals?.weight, isCatKitten(v.cat, v.date)),
@@ -7769,7 +7858,8 @@ async function renderTrends(cat) {
     }
 
     // ── Chart section builder ──
-    const buildChart = (title, metric, color, yLabel, refLow, refHigh, refLabel) => {
+    // scaleMin/scaleMax: fixed axis bounds (null = data-driven)
+    const buildChart = (title, metric, color, yLabel, refLow, refHigh, refLabel, scaleMin = null, scaleMax = null) => {
       const pts = points.filter(p => p[metric] !== null && p[metric] !== undefined);
       if (pts.length < 1) return null;
 
@@ -7786,12 +7876,18 @@ async function renderTrends(cat) {
       const chartH = H - PAD.top - PAD.bottom;
 
       const vals = pts.map(p => p[metric]);
-      const minVal = Math.min(...vals, refLow ?? Infinity);
-      const maxVal = Math.max(...vals, refHigh ?? -Infinity);
-      const valRange = maxVal - minVal || 1;
-      const yPad = valRange * 0.18;
-      const yMin = minVal - yPad;
-      const yMax = maxVal + yPad;
+      let yMin, yMax;
+      if (scaleMin !== null && scaleMax !== null) {
+        yMin = scaleMin;
+        yMax = scaleMax;
+      } else {
+        const minVal = Math.min(...vals);
+        const maxVal = Math.max(...vals);
+        const valRange = maxVal - minVal || 1;
+        const yPad = valRange * 0.18;
+        yMin = minVal - yPad;
+        yMax = maxVal + yPad;
+      }
 
       const dates = pts.map(p => new Date(p.date + 'T12:00:00').getTime());
       const tMin = Math.min(...dates);
@@ -7881,15 +7977,15 @@ async function renderTrends(cat) {
     const hasMCS = points.some(p => p.mcs != null);
 
     if (hasWeight) {
-      const s = buildChart('Weight (kg)', 'weight', '#7c6f5b', 'kg', null, null, null);
+      const s = buildChart('Weight (kg)', 'weight', '#7c6f5b', 'kg', null, null, null, null, null);
       if (s) body.appendChild(s);
     }
     if (hasBCS) {
-      const s = buildChart('Body Condition Score (BCS/9)', 'bcs', '#9c6b1e', 'BCS', 4, 5, 'ideal 4–5/9');
+      const s = buildChart('Body Condition Score (BCS/9)', 'bcs', '#9c6b1e', 'BCS', 4, 5, 'ideal 4–5/9', 0, 9);
       if (s) body.appendChild(s);
     }
     if (hasMCS) {
-      const s = buildChart('Muscle Condition Score (MCS/4)', 'mcs', '#0d47a1', 'MCS', 2, 3, 'ideal 2–3/4');
+      const s = buildChart('Muscle Condition Score (MCS/4)', 'mcs', '#0d47a1', 'MCS', 2, 3, 'ideal 2–3/4', 0, 4);
       if (s) body.appendChild(s);
     }
 
