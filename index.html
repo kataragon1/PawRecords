@@ -3797,7 +3797,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
 
   // Final file status write — only flag for issues that require user action to resolve.
   // Low-confidence annotations and informational notes don't need the file marked flagged.
-  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped', 'excel_manual_review'];
+  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped'];
   const actionableFlags = allFlags.filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
   const finalStatus = actionableFlags.length > 0 ? 'flagged' : 'complete';
   await writeFileStatus(file.id, file.name, finalStatus, {
@@ -3905,25 +3905,65 @@ async function pdfPageToBase64(blob) {
 
 // ── EXCEL PROCESSING ──
 async function processExcelFile(file) {
-  // For now: mark complete with a flag to review manually
-  // Full XLSX parsing requires SheetJS — flag for manual review
-  await writeFileStatus(file.id, file.name, 'flagged', {
-    cats: [],
-    datesCovered: [],
-    extractionPasses: ['excel_pending'],
-    flags: ['excel_manual_review'],
-    processedAt: new Date().toISOString()
-  });
-  const flagRef = doc(collection(db, 'flags'));
-  await setDoc(flagRef, {
-    fileId: file.id, filename: file.name,
-    type: 'excel_manual_review',
-    description: 'Excel file detected — requires manual column mapping to labs collection',
-    bestGuess: null,
-    options: ['Map columns manually', 'Skip this file'],
-    resolved: false, resolvedAt: null, resolution: null,
-    createdAt: new Date().toISOString()
-  });
+  // Load SheetJS from CDN
+  if (!window.XLSX) {
+    $('progress-current').textContent = `${file.name}: loading Excel parser…`;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  $('progress-current').textContent = `${file.name}: reading spreadsheet…`;
+  const blob = await fetchDriveFileBlob(file.id);
+  const arrayBuffer = await blob.arrayBuffer();
+  const workbook = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+
+  // Convert all sheets to plain text tables
+  let spreadsheetText = '';
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const csv = window.XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+    if (csv.trim()) spreadsheetText += `Sheet: ${sheetName}\n${csv}\n\n`;
+  }
+
+  if (!spreadsheetText.trim()) {
+    await writeFileStatus(file.id, file.name, 'complete', {
+      flags: [{ type: 'unknown_type', description: 'Excel file was empty' }]
+    });
+    return;
+  }
+
+  // Send to Claude exactly like a text chunk — it handles free-form lab tables well
+  $('progress-current').textContent = `${file.name}: extracting lab data…`;
+  const chunk = { text: spreadsheetText, isImage: false };
+  const result = await runCombinedPass(file, chunk);
+
+  if (!result || result.skip) {
+    // Nothing clinical found — mark complete, no flag needed
+    await writeFileStatus(file.id, file.name, 'complete', {
+      extractionPasses: ['excel_no_clinical_data'],
+      processedAt: new Date().toISOString()
+    });
+    showToast(`${file.name.slice(0,30)}: no clinical data found — marked complete`, 'journal');
+    return;
+  }
+
+  const allVisits = result.visits || [];
+  const allLabs = [
+    ...(result.labs || []),
+    ...(result.pcr || []).map(r => ({ ...r, labName: r.labName || 'PCR', labGroup: r.labGroup || 'PCR' }))
+  ];
+  const allFlags = result.flags || [];
+  const allCats = new Set([...(result.cats || []), ...allVisits.map(v => v.cat).filter(Boolean)]);
+  const allDates = new Set([...(result.dates || []), ...allVisits.map(v => v.date).filter(Boolean)]);
+
+  normalizeLabGroups(allLabs);
+  allLabs.splice(0, allLabs.length, ...stripBPFromLabs(allLabs));
+
+  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, ['excel'], false, null);
 }
 
 // ── VERIFY FILE ──
@@ -3932,16 +3972,27 @@ async function verifyFile(file) {
   if (!apiKey) { showToast('Set your API key first', 'warning'); return; }
   if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
 
-  // Show a persistent "verifying" toast so there's visible feedback immediately
+  // Show a persistent "verifying" indicator — stays until result is ready
   const verifyingToast = document.createElement('div');
   verifyingToast.className = 'toast';
-  verifyingToast.innerHTML = `<div class="toast-dot amber"></div><div class="toast-text">🔍 Verifying ${file.name.slice(0,25)}…</div>`;
+  verifyingToast.innerHTML = `<div class="toast-dot amber"></div><div class="toast-text">Verifying ${file.name.slice(0,25)}…</div>`;
   $('toast-container').appendChild(verifyingToast);
 
   const btn = document.querySelector(`.file-verify-btn[data-file-id="${file.id}"]`);
   if (btn) { btn.textContent = 'verifying…'; btn.disabled = true; }
 
   const clearVerifying = () => { verifyingToast.remove(); if (btn) { btn.textContent = 'verify'; btn.disabled = false; } };
+
+  // Show final result as a persistent toast requiring dismissal
+  const showVerifyResult = (text, type = 'journal') => {
+    clearVerifying();
+    const t = document.createElement('div');
+    t.className = 'toast';
+    const dotColor = type === 'warning' ? 'amber' : 'green';
+    t.innerHTML = `<div class="toast-dot ${dotColor}"></div><div class="toast-text" style="flex:1;">${text}</div><button style="background:none;border:1px solid var(--border);border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);cursor:pointer;padding:0.15rem 0.4rem;flex-shrink:0;transition:all 0.15s;" onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='none'">OK</button>`;
+    t.querySelector('button').onclick = () => t.remove();
+    $('toast-container').appendChild(t);
+  };
 
   try {
     const blob = await fetchDriveFileBlob(file.id);
@@ -3956,64 +4007,72 @@ async function verifyFile(file) {
       return;
     }
 
-    // Re-run extraction with proper chunk object
-    const chunk = { text: rawText, isImage: false };
-    const newResult = await runCombinedPass(file, chunk);
-
     // Get existing Firestore records for this file
     const snap = await getDocs(query(collection(db, 'visits'), where('sourceFileId', '==', file.id)));
     let existingText = '';
     snap.forEach(d => {
       const v = d.data();
-      existingText += `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}\n\n`;
+      existingText += `${v.date||''} ${v.cat||''}: ${v.synopsis || v.chiefComplaint || ''}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}\n`;
     });
+    // Also include labs
+    const labSnap = await getDocs(query(collection(db, 'labs'), where('driveFileId', '==', file.id)));
+    if (!labSnap.empty) {
+      const labsByDate = {};
+      labSnap.forEach(d => {
+        const l = d.data();
+        if (!labsByDate[l.resultDate]) labsByDate[l.resultDate] = [];
+        labsByDate[l.resultDate].push(`${l.test}: ${l.value}${l.unit ? ' ' + l.unit : ''}`);
+      });
+      for (const [date, tests] of Object.entries(labsByDate)) {
+        existingText += `Labs ${date}: ${tests.join(', ')}\n`;
+      }
+    }
 
-    if (!existingText) {
+    if (!existingText.trim()) {
       clearVerifying();
       showToast(`${file.name.slice(0,30)}: no existing records found — try reprocessing`, 'warning');
       return;
     }
 
-    // Build new content summary for diff
-    const newText = (newResult?.visits||[]).map(v =>
-      `${v.date||''} ${v.cat||''}: ${v.narrative||''}\nDiagnoses: ${(v.diagnoses||[]).join(', ')}\nMeds: ${(v.medications||[]).map(m=>m.name).join(', ')}`
-    ).join('\n\n') || rawText.slice(0, 4000);
+    const diffPrompt = `You are checking whether a veterinary record has been fully captured in our database.
 
-    const diffPrompt = `Compare these two veterinary records. Find ONLY clinical data in Document B missing from Document A — lab values, diagnoses, medications, procedures. Ignore boilerplate, billing, admin.
-If nothing clinical is missing respond exactly: NOTHING_NEW
+STORED RECORDS (what we have):
+${existingText.slice(0, 3000)}
 
-Document A (existing records):
-${existingText.slice(0, 4000)}
+SOURCE DOCUMENT (what the file contains):
+${rawText.slice(0, 3000)}
 
-Document B (fresh extraction):
-${newText.slice(0, 4000)}`;
+List ONLY clinical data present in the source document but missing from the stored records.
+Include: lab values, diagnoses, medications, procedures, vitals not captured.
+Ignore: billing, boilerplate, portal instructions, duplicate info.
+If nothing clinical is missing, respond exactly: NOTHING_NEW`;
 
-    const diffResult = await callExtractionClaude([{ role: 'user', content: diffPrompt }], 1000);
-    const hasNew = diffResult && typeof diffResult === 'string' && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
-
-    clearVerifying();
+    const diffResult = await callPlainClaude(diffPrompt, 1000);
+    const hasNew = diffResult && diffResult.trim() !== 'NOTHING_NEW' && diffResult.trim().length > 10;
 
     if (!hasNew) {
       // Clean result — offer to mark complete if file is still flagged
       const fileDoc = await getDoc(doc(db, 'files', file.id));
       const currentStatus = fileDoc.exists() ? fileDoc.data().status : 'unknown';
       if (currentStatus === 'flagged') {
-        showToast(`✓ ${file.name.slice(0,25)}: nothing missing — mark complete?`, 'journal', async () => {
+        clearVerifying();
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.innerHTML = `<div class="toast-dot green"></div><div class="toast-text" style="flex:1;">✓ ${escHtml(file.name.slice(0,25))}: nothing missing</div><button class="toast-undo" style="flex-shrink:0;">Mark complete</button><button style="background:none;border:1px solid var(--border);border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);cursor:pointer;padding:0.15rem 0.4rem;flex-shrink:0;">OK</button>`;
+        t.querySelector('.toast-undo').onclick = async () => {
           const flagSnap = await getDocs(query(collection(db, 'flags'), where('fileId', '==', file.id), where('resolved', '==', false)));
           const batch = writeBatch(db);
           flagSnap.forEach(d => batch.update(d.ref, { resolved: true, resolution: 'verified clean', resolvedAt: new Date().toISOString() }));
           await batch.commit();
           await writeFileStatus(file.id, file.name, 'complete');
           updateFileBadge(file.id, 'complete');
-          showToast('Marked complete ✓', 'journal');
-        }, 10000);
-        // Change undo button label to "Mark complete"
-        setTimeout(() => {
-          const ub = document.querySelector('.toast-undo');
-          if (ub) ub.textContent = 'Mark complete';
-        }, 50);
+          t.remove();
+          showVerifyResult('Marked complete ✓');
+        };
+        t.querySelectorAll('button')[1].onclick = () => t.remove();
+        $('toast-container').appendChild(t);
       } else {
-        showToast(`✓ ${file.name.slice(0,30)}: extraction complete — nothing missing`, 'journal', null, 8000);
+        showVerifyResult(`✓ ${file.name.slice(0,30)}: nothing missing`);
       }
     } else {
       $('popup-title').textContent = `Verify: ${file.name}`;
@@ -4075,7 +4134,7 @@ ${newText.slice(0, 4000)}`;
   } catch(err) {
     clearVerifying();
     console.error('Verify error:', err);
-    showAlert('Verify failed: ' + err.message, 'warning');
+    showVerifyResult('Verify failed: ' + err.message.slice(0, 60), 'warning');
   }
 }
 
@@ -4760,6 +4819,33 @@ function buildUserContent(chunk, promptText) {
     ];
   }
   return promptText + '\n\n' + (chunk.text || ''); // chunks are pre-sized, no truncation needed
+}
+
+// Plain-text Claude call — no JSON parsing, just returns the raw response string.
+// Used for diff/verify tasks where the response is prose, not structured JSON.
+async function callPlainClaude(prompt, maxTokens = 1000) {
+  if (!apiKey) throw new Error('No API key');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API ${res.status}`);
+  }
+  const data = await res.json();
+  if (data.usage) updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+  return data.content.map(b => b.text || '').join('').trim();
 }
 
 async function detectBulkSummary(textSnippet) {
@@ -6693,7 +6779,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
 
   await batch.commit();
 
-  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped', 'excel_manual_review'];
+  const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped'];
   const actionableFlagsBatch = (parsed.flags || []).filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
   const finalStatus = actionableFlagsBatch.length > 0 ? 'flagged' : 'complete';
   await writeFileStatus(fileId, filename, finalStatus, {
