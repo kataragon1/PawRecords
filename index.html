@@ -3512,6 +3512,10 @@ async function processFile(file) {
 
     // ── SINGLE COMBINED PASS ──
     const result = await runCombinedPass(file, chunk);
+    if (result === 'SKIP') {
+      console.log(`${file.name}: chunk skipped (no clinical content)`);
+      continue;
+    }
     if (!result) {
       if (chunk._retried) {
         // Already retried once — pause and ask rather than loop
@@ -4083,7 +4087,6 @@ async function processExcelFile(file) {
   const arrayBuffer = await blob.arrayBuffer();
   const workbook = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
 
-  // Convert all sheets to plain text tables
   let spreadsheetText = '';
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
@@ -4098,13 +4101,62 @@ async function processExcelFile(file) {
     return;
   }
 
-  // Send to Claude exactly like a text chunk — it handles free-form lab tables well
   $('progress-current').textContent = `${file.name}: extracting lab data…`;
-  const chunk = { text: spreadsheetText, isImage: false };
-  const result = await runCombinedPass(file, chunk);
+
+  // Detect which cat this file is for from filename or content
+  const catHint = APP_PETS.find(p => (file.name || '').toLowerCase().includes(p.toLowerCase())) || (APP_PETS.length === 1 ? APP_PETS[0] : null);
+
+  const prompt = `You are extracting veterinary lab data from a spreadsheet that may be a multi-year summary table, not a standard clinical record.
+
+Known cats: ${APP_PETS.join(', ') || 'detect from content'}${catHint ? `\nThis file is likely for: ${catHint}` : ''}
+
+This spreadsheet may have dates as rows and lab panel names as columns, with values in cells. Each row = one date's worth of lab results. Values may be free-text (e.g. "14/1.2", "Hct 48", "Usg 1.040 pH 7.5", "T4 1.3", "FeLV/FIV both neg").
+
+For each date row with any lab values:
+1. Create a minimal visit record with chiefComplaint "lab report" and visitClass "problem"
+2. Parse ALL lab values from that row into individual lab entries — split compound values like "14/1.2" into separate tests using column headers as context (e.g. "BUN/Ct/SDMA" column → BUN=14, Creatinine=1.2)
+3. Clinic name comes from the date cell if present (e.g. "2/27/20 (Town & Country Vet)")
+
+Parse dates in any format (MM/DD/YY, MM/DD/YYYY). Strip clinic names from date cells.
+
+Return JSON only, no explanation, no markdown:
+{
+  "cats": ["Latte"],
+  "dates": ["2020-02-27"],
+  "visits": [{
+    "cat": "Latte",
+    "date": "2020-02-27",
+    "clinic": "Town & Country",
+    "chiefComplaint": "lab report",
+    "visitClass": "problem",
+    "synopsis": "Lab values from historical summary spreadsheet.",
+    "vitals": {},
+    "medications": [],
+    "procedures": []
+  }],
+  "labs": [{
+    "cat": "Latte",
+    "test": "BUN",
+    "value": 14,
+    "unit": "mg/dL",
+    "refLow": null,
+    "refHigh": null,
+    "abnormal": null,
+    "resultDate": "2020-02-27",
+    "visitDate": "2020-02-27",
+    "labName": "Chemistry",
+    "labGroup": "Chemistry"
+  }],
+  "pcr": [],
+  "flags": []
+}
+
+Spreadsheet content:
+${spreadsheetText}`;
+
+  const result = await callExtractionClaude([{ role: 'user', content: prompt }], 4000);
 
   if (!result || result.skip) {
-    // Nothing clinical found — mark complete, no flag needed
     await writeFileStatus(file.id, file.name, 'complete', {
       extractionPasses: ['excel_no_clinical_data'],
       processedAt: new Date().toISOString()
@@ -4125,7 +4177,8 @@ async function processExcelFile(file) {
   normalizeLabGroups(allLabs);
   allLabs.splice(0, allLabs.length, ...stripBPFromLabs(allLabs));
 
-  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, ['excel'], false, null);
+  await writeExtractionToFirestore(file, allVisits, allLabs, allFlags, allCats, allDates, ['excel'], true, null);
+  // isAmendment=true so existing visits for those dates get merged rather than duplicated
 }
 
 // ── VERIFY FILE ──
@@ -5271,7 +5324,8 @@ If an invoice has literally no clinical content at all (no meds, no vaccines, no
     { role: 'user', content: buildUserContent(chunk, prompt) }
   ], 12000);
 
-  if (!result || result.skip) return null;
+  if (!result) return null;          // genuine failure — triggers retry
+  if (result.skip) return 'SKIP';    // no clinical content — not a failure
   return result;
 }
 
