@@ -1410,20 +1410,15 @@ function briefComplaint(v) {
 }
 
 // Derives a brief label from an invoice — uses cached Claude summary if available,
-// otherwise falls back to med list and triggers a background summary generation.
+// otherwise falls back to med list and queues a background summary generation.
 function briefInvoice(v) {
   if (!v) return '';
-  // Use cached Claude summary if available
+  // Use cached Claude summary or chiefComplaint if available
   if (v.invoiceSummary) return v.invoiceSummary;
-  // Trigger lazy generation in background (will reload sidebar when done)
+  if (v.chiefComplaint) return v.chiefComplaint;
+  // Queue lazy generation (rate-limited — processes one at a time)
   if (apiKey && (v.medications?.length || v.procedures?.length)) {
-    getInvoiceSummary(v).then(summary => {
-      if (summary) {
-        // Update local cache and re-render sidebar
-        v.invoiceSummary = summary;
-        loadRecordsSidebar();
-      }
-    });
+    queueInvoiceSummary(v);
   }
   // Fallback: raw med list filtered of noise while summary generates
   const meds = (v.medications || [])
@@ -1433,9 +1428,49 @@ function briefInvoice(v) {
     .map(p => p.name).filter(Boolean)
     .filter(p => !/exam|visit|consult|blood draw/i.test(p));
   const items = [...meds, ...procs];
-  if (!items.length) return v.chiefComplaint || '';
+  if (!items.length) return '';
   const joined = items.join(', ');
   return joined.length > 40 ? joined.slice(0, 38) + '…' : joined;
+}
+
+// Sequential queue for invoice summaries — processes one every 2s to avoid rate limits
+const _invoiceSummaryQueue = new Set();
+let _invoiceSummaryRunning = false;
+
+function queueInvoiceSummary(v) {
+  if (_invoiceSummaryQueue.has(v.id)) return;
+  _invoiceSummaryQueue.add(v.id);
+  if (!_invoiceSummaryRunning) processInvoiceSummaryQueue(v);
+}
+
+async function processInvoiceSummaryQueue(firstVisit) {
+  _invoiceSummaryRunning = true;
+  // Collect all queued visits — need to look them up from cache
+  const toProcess = [..._invoiceSummaryQueue];
+  _invoiceSummaryQueue.clear();
+
+  for (const id of toProcess) {
+    const v = _allVisitsCache?.find(x => x.id === id);
+    if (!v || v.invoiceSummary || v.chiefComplaint) continue;
+    try {
+      const summary = await getInvoiceSummary(v);
+      if (summary) {
+        v.invoiceSummary = summary;
+      }
+    } catch(e) { console.warn('Invoice summary failed:', e.message); }
+    // Wait 1.5s between requests to stay well under rate limits
+    if (toProcess.indexOf(id) < toProcess.length - 1) await sleep(1500);
+  }
+
+  // Reload sidebar once after all summaries are done
+  if (toProcess.length) loadRecordsSidebar();
+  _invoiceSummaryRunning = false;
+
+  // Process any that were queued while we were running
+  if (_invoiceSummaryQueue.size) {
+    await sleep(1500);
+    processInvoiceSummaryQueue();
+  }
 }
 
 
