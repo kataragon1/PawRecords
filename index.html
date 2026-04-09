@@ -3171,9 +3171,6 @@ async function startProcessingQueue(files) {
         showAlert(`Processing failed: ${file.name.slice(0,40)} — ${err.message.slice(0,80)}`, 'warning');
       }
     }
-    // Uncheck file after processing
-    const fileCb = document.querySelector(`.file-item-checkbox[data-file-id="${file.id}"]`);
-    if (fileCb) { fileCb.checked = false; fileCb.closest('.file-item')?.classList.remove('selected'); }
     updateProcessButtons();
     // Throttle: brief pause between files to avoid rate limits
     if (done < total && !processingStop) await sleep(800);
@@ -4119,6 +4116,8 @@ If nothing clinical is missing, respond exactly: NOTHING_NEW`;
       reprocessBtn.className = 'btn-icon cost-icon';
       reprocessBtn.innerHTML = '<span class="cost-dot"></span> Reprocess file';
       reprocessBtn.onclick = () => {
+        clearTimeout(_verifyTimeout);
+        clearVerifying();
         $('record-popup').classList.remove('open');
         openProcessModal([file]);
       };
@@ -4129,6 +4128,8 @@ If nothing clinical is missing, respond exactly: NOTHING_NEW`;
       flagBtn.className = 'btn-icon free-icon';
       flagBtn.innerHTML = '<span class="free-dot"></span> Flag for review';
       flagBtn.onclick = async () => {
+        clearTimeout(_verifyTimeout);
+        clearVerifying();
         await setDoc(doc(collection(db, 'flags')), {
           fileId: file.id, filename: file.name, type: 'verify_missing_data',
           description: popupRawText.slice(0, 500),
@@ -4146,7 +4147,11 @@ If nothing clinical is missing, respond exactly: NOTHING_NEW`;
       const dismissBtn = document.createElement('button');
       dismissBtn.className = 'btn-icon';
       dismissBtn.textContent = 'Looks fine';
-      dismissBtn.onclick = () => $('record-popup').classList.remove('open');
+      dismissBtn.onclick = () => {
+        clearTimeout(_verifyTimeout);
+        clearVerifying();
+        $('record-popup').classList.remove('open');
+      };
       btns.appendChild(dismissBtn);
 
       body.appendChild(btns);
