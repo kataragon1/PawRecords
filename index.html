@@ -1598,8 +1598,8 @@ function renderRecordsTree(tree) {
         badge.textContent = nonInvoiceVisits.length;
         badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);flex-shrink:0;';
         dl.appendChild(badge);
-      } else if (visits.length > 1 && nonInvoiceVisits.length <= 1) {
-        // Has invoices but effectively one real visit — show inv badge only
+      } else if (isInvoiceOnly || (visits.length > 1 && nonInvoiceVisits.length <= 1)) {
+        // Invoice-only date or mixed date with one real visit — show inv badge
         const invBadge = document.createElement('span');
         invBadge.textContent = 'inv';
         invBadge.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;flex-shrink:0;';
