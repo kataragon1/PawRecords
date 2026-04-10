@@ -1446,40 +1446,64 @@ function briefInvoice(v) {
 // Sequential queue for invoice summaries — processes one every 2s to avoid rate limits
 const _invoiceSummaryQueue = new Set();
 let _invoiceSummaryRunning = false;
+let _invoiceSummaryTimer = null;
 
 function queueInvoiceSummary(v) {
+  if (!v?.id) return;
   if (_invoiceSummaryQueue.has(v.id)) return;
+  // Don't queue if cache not ready yet — will get queued on next render
+  if (!_allVisitsCache) return;
   _invoiceSummaryQueue.add(v.id);
-  if (!_invoiceSummaryRunning) processInvoiceSummaryQueue(v);
+  // Debounce start — wait 3s after last queue addition before starting
+  // so the initial render finishes collecting all invoices before we begin
+  if (_invoiceSummaryTimer) clearTimeout(_invoiceSummaryTimer);
+  _invoiceSummaryTimer = setTimeout(() => {
+    _invoiceSummaryTimer = null;
+    if (!_invoiceSummaryRunning) processInvoiceSummaryQueue();
+  }, 3000);
 }
 
-async function processInvoiceSummaryQueue(firstVisit) {
+async function processInvoiceSummaryQueue() {
+  if (_invoiceSummaryRunning) return;
   _invoiceSummaryRunning = true;
-  // Collect all queued visits — need to look them up from cache
   const toProcess = [..._invoiceSummaryQueue];
   _invoiceSummaryQueue.clear();
 
-  for (const id of toProcess) {
+  let didUpdate = false;
+  for (let i = 0; i < toProcess.length; i++) {
+    const id = toProcess[i];
     const v = _allVisitsCache?.find(x => x.id === id);
     if (!v || v.invoiceSummary || v.chiefComplaint) continue;
     try {
       const summary = await getInvoiceSummary(v);
       if (summary) {
         v.invoiceSummary = summary;
+        didUpdate = true;
+        // Update just the date label text in the DOM without full reload
+        updateInvoiceLabelInDOM(v.id, summary);
       }
     } catch(e) { console.warn('Invoice summary failed:', e.message); }
-    // Wait 1.5s between requests to stay well under rate limits
-    if (toProcess.indexOf(id) < toProcess.length - 1) await sleep(1500);
+    if (i < toProcess.length - 1) await sleep(1500);
   }
 
-  // Reload sidebar once after all summaries are done
-  if (toProcess.length) loadRecordsSidebar();
   _invoiceSummaryRunning = false;
 
-  // Process any that were queued while we were running
+  // If more were queued while running, process them after a delay
   if (_invoiceSummaryQueue.size) {
-    await sleep(1500);
-    processInvoiceSummaryQueue();
+    setTimeout(() => processInvoiceSummaryQueue(), 2000);
+  }
+}
+
+function updateInvoiceLabelInDOM(visitId, summary) {
+  // Find the date group for this visit and update its complaint span
+  // This avoids a full sidebar reload which would re-trigger the queue
+  const visitEl = document.querySelector(`[data-visit-id="${CSS.escape(visitId)}"]`);
+  if (visitEl) {
+    const dg = visitEl.closest('.visit-date-group');
+    if (dg) {
+      const ccSpan = dg.querySelector('.date-complaint-span');
+      if (ccSpan) ccSpan.textContent = summary;
+    }
   }
 }
 
@@ -1554,6 +1578,7 @@ function renderRecordsTree(tree) {
       }
       if (complaint) {
         const cc = document.createElement('span');
+        cc.className = 'date-complaint-span';
         cc.textContent = complaint;
         if (complaintFull && complaintFull !== complaint) cc.title = complaintFull;
         const ccColor = isInvoiceOnly ? 'var(--ink-muted)' : isMultiple ? 'var(--ink-dim)' : (singleStyle ? singleStyle.color : 'var(--ink)');
@@ -1594,6 +1619,7 @@ function renderRecordsTree(tree) {
         const ve = document.createElement('div');
         ve.className = 'visit-entry';
         ve.style.cssText = 'position:relative;cursor:pointer;';
+        ve.dataset.visitId = v.id;
         const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
         const isInvoice = v.docType === 'Invoice';
         const isHome = v.source === 'home';
