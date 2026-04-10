@@ -368,6 +368,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #notes-input:focus{border-color:var(--accent);}
 #notes-pin-toggle.active{background:var(--accent);color:white;border-color:var(--accent);}
 .notes-cat-chip{font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.4rem;border-radius:10px;border:1px solid var(--border);background:white;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;}
+.notes-cat-chip.active{background:var(--accent);color:white;border-color:var(--accent);}
 .journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
 .journal-entry-full:hover{background:var(--surface);}
 .journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1395,8 +1396,12 @@ async function loadRecordsSidebar() {
 
 // Returns a short complaint string for display — strips common filler phrases
 function briefComplaint(v) {
-  if (v.source === 'home') return '';
   if (v.docType === 'Invoice') return '';
+  if (v.source === 'home') {
+    const raw = (v.chiefComplaint || v.issueType || '').trim();
+    if (!raw) return '';
+    return raw.length <= 36 ? raw : raw.slice(0, 34) + '…';
+  }
   let raw = (v.chiefComplaint || '').trim();
   if (!raw) return '';
   // Strip trailing follow-up/recheck suffixes too, not just leading
@@ -1541,7 +1546,58 @@ function renderRecordsTree(tree) {
     heading.innerHTML = `<span class="cat-emoji">🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
     const vlist = document.createElement('div');
     vlist.className = 'visit-list open';
+
+    const currentYear = new Date().getFullYear();
+    let currentYearGroup = null;
+    let currentYearEl = null;
+    let lastYear = null;
+
     for (const date of Object.keys(dates).sort().reverse()) {
+      const year = date ? date.slice(0, 4) : 'Unknown';
+
+      // Insert year divider when year changes
+      if (year !== lastYear) {
+        lastYear = year;
+        const isCurrentYear = year === String(currentYear);
+        const isPrevYear = year === String(currentYear - 1);
+        const defaultOpen = isCurrentYear || isPrevYear;
+
+        const yearDiv = document.createElement('div');
+        yearDiv.style.cssText = 'display:flex;align-items:center;gap:0.4rem;padding:0.3rem 1rem 0.2rem 1rem;cursor:pointer;user-select:none;margin-top:0.15rem;';
+
+        const yearArrow = document.createElement('span');
+        yearArrow.style.cssText = `font-size:0.4rem;color:var(--ink-muted);transition:transform 0.15s;flex-shrink:0;transform:${defaultOpen ? 'rotate(90deg)' : ''};`;
+        yearArrow.textContent = '▶';
+
+        const yearLine1 = document.createElement('span');
+        yearLine1.style.cssText = 'flex:0 0 6px;height:1px;background:var(--border);';
+
+        const yearLabel = document.createElement('span');
+        yearLabel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);letter-spacing:0.06em;flex-shrink:0;';
+        yearLabel.textContent = year;
+
+        const yearLine2 = document.createElement('span');
+        yearLine2.style.cssText = 'flex:1;height:1px;background:var(--border);';
+
+        yearDiv.appendChild(yearArrow);
+        yearDiv.appendChild(yearLine1);
+        yearDiv.appendChild(yearLabel);
+        yearDiv.appendChild(yearLine2);
+        vlist.appendChild(yearDiv);
+
+        // Year group container
+        currentYearEl = document.createElement('div');
+        currentYearEl.style.display = defaultOpen ? 'block' : 'none';
+        vlist.appendChild(currentYearEl);
+        currentYearGroup = currentYearEl;
+
+        yearDiv.addEventListener('click', () => {
+          const open = currentYearEl.style.display === 'none';
+          currentYearEl.style.display = open ? 'block' : 'none';
+          yearArrow.style.transform = open ? 'rotate(90deg)' : '';
+        });
+      }
+
       const visits = dates[date];
       const dg = document.createElement('div');
       dg.className = 'visit-date-group';
@@ -1674,7 +1730,7 @@ function renderRecordsTree(tree) {
         }
       });
 
-      vlist.appendChild(dg);
+      (currentYearGroup || vlist).appendChild(dg);
     }
     heading.onclick = () => {
       heading.classList.toggle('open');
@@ -4634,10 +4690,11 @@ async function openMergeModal(visitA) {
 
   // Load all visits for this cat to pick from
   const snap = await getDocs(query(collection(db, 'visits'),
-    where('cat', '==', visitA.cat), orderBy('date', 'desc')));
+    where('cat', '==', visitA.cat)));
   const candidates = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(v => v.id !== visitA.id);
+    .filter(v => v.id !== visitA.id)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   if (!candidates.length) {
     body.innerHTML = '<div style="padding:1.5rem;font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">No other visits found for ' + escHtml(visitA.cat) + '.</div>';
@@ -6566,6 +6623,17 @@ function makeNoteEl(note) {
     textWrap.appendChild(catsEl);
   }
 
+  const ts = note.addedAt || note.addedDate;
+  if (ts) {
+    const tsEl = document.createElement('div');
+    tsEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.53rem;color:var(--ink-muted);margin-top:0.15rem;opacity:0.7;';
+    try {
+      const d = new Date(ts);
+      tsEl.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } catch(e) { tsEl.textContent = ts; }
+    textWrap.appendChild(tsEl);
+  }
+
   const delBtn = document.createElement('button');
   delBtn.className = 'note-delete-btn';
   delBtn.textContent = '✕';
@@ -6605,10 +6673,12 @@ async function deleteNote(note) {
 
 async function addNote(text, cats, pinned) {
   if (!text.trim()) return;
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const addedDate = now.toISOString().split('T')[0];
+  const addedAt = now.toISOString();
   try {
     const ref = doc(collection(db, 'context_notes'));
-    const note = { id: ref.id, text: text.trim(), cats: [...cats], pinned, addedDate: today };
+    const note = { id: ref.id, text: text.trim(), cats: [...cats], pinned, addedDate, addedAt };
     await setDoc(ref, note);
     _notesCache.unshift(note);
     renderNotes();
@@ -8186,8 +8256,8 @@ async function renderTrends(cat) {
     if (_allVisitsCache) {
       visits = _allVisitsCache.filter(v => v.cat === cat);
     } else {
-      const snap = await getDocs(query(collection(db, 'visits'), where('cat', '==', cat), orderBy('date', 'asc')));
-      visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(query(collection(db, 'visits'), where('cat', '==', cat)));
+      visits = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     }
 
     // Extract datapoints — skip invoices (no actual exam performed) and missing values
