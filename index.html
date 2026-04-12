@@ -88,11 +88,9 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .cabinet-tabs-wrap{position:relative;display:flex;align-items:flex-end;padding:4px 0.75rem 0;gap:0;overflow:hidden;}
 .cabinet-tabs-scroll{display:flex;align-items:flex-end;gap:3px;overflow:hidden;flex:1;min-width:0;}
 .cabinet-tab{display:flex;flex-direction:column;cursor:pointer;flex-shrink:0;}
-.cabinet-tab .ct-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 7px 0 0;padding:2px 8px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;white-space:nowrap;align-self:flex-start;margin-left:3px;transition:background 0.1s;}
-.cabinet-tab .ct-body{border:1px solid #c8bfae;border-radius:2px 4px 0 0;border-bottom:none;background:#f5f1ea;padding:2px 8px 3px;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#9c8e7e;white-space:nowrap;min-width:52px;text-align:center;transition:background 0.1s;}
-.cabinet-tab:hover .ct-tab,.cabinet-tab:hover .ct-body{background:#ddd5c2;}
-.cabinet-tab.active .ct-tab{background:#f7f4ee;border-bottom:1px solid #f7f4ee;z-index:2;position:relative;}
-.cabinet-tab.active .ct-body{background:#f7f4ee;border-bottom:1px solid #f7f4ee;z-index:2;position:relative;color:#5a5045;font-weight:700;}
+.cabinet-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 7px 0 0;padding:3px 9px 4px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.04em;white-space:nowrap;cursor:pointer;transition:background 0.1s;flex-shrink:0;}
+.cabinet-tab:hover{background:#ddd5c2;}
+.cabinet-tab.active{background:#f7f4ee;border-bottom:1px solid #f7f4ee;position:relative;z-index:2;}
 .cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.65rem;color:#8a7d6e;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.7;transition:opacity 0.1s;}
 .cabinet-arrow:hover{opacity:1;}
 .cabinet-arrow:disabled{opacity:0.2;cursor:default;}
@@ -1664,19 +1662,8 @@ function renderRecordsTree(tree) {
       const count = yearMap[year].reduce((sum, d) => sum + dates[d].length, 0);
       const tabEl = document.createElement('div');
       tabEl.className = 'cabinet-tab' + (year === activeYear ? ' active' : '');
-
-      const tabTop = document.createElement('div');
-      tabTop.className = 'ct-tab';
-      tabTop.textContent = year;
-
-      const tabBot = document.createElement('div');
-      tabBot.className = 'ct-body';
-      tabBot.textContent = count + (count === 1 ? ' visit' : ' visits');
-
-      tabEl.appendChild(tabTop);
-      tabEl.appendChild(tabBot);
+      tabEl.textContent = `${year} (${count})`;
       tabEl.addEventListener('click', () => selectYear(year));
-
       tabEls.push({ year, el: tabEl });
     });
 
