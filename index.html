@@ -83,6 +83,19 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .cat-heading.open .cat-arrow{transform:rotate(90deg);}
 .visit-list{display:none;padding-bottom:0.25rem;}
 .visit-list.open{display:block;}
+.year-folder{margin:4px 0 0;}
+.year-folder-tab{display:inline-flex;align-items:center;gap:4px;background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 8px 0 0;padding:2px 10px 2px 7px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;cursor:pointer;position:relative;top:1px;transition:background 0.12s;user-select:none;}
+.year-folder-tab:hover{background:#ddd5c2;}
+.year-folder-tab .yf-arrow{font-size:0.4rem;color:#8a7d6e;transition:transform 0.15s;display:inline-block;}
+.year-folder-tab.open .yf-arrow{transform:rotate(90deg);}
+.year-folder-body{border:1px solid #c8bfae;border-radius:0 4px 4px 4px;background:#f7f4ee;}
+.year-folder-body.closed{display:none;}
+.closed-folders-row{display:flex;flex-wrap:wrap;gap:5px;padding:6px 0.75rem 4px;}
+.closed-folder-item{display:flex;flex-direction:column;cursor:pointer;}
+.closed-folder-item:hover .cfi-tab{background:#ddd5c2;}
+.closed-folder-item:hover .cfi-body{background:#ede8df;}
+.cfi-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 6px 0 0;padding:1px 6px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;white-space:nowrap;align-self:flex-start;margin-left:3px;transition:background 0.12s;}
+.cfi-body{border:1px solid #c8bfae;border-radius:2px 4px 4px 4px;background:#f5f1ea;padding:2px 6px 3px;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#9c8e7e;white-space:nowrap;min-width:48px;text-align:center;transition:background 0.12s;}
 .visit-date-group{margin-bottom:0.1rem;}
 .visit-date-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);font-weight:600;transition:background 0.12s;}
 .visit-date-label:hover{background:var(--surface);}
@@ -368,6 +381,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #notes-input:focus{border-color:var(--accent);}
 #notes-pin-toggle.active{background:var(--accent);color:white;border-color:var(--accent);}
 .notes-cat-chip{font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.4rem;border-radius:10px;border:1px solid var(--border);background:white;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;}
+.notes-cat-chip.active{background:var(--accent);color:white;border-color:var(--accent);}
 .journal-entry-full{padding:0.22rem 1rem 0.22rem 2.25rem;cursor:pointer;transition:background 0.12s;}
 .journal-entry-full:hover{background:var(--surface);}
 .journal-entry-text-full{font-family:'JetBrains Mono',monospace;font-size:0.61rem;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -573,6 +587,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
           <span class="free-dot"></span> Upload files
         </button>
         <input type="file" id="upload-file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" style="display:none;">
+        <button class="btn-icon" id="refresh-drive-btn" title="Refresh file list from Drive" style="font-size:0.62rem;padding:0.25rem 0.5rem;margin-left:auto;">↻ Refresh</button>
       </div>
       <div id="upload-progress-bar" style="display:none;padding:0.35rem 0.75rem;background:var(--surface);border-bottom:1px solid var(--border);">
         <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);margin-bottom:0.25rem;" id="upload-progress-label">Uploading…</div>
@@ -1376,16 +1391,38 @@ function pillStyle(el, active) {
 }
 
 // ── RECORDS SIDEBAR ──
+let _recordsSidebarDebounce = null;
+let _recordsSidebarLoading = false;
 async function loadRecordsSidebar() {
+  // Debounce — if called repeatedly, only execute after 400ms of quiet
+  if (_recordsSidebarDebounce) clearTimeout(_recordsSidebarDebounce);
+  return new Promise(resolve => {
+    _recordsSidebarDebounce = setTimeout(async () => {
+      _recordsSidebarDebounce = null;
+      if (_recordsSidebarLoading) { resolve(); return; }
+      _recordsSidebarLoading = true;
+      try {
+        await _loadRecordsSidebarImpl();
+      } finally {
+        _recordsSidebarLoading = false;
+        resolve();
+      }
+    }, 400);
+  });
+}
+
+async function _loadRecordsSidebarImpl() {
   try {
-    const q = query(collection(db, 'visits'), orderBy('date', 'desc'));
-    const snap = await getDocs(q);
+    if (!_allVisitsCache) {
+      const q = query(collection(db, 'visits'), orderBy('date', 'desc'));
+      const snap = await getDocs(q);
+      _allVisitsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
     const tree = {};
-    snap.forEach(d => {
-      const v = d.data();
+    _allVisitsCache.forEach(v => {
       if (!tree[v.cat]) tree[v.cat] = {};
       if (!tree[v.cat][v.date]) tree[v.cat][v.date] = [];
-      tree[v.cat][v.date].push({id: d.id, ...v});
+      if (!tree[v.cat][v.date].find(x => x.id === v.id)) tree[v.cat][v.date].push(v);
     });
     renderRecordsTree(tree);
   } catch (err) {
@@ -1395,8 +1432,12 @@ async function loadRecordsSidebar() {
 
 // Returns a short complaint string for display — strips common filler phrases
 function briefComplaint(v) {
-  if (v.source === 'home') return '';
   if (v.docType === 'Invoice') return '';
+  if (v.source === 'home') {
+    const raw = (v.chiefComplaint || v.issueType || '').trim();
+    if (!raw) return '';
+    return raw.length <= 36 ? raw : raw.slice(0, 34) + '…';
+  }
   let raw = (v.chiefComplaint || '').trim();
   if (!raw) return '';
   // Strip trailing follow-up/recheck suffixes too, not just leading
@@ -1541,7 +1582,60 @@ function renderRecordsTree(tree) {
     heading.innerHTML = `<span class="cat-emoji">🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
     const vlist = document.createElement('div');
     vlist.className = 'visit-list open';
+
+    const currentYear = new Date().getFullYear();
+    let currentYearGroup = null;
+    let lastYear = null;
+    // Collect years and their date groups for building closed folder row
+    const yearGroups = {}; // year → { el, count }
+
     for (const date of Object.keys(dates).sort().reverse()) {
+      const year = date ? date.slice(0, 4) : 'Unknown';
+      const isCurrentYear = year === String(currentYear);
+      const isPrevYear = year === String(currentYear - 1);
+      const defaultOpen = isCurrentYear || isPrevYear;
+
+      if (year !== lastYear) {
+        lastYear = year;
+
+        if (defaultOpen) {
+          // Full open folder for recent years
+          const folder = document.createElement('div');
+          folder.className = 'year-folder';
+
+          const tab = document.createElement('div');
+          tab.className = 'year-folder-tab open';
+          const arrow = document.createElement('span');
+          arrow.className = 'yf-arrow';
+          arrow.textContent = '▶';
+          tab.appendChild(arrow);
+          tab.appendChild(document.createTextNode(' ' + year));
+          folder.appendChild(tab);
+
+          const body = document.createElement('div');
+          body.className = 'year-folder-body';
+          folder.appendChild(body);
+
+          tab.addEventListener('click', () => {
+            tab.classList.toggle('open');
+            body.classList.toggle('closed');
+          });
+
+          vlist.appendChild(folder);
+          currentYearGroup = body;
+          yearGroups[year] = { el: body, count: 0 };
+        } else {
+          // Closed folder — will be collected into compact row below
+          const container = document.createElement('div');
+          container.style.display = 'none'; // hidden, shown via compact row
+          vlist.appendChild(container);
+          currentYearGroup = container;
+          yearGroups[year] = { el: container, count: 0, closed: true };
+        }
+      }
+
+      if (yearGroups[year]) yearGroups[year].count++;
+
       const visits = dates[date];
       const dg = document.createElement('div');
       dg.className = 'visit-date-group';
@@ -1590,6 +1684,21 @@ function renderRecordsTree(tree) {
       } else {
         dl.appendChild(dlArrow);
         dl.appendChild(dlText);
+      }
+
+      // Edit pencil for invoice-only dates — appears on hover
+      if (isInvoiceOnly && singleVisit) {
+        const editBtn = document.createElement('button');
+        editBtn.textContent = '✏';
+        editBtn.title = 'Edit chief complaint';
+        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;opacity:0;transition:opacity 0.15s;flex-shrink:0;line-height:1;';
+        dl.appendChild(editBtn);
+        dl.addEventListener('mouseenter', () => editBtn.style.opacity = '0.5');
+        dl.addEventListener('mouseleave', () => editBtn.style.opacity = '0');
+        editBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          openInvoiceComplaintEdit(singleVisit, dl);
+        });
       }
 
       // Show count badge only when multiple non-invoice visits exist
@@ -1674,8 +1783,68 @@ function renderRecordsTree(tree) {
         }
       });
 
-      vlist.appendChild(dg);
+      (currentYearGroup || vlist).appendChild(dg);
     }
+
+    // Build compact closed-folder row for older years
+    const closedYears = Object.entries(yearGroups)
+      .filter(([, g]) => g.closed)
+      .sort((a, b) => b[0].localeCompare(a[0]));
+
+    if (closedYears.length) {
+      const row = document.createElement('div');
+      row.className = 'closed-folders-row';
+
+      closedYears.forEach(([year, group]) => {
+        const item = document.createElement('div');
+        item.className = 'closed-folder-item';
+
+        const tab = document.createElement('div');
+        tab.className = 'cfi-tab';
+        tab.textContent = year;
+
+        const body = document.createElement('div');
+        body.className = 'cfi-body';
+        const n = group.count;
+        body.textContent = n + ' visit' + (n !== 1 ? 's' : '');
+
+        item.appendChild(tab);
+        item.appendChild(body);
+
+        // Click: expand this year into a full folder, remove from compact row
+        item.addEventListener('click', () => {
+          // Build a full folder and insert before the closed row
+          const folder = document.createElement('div');
+          folder.className = 'year-folder';
+          const ftab = document.createElement('div');
+          ftab.className = 'year-folder-tab open';
+          const farrow = document.createElement('span');
+          farrow.className = 'yf-arrow';
+          farrow.textContent = '▶';
+          ftab.appendChild(farrow);
+          ftab.appendChild(document.createTextNode(' ' + year));
+          folder.appendChild(ftab);
+          const fbody = document.createElement('div');
+          fbody.className = 'year-folder-body';
+          // Move the hidden date groups into the new folder body
+          while (group.el.firstChild) fbody.appendChild(group.el.firstChild);
+          folder.appendChild(fbody);
+          ftab.addEventListener('click', () => {
+            ftab.classList.toggle('open');
+            fbody.classList.toggle('closed');
+          });
+          vlist.insertBefore(folder, row);
+          // Remove this item from the compact row
+          item.remove();
+          if (!row.children.length) row.remove();
+        });
+
+        row.appendChild(item);
+      });
+
+      vlist.appendChild(row);
+    }
+
     heading.onclick = () => {
       heading.classList.toggle('open');
       vlist.classList.toggle('open');
@@ -1684,6 +1853,52 @@ function renderRecordsTree(tree) {
     sec.appendChild(vlist);
     container.appendChild(sec);
   }
+}
+
+function openInvoiceComplaintEdit(visit, dlEl) {
+  // Replace the date label content with an inline input
+  const existing = dlEl.querySelector('.date-complaint-span');
+  const currentVal = visit.chiefComplaint || visit.invoiceSummary || '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentVal;
+  input.style.cssText = 'flex:1;min-width:0;font-family:"JetBrains Mono",monospace;font-size:0.58rem;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:0.1rem 0.35rem;color:var(--ink);outline:none;';
+
+  if (existing) existing.replaceWith(input);
+  else dlEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  const save = async () => {
+    const val = input.value.trim();
+    if (val && val !== currentVal) {
+      try {
+        await setDoc(doc(db, 'visits', visit.id), { chiefComplaint: val, invoiceSummary: val }, { merge: true });
+        visit.chiefComplaint = val;
+        visit.invoiceSummary = val;
+        showToast('Updated ✓', 'journal');
+      } catch(e) { showAlert('Save failed: ' + e.message, 'warning'); }
+    }
+    // Update DOM directly — no full reload needed
+    const ccSpan = dlEl.querySelector('.date-complaint-span');
+    if (ccSpan) ccSpan.textContent = val || currentVal;
+    else {
+      const span = document.createElement('span');
+      span.className = 'date-complaint-span';
+      span.textContent = val || currentVal;
+      span.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:0.75;cursor:default;`;
+      input.replaceWith(span);
+      return;
+    }
+    input.replaceWith(ccSpan);
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = currentVal; input.blur(); }
+  });
 }
 
 function openVisitEdit(v) {
@@ -1848,21 +2063,34 @@ function openVisitEdit(v) {
 // Within each labGroup, tests are sorted by labName (panel sub-header) then alphabetically.
 
 let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, resultDate, visitDate, labName}]}
+let _allLabsCache = null; // raw array cache — null means needs reload
 let flowsheetCat = null;
 
+function invalidateLabsCache() { _allLabsCache = null; }
+
+let _labsSidebarDebounce = null;
 async function loadLabsSidebar() {
-  try {
-    const snap = await getDocs(query(collection(db, 'labs'), orderBy('resultDate', 'desc')));
-    labDataCache = {};
-    invalidateFlowsheetCache(); // labs changed — rebuild flowsheet on next open
-    snap.forEach(d => {
-      const l = d.data();
-      if (!l.cat || !l.test) return;
-      if (!labDataCache[l.cat]) labDataCache[l.cat] = [];
-      labDataCache[l.cat].push(l);
-    });
-    renderLabsSidebar();
-  } catch (err) { console.error('Labs load error:', err); }
+  if (_labsSidebarDebounce) clearTimeout(_labsSidebarDebounce);
+  return new Promise(resolve => {
+    _labsSidebarDebounce = setTimeout(async () => {
+      _labsSidebarDebounce = null;
+      try {
+        if (!_allLabsCache) {
+          const snap = await getDocs(query(collection(db, 'labs'), orderBy('resultDate', 'desc')));
+          _allLabsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        labDataCache = {};
+        invalidateFlowsheetCache();
+        _allLabsCache.forEach(l => {
+          if (!l.cat || !l.test) return;
+          if (!labDataCache[l.cat]) labDataCache[l.cat] = [];
+          labDataCache[l.cat].push(l);
+        });
+        renderLabsSidebar();
+      } catch (err) { console.error('Labs load error:', err); }
+      resolve();
+    }, 400);
+  });
 }
 
 // Last-resort group inference for legacy records with no labGroup or labName.
@@ -2275,23 +2503,31 @@ function buildFlowsheetTable(cat, container) {
 }
 
 // ── JOURNAL SIDEBAR ──
+let _journalDocsCache = null;
+let _journalSidebarDebounce = null;
 async function loadJournalSidebar() {
-  _journalCache = null; // invalidate chat context cache on any journal reload
+  _journalCache = null;
   _journalCacheTime = 0;
-  try {
-    const q = query(collection(db, 'journal'), orderBy('cat'));
-    const snap = await getDocs(q);
-    const bycat = {};
-    snap.forEach(d => {
-      const j = { id: d.id, ...d.data() };
-      if (!bycat[j.cat]) bycat[j.cat] = {};
-      if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
-      bycat[j.cat][j.list].push(j);
-    });
-    renderJournalSidebar(bycat);
-  } catch (err) {
-    console.error('Journal load error:', err);
-  }
+  if (_journalSidebarDebounce) clearTimeout(_journalSidebarDebounce);
+  return new Promise(resolve => {
+    _journalSidebarDebounce = setTimeout(async () => {
+      _journalSidebarDebounce = null;
+      try {
+        if (!_journalDocsCache) {
+          const snap = await getDocs(query(collection(db, 'journal'), orderBy('cat')));
+          _journalDocsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        const bycat = {};
+        _journalDocsCache.forEach(j => {
+          if (!bycat[j.cat]) bycat[j.cat] = {};
+          if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
+          bycat[j.cat][j.list].push(j);
+        });
+        renderJournalSidebar(bycat);
+      } catch (err) { console.error('Journal load error:', err); }
+      resolve();
+    }, 400);
+  });
 }
 
 function renderJournalSidebar(bycat) {
@@ -2546,7 +2782,7 @@ function openJournalEdit(item) {
       for (const f of fields) updates[f.key] = inputs[f.key].value || null;
       if (item._isNew) {
         if (!updates.text?.trim()) { showToast('Text is required', 'warning'); return; }
-        await setDoc(doc(collection(db, 'journal')), {
+        _journalDocsCache = null; await setDoc(doc(collection(db, 'journal')), {
           cat: item.cat, list: item.list,
           text: updates.text, dose: updates.dose || null,
           status: updates.status || 'current',
@@ -2557,7 +2793,7 @@ function openJournalEdit(item) {
         showToast('Journal entry added', 'journal');
       } else {
         if (!item.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
-        await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
+        _journalDocsCache = null; await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
         showToast('Journal entry updated', 'journal');
       }
       $('record-popup').classList.remove('open');
@@ -2628,31 +2864,23 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     _activeTab = tab.dataset.tab;
     $(`panel-${tab.dataset.tab}`).classList.add('active');
     if (tab.dataset.tab === 'labs') renderLabsSidebar();
-    // Reload Drive files on Files tab click — always, so stale token is caught immediately
-    // Debounce: don't reload if we just loaded within the last 60 seconds
+    // Load Drive files only once per session — user can manually refresh via button
     if (tab.dataset.tab === 'files') {
-      const now = Date.now();
-      const lastLoad = window._driveLastLoaded || 0;
       if (!driveAccessToken) {
         showDriveConnectPrompt('Drive access token missing or expired. Click to reconnect.');
-      } else if (!processingActive && now - lastLoad > 60000) {
-        window._driveLastLoaded = now;
+      } else if (!window._driveLoaded && !processingActive) {
+        window._driveLoaded = true;
         loadDriveFiles();
       }
     }
   });
 });
 
-// Re-check Drive when user returns to the tab after being away
-// (covers cases where token was cleared or session expired while page was in background)
+// Re-check Drive auth when returning to tab after being away — but don't reload file list
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && _activeTab === 'files') {
-    const now = Date.now();
     if (!driveAccessToken) {
       showDriveConnectPrompt('Drive session expired. Click to reconnect.');
-    } else if (now - (window._driveLastLoaded || 0) > 5 * 60 * 1000 && !processingActive) {
-      window._driveLastLoaded = now;
-      loadDriveFiles();
     }
   }
 });
@@ -2732,6 +2960,12 @@ $('drive-status-indicator').addEventListener('click', () => reconnectDrive(null)
 $('upload-files-btn').addEventListener('click', () => {
   if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
   $('upload-file-input').click();
+});
+
+$('refresh-drive-btn').addEventListener('click', () => {
+  if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+  window._driveLoaded = false;
+  loadDriveFiles();
 });
 $('upload-file-input').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -2932,17 +3166,27 @@ function showFolderNotFoundPrompt() {
   });
 }
 
+let _fileStatusCache = null; // { driveFileId: status } — invalidated on any file write
+function invalidateFileStatusCache() { _fileStatusCache = null; }
+
 async function loadFileStatuses(driveFileIds) {
+  if (!driveFileIds.length) return {};
+  // Use cache if available and covers all requested IDs
+  if (_fileStatusCache) {
+    const map = {};
+    driveFileIds.forEach(id => { map[id] = _fileStatusCache[id] || 'unprocessed'; });
+    return map;
+  }
   const map = {};
-  if (!driveFileIds.length) return map;
   try {
-    // Fetch in batches of 10 (Firestore 'in' limit)
     for (let i = 0; i < driveFileIds.length; i += 10) {
       const batch = driveFileIds.slice(i, i + 10);
-      const q = query(collection(db, 'files'), where('driveFileId', 'in', batch));
-      const snap = await getDocs(q);
+      const snap = await getDocs(query(collection(db, 'files'), where('driveFileId', 'in', batch)));
       snap.forEach(d => { map[d.data().driveFileId] = d.data().status || 'unprocessed'; });
     }
+    // Populate full cache from this result
+    if (!_fileStatusCache) _fileStatusCache = {};
+    Object.assign(_fileStatusCache, map);
   } catch(err) { console.error('Status load error:', err); }
   return map;
 }
@@ -3386,10 +3630,13 @@ async function startProcessingQueue(files) {
   $('progress-current').textContent = `${done - failed} succeeded · ${failed} failed`;
 
   // Reload sidebars with new data
+  window._driveLoaded = false; // force file list refresh to show new statuses
+  invalidateFileStatusCache();
   await reloadSidebars('all');
-  await updatePetList(); // refresh pet list and center message in case new cats were found
-  _allVisitsCache = null; // invalidate search cache — will reload on next chat message
+  await updatePetList();
+  _allVisitsCache = null;
   _allLabsCache = null;
+  if (_activeTab === 'files') loadDriveFiles();
   updateProcessButtons();
 
   const msg = processingStop
@@ -4008,6 +4255,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
     }
 
     await fsBatch.commit();
+    invalidateLabsCache();
 
     // Success — clean up extraction cache
     try { await setDoc(doc(db, 'extractions', file.id), { committed: true }, { merge: true }); } catch(e) {}
@@ -4634,10 +4882,11 @@ async function openMergeModal(visitA) {
 
   // Load all visits for this cat to pick from
   const snap = await getDocs(query(collection(db, 'visits'),
-    where('cat', '==', visitA.cat), orderBy('date', 'desc')));
+    where('cat', '==', visitA.cat)));
   const candidates = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(v => v.id !== visitA.id);
+    .filter(v => v.id !== visitA.id)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   if (!candidates.length) {
     body.innerHTML = '<div style="padding:1.5rem;font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">No other visits found for ' + escHtml(visitA.cat) + '.</div>';
@@ -5066,6 +5315,7 @@ async function mergeLabGroup(fromGroup, toGroup, rowEl, allGroups) {
       const batch = writeBatch(db);
       snap.forEach(d => batch.update(d.ref, { labGroup: toGroup }));
       await batch.commit();
+      invalidateLabsCache();
     }
 
     // Also update any lab_corrections that point to the old group
@@ -5232,7 +5482,7 @@ function attachJournalCtxMenu(el, item, cat, listName) {
 
 async function confirmDeleteJournalEntry(item) {
   if (!confirm(`Delete journal entry?\n"${item.text}"`)) return;
-  await deleteDoc(doc(db, 'journal', item.id));
+  _journalDocsCache = null; await deleteDoc(doc(db, 'journal', item.id));
   await loadJournalSidebar();
   showToast('Journal entry deleted ✓', 'journal');
 }
@@ -5240,6 +5490,7 @@ async function confirmDeleteJournalEntry(item) {
 // ── FIRESTORE HELPERS ──
 
 async function writeFileStatus(fileId, filename, status, extra = {}) {
+  invalidateFileStatusCache();
   const ref = doc(db, 'files', fileId);
   await setDoc(ref, sanitizeForFirestore({
     driveFileId: fileId,
@@ -6541,6 +6792,7 @@ function makeNoteEl(note) {
   const textWrap = document.createElement('div');
   textWrap.style.cssText = 'flex:1;min-width:0;';
 
+  // Text — inline editable
   const textEl = document.createElement('div');
   textEl.className = 'note-text';
   textEl.textContent = note.text;
@@ -6554,17 +6806,79 @@ function makeNoteEl(note) {
   });
   textWrap.appendChild(textEl);
 
-  if (note.cats?.length) {
-    const catsEl = document.createElement('div');
-    catsEl.className = 'note-cats';
-    note.cats.forEach(c => {
-      const tag = document.createElement('span');
-      tag.className = 'note-cat-tag';
-      tag.textContent = c;
-      catsEl.appendChild(tag);
+  // Cats — toggleable chips + add button
+  const catsRow = document.createElement('div');
+  catsRow.style.cssText = 'display:flex;gap:3px;flex-wrap:wrap;margin-top:0.15rem;align-items:center;';
+
+  const renderCatChips = () => {
+    catsRow.innerHTML = '';
+    const currentCats = note.cats || [];
+    const allCats = APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte'];
+    allCats.forEach(cat => {
+      const active = currentCats.includes(cat);
+      const chip = document.createElement('span');
+      chip.textContent = cat;
+      chip.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.52rem;padding:0 4px;border-radius:3px;cursor:pointer;transition:all 0.12s;line-height:1.6;${active ? 'background:var(--accent);color:white;' : 'background:var(--surface2);color:var(--ink-muted);'}`;
+      chip.addEventListener('click', async e => {
+        e.stopPropagation();
+        const newCats = active ? currentCats.filter(c => c !== cat) : [...currentCats, cat];
+        note.cats = newCats;
+        try {
+          await setDoc(doc(db, 'context_notes', note.id), { cats: newCats }, { merge: true });
+        } catch(err) { showAlert('Save failed: ' + err.message, 'warning'); }
+        renderCatChips();
+      });
+      catsRow.appendChild(chip);
     });
-    textWrap.appendChild(catsEl);
-  }
+  };
+  renderCatChips();
+  textWrap.appendChild(catsRow);
+
+  // Timestamp — click to edit date
+  const ts = note.addedAt || note.addedDate;
+  const tsEl = document.createElement('div');
+  tsEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.53rem;color:var(--ink-muted);margin-top:0.15rem;opacity:0.7;cursor:pointer;display:inline-block;';
+  const formatTs = (val) => {
+    if (!val) return '';
+    try {
+      const d = new Date(val);
+      if (isNaN(d)) return val;
+      // Date-only strings (YYYY-MM-DD) — show date only
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    } catch(e) { return val; }
+  };
+  tsEl.textContent = formatTs(ts);
+  tsEl.title = 'Click to edit date';
+  tsEl.addEventListener('click', e => {
+    e.stopPropagation();
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.value = (note.addedDate || note.addedAt || '').slice(0, 10);
+    input.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.53rem;border:1px solid var(--accent);border-radius:3px;padding:1px 4px;color:var(--ink);background:var(--bg);outline:none;';
+    tsEl.replaceWith(input);
+    input.focus();
+    const save = async () => {
+      const newDate = input.value;
+      if (newDate && newDate !== note.addedDate) {
+        note.addedDate = newDate;
+        note.addedAt = newDate; // store as date-only
+        try {
+          await setDoc(doc(db, 'context_notes', note.id), { addedDate: newDate, addedAt: newDate }, { merge: true });
+        } catch(err) { showAlert('Save failed: ' + err.message, 'warning'); }
+      }
+      tsEl.textContent = formatTs(note.addedAt || note.addedDate);
+      input.replaceWith(tsEl);
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') { input.value = (note.addedDate || '').slice(0,10); input.blur(); }
+    });
+  });
+  textWrap.appendChild(tsEl);
 
   const delBtn = document.createElement('button');
   delBtn.className = 'note-delete-btn';
@@ -6605,10 +6919,12 @@ async function deleteNote(note) {
 
 async function addNote(text, cats, pinned) {
   if (!text.trim()) return;
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const addedDate = now.toISOString().split('T')[0];
+  const addedAt = now.toISOString();
   try {
     const ref = doc(collection(db, 'context_notes'));
-    const note = { id: ref.id, text: text.trim(), cats: [...cats], pinned, addedDate: today };
+    const note = { id: ref.id, text: text.trim(), cats: [...cats], pinned, addedDate, addedAt };
     await setDoc(ref, note);
     _notesCache.unshift(note);
     renderNotes();
@@ -6948,8 +7264,7 @@ async function runSaveSession(resumeData) {
     });
   }
   await fsBatch.commit();
-
-  // Handle note suggestions
+  _journalDocsCache = null;
   let noteAdds = 0, noteRemovals = 0;
   for (const sug of allNoteSuggestions) {
     if (!sug.text && sug.action !== 'remove') continue;
@@ -7856,7 +8171,7 @@ function appendTyping() {
 // ── CONTEXT BUILDER ──
 // In-memory cache of all visits and labs loaded at startup — used for client-side search
 let _allVisitsCache = null;
-let _allLabsCache = null;
+// _allLabsCache declared near loadLabsSidebar above
 
 async function ensureDataCache() {
   if (!_allVisitsCache) {
@@ -8186,8 +8501,8 @@ async function renderTrends(cat) {
     if (_allVisitsCache) {
       visits = _allVisitsCache.filter(v => v.cat === cat);
     } else {
-      const snap = await getDocs(query(collection(db, 'visits'), where('cat', '==', cat), orderBy('date', 'asc')));
-      visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(query(collection(db, 'visits'), where('cat', '==', cat)));
+      visits = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     }
 
     // Extract datapoints — skip invoices (no actual exam performed) and missing values
