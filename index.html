@@ -83,19 +83,20 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .cat-heading.open .cat-arrow{transform:rotate(90deg);}
 .visit-list{display:none;padding-bottom:0.25rem;}
 .visit-list.open{display:block;}
-.year-folder{margin:4px 0 0;}
-.year-folder-tab{display:inline-flex;align-items:center;gap:4px;background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 8px 0 0;padding:2px 10px 2px 7px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;cursor:pointer;position:relative;top:1px;transition:background 0.12s;user-select:none;}
-.year-folder-tab:hover{background:#ddd5c2;}
-.year-folder-tab .yf-arrow{font-size:0.4rem;color:#8a7d6e;transition:transform 0.15s;display:inline-block;}
-.year-folder-tab.open .yf-arrow{transform:rotate(90deg);}
-.year-folder-body{border:1px solid #c8bfae;border-radius:0 4px 4px 4px;background:#f7f4ee;}
-.year-folder-body.closed{display:none;}
-.closed-folders-row{display:flex;flex-wrap:wrap;gap:5px;padding:6px 0.75rem 4px;}
-.closed-folder-item{display:flex;flex-direction:column;cursor:pointer;}
-.closed-folder-item:hover .cfi-tab{background:#ddd5c2;}
-.closed-folder-item:hover .cfi-body{background:#ede8df;}
-.cfi-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 6px 0 0;padding:1px 6px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;white-space:nowrap;align-self:flex-start;margin-left:3px;transition:background 0.12s;}
-.cfi-body{border:1px solid #c8bfae;border-radius:2px 4px 4px 4px;background:#f5f1ea;padding:2px 6px 3px;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#9c8e7e;white-space:nowrap;min-width:48px;text-align:center;transition:background 0.12s;}
+/* ── Cabinet (per-cat filing cabinet) ── */
+.cabinet{margin:0;}
+.cabinet-tabs-wrap{position:relative;display:flex;align-items:flex-end;padding:4px 0.75rem 0;gap:0;overflow:hidden;}
+.cabinet-tabs-scroll{display:flex;align-items:flex-end;gap:3px;overflow:hidden;flex:1;min-width:0;}
+.cabinet-tab{display:flex;flex-direction:column;cursor:pointer;flex-shrink:0;}
+.cabinet-tab .ct-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 7px 0 0;padding:2px 8px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.05em;white-space:nowrap;align-self:flex-start;margin-left:3px;transition:background 0.1s;}
+.cabinet-tab .ct-body{border:1px solid #c8bfae;border-radius:2px 4px 0 0;border-bottom:none;background:#f5f1ea;padding:2px 8px 3px;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#9c8e7e;white-space:nowrap;min-width:52px;text-align:center;transition:background 0.1s;}
+.cabinet-tab:hover .ct-tab,.cabinet-tab:hover .ct-body{background:#ddd5c2;}
+.cabinet-tab.active .ct-tab{background:#f7f4ee;border-bottom:1px solid #f7f4ee;z-index:2;position:relative;}
+.cabinet-tab.active .ct-body{background:#f7f4ee;border-bottom:1px solid #f7f4ee;z-index:2;position:relative;color:#5a5045;font-weight:700;}
+.cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.65rem;color:#8a7d6e;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.7;transition:opacity 0.1s;}
+.cabinet-arrow:hover{opacity:1;}
+.cabinet-arrow:disabled{opacity:0.2;cursor:default;}
+.cabinet-body{border:1px solid #c8bfae;border-radius:0 4px 4px 4px;background:#f7f4ee;min-height:32px;}
 .visit-date-group{margin-bottom:0.1rem;}
 .visit-date-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);font-weight:600;transition:background 0.12s;}
 .visit-date-label:hover{background:var(--surface);}
@@ -498,7 +499,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--border);margin-top:1rem;"><span class="app-version">…</span></p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);margin-top:1rem;opacity:0.5;"><span class="app-version">…</span></p>
   </div>
 </div>
 
@@ -508,6 +509,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div class="loading-wordmark"><span class="wordmark-paw">🐾</span>Paw Records</div>
     <div class="loading-dots"><span></span><span></span><span></span></div>
     <div id="loading-label">Signing in…</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);opacity:0.4;margin-top:0.75rem;"><span class="app-version"></span></div>
   </div>
 </div>
 
@@ -1573,286 +1575,275 @@ function renderRecordsTree(tree) {
   if (!cats.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
   empty.style.display = 'none';
   container.innerHTML = '';
+
   for (const cat of cats.sort()) {
     const dates = tree[cat];
     const sec = document.createElement('div');
     sec.className = 'cat-section';
+
+    // Cat heading (collapsible)
     const heading = document.createElement('div');
     heading.className = 'cat-heading open';
     heading.innerHTML = `<span class="cat-emoji">🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
-    const vlist = document.createElement('div');
-    vlist.className = 'visit-list open';
 
+    // Cabinet container
+    const cabinet = document.createElement('div');
+    cabinet.className = 'cabinet visit-list open';
+
+    // Group dates by year, sorted newest first
     const currentYear = new Date().getFullYear();
-    let currentYearGroup = null;
-    let lastYear = null;
-    // Collect years and their date groups for building closed folder row
-    const yearGroups = {}; // year → { el, count }
-
+    const yearMap = {}; // year → [date, ...]
     for (const date of Object.keys(dates).sort().reverse()) {
       const year = date ? date.slice(0, 4) : 'Unknown';
-      const isCurrentYear = year === String(currentYear);
-      const isPrevYear = year === String(currentYear - 1);
-      const defaultOpen = isCurrentYear || isPrevYear;
+      if (!yearMap[year]) yearMap[year] = [];
+      yearMap[year].push(date);
+    }
+    const years = Object.keys(yearMap).sort().reverse();
 
-      if (year !== lastYear) {
-        lastYear = year;
-
-        if (defaultOpen) {
-          // Full open folder for recent years
-          const folder = document.createElement('div');
-          folder.className = 'year-folder';
-
-          const tab = document.createElement('div');
-          tab.className = 'year-folder-tab open';
-          const arrow = document.createElement('span');
-          arrow.className = 'yf-arrow';
-          arrow.textContent = '▶';
-          tab.appendChild(arrow);
-          tab.appendChild(document.createTextNode(' ' + year));
-          folder.appendChild(tab);
-
-          const body = document.createElement('div');
-          body.className = 'year-folder-body';
-          folder.appendChild(body);
-
-          tab.addEventListener('click', () => {
-            tab.classList.toggle('open');
-            body.classList.toggle('closed');
-          });
-
-          vlist.appendChild(folder);
-          currentYearGroup = body;
-          yearGroups[year] = { el: body, count: 0 };
-        } else {
-          // Closed folder — will be collected into compact row below
-          const container = document.createElement('div');
-          container.style.display = 'none'; // hidden, shown via compact row
-          vlist.appendChild(container);
-          currentYearGroup = container;
-          yearGroups[year] = { el: container, count: 0, closed: true };
-        }
+    // Build date group elements per year (hidden divs, shown when tab selected)
+    const yearContentEls = {}; // year → div with date groups
+    for (const year of years) {
+      const content = document.createElement('div');
+      content.style.display = 'none';
+      for (const date of yearMap[year]) {
+        content.appendChild(buildDateGroup(dates[date], date));
       }
-
-      if (yearGroups[year]) yearGroups[year].count++;
-
-      const visits = dates[date];
-      const dg = document.createElement('div');
-      dg.className = 'visit-date-group';
-
-      const dl = document.createElement('div');
-      dl.className = 'visit-date-label';
-      dl.style.cssText = 'display:flex;align-items:center;gap:0.4rem;cursor:pointer;user-select:none;padding:0.28rem 1rem 0.28rem 1.5rem;';
-
-      const dlArrow = document.createElement('span');
-      dlArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;flex-shrink:0;padding:0.3rem 0.5rem 0.3rem 0;margin-left:-0.25rem;cursor:pointer;';
-      dlArrow.textContent = '▶';
-
-      const dlText = document.createElement('span');
-      dlText.textContent = formatDate(date);
-      dlText.style.cssText = 'flex-shrink:0;';
-
-      // Treat as single if only one non-invoice visit (invoice siblings are noise)
-      const nonInvoiceVisits = visits.filter(v => v.docType !== 'Invoice');
-      const invoiceOnlyVisits = visits.filter(v => v.docType === 'Invoice');
-      const isInvoiceOnly = nonInvoiceVisits.length === 0 && invoiceOnlyVisits.length > 0;
-      const effectiveSingle = nonInvoiceVisits.length === 1 ? nonInvoiceVisits[0] : null;
-      const isMultiple = nonInvoiceVisits.length > 1;
-      // For invoice-only dates, use the invoice as the display source
-      const singleVisit = visits.length === 1 ? visits[0] : (effectiveSingle || (isInvoiceOnly ? invoiceOnlyVisits[0] : null));
-      const complaint = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit ? briefComplaint(singleVisit) : '');
-      const complaintFull = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit?.chiefComplaint || complaint);
-      // Don't color the date label as well if it's a mixed date (well + problem siblings)
-      const dateSuppressWell = isMultiple && nonInvoiceVisits.some(v => v.visitClass === 'problem' || visitTypeStyle(v) === null);
-      const singleStyle = (!isInvoiceOnly && !isMultiple && singleVisit && !dateSuppressWell) ? visitTypeStyle(singleVisit) : null;
-      if (singleStyle) {
-        dl.style.borderLeft = `2px solid ${singleStyle.color}`;
-        dl.style.paddingLeft = '0.85rem';
-        dlText.style.color = singleStyle.color;
-      }
-      if (complaint) {
-        const cc = document.createElement('span');
-        cc.className = 'date-complaint-span';
-        cc.textContent = complaint;
-        if (complaintFull && complaintFull !== complaint) cc.title = complaintFull;
-        const ccColor = isInvoiceOnly ? 'var(--ink-muted)' : isMultiple ? 'var(--ink-dim)' : (singleStyle ? singleStyle.color : 'var(--ink)');
-        cc.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:${ccColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:${isInvoiceOnly ? '0.75' : '1'};cursor:default;${isMultiple ? 'font-style:italic;' : ''}`;
-        if (isInvoiceOnly) dlText.style.color = 'var(--ink-muted)';
-        dl.appendChild(dlArrow);
-        dl.appendChild(dlText);
-        dl.appendChild(cc);
-      } else {
-        dl.appendChild(dlArrow);
-        dl.appendChild(dlText);
-      }
-
-      // Edit pencil for invoice-only dates — appears on hover
-      if (isInvoiceOnly && singleVisit) {
-        const editBtn = document.createElement('button');
-        editBtn.textContent = '✏';
-        editBtn.title = 'Edit chief complaint';
-        editBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;opacity:0;transition:opacity 0.15s;flex-shrink:0;line-height:1;';
-        dl.appendChild(editBtn);
-        dl.addEventListener('mouseenter', () => editBtn.style.opacity = '0.5');
-        dl.addEventListener('mouseleave', () => editBtn.style.opacity = '0');
-        editBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          openInvoiceComplaintEdit(singleVisit, dl);
-        });
-      }
-
-      // Show count badge only when multiple non-invoice visits exist
-      if (nonInvoiceVisits.length > 1) {
-        const badge = document.createElement('span');
-        badge.textContent = nonInvoiceVisits.length;
-        badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);flex-shrink:0;';
-        dl.appendChild(badge);
-      } else if (isInvoiceOnly || (visits.length > 1 && nonInvoiceVisits.length <= 1)) {
-        // Invoice-only date or mixed date with one real visit — show inv badge
-        const invBadge = document.createElement('span');
-        invBadge.textContent = 'inv';
-        invBadge.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;flex-shrink:0;';
-        dl.appendChild(invBadge);
-      }
-      dg.appendChild(dl);
-
-      // Visit entries container — hidden by default
-      const entriesEl = document.createElement('div');
-      entriesEl.style.display = 'none';
-
-      // If any non-invoice visit on this date is a problem visit, suppress well coloring for all
-      const hasAnyProblem = nonInvoiceVisits.some(v => v.visitClass === 'problem' || (visitTypeStyle(v) === null && !v.docType));
-      const suppressWell = nonInvoiceVisits.length > 1 && hasAnyProblem;
-
-      for (const v of visits) {
-        const ve = document.createElement('div');
-        ve.className = 'visit-entry';
-        ve.style.cssText = 'position:relative;cursor:pointer;';
-        ve.dataset.visitId = v.id;
-        const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
-        const isInvoice = v.docType === 'Invoice';
-        const isHome = v.source === 'home';
-        const vStyle = suppressWell ? null : visitTypeStyle(v);
-        if (vStyle) {
-          ve.style.borderLeft = `2px solid ${vStyle.color}`;
-          ve.style.paddingLeft = '0.85rem';
-        }
-        const cc = (!isInvoice && !isHome && visits.filter(x => x.docType !== 'Invoice').length > 1)
-          ? briefComplaint(v) : '';
-        const ccFull = v.chiefComplaint || cc;
-        const clinicColor = vStyle ? vStyle.color : 'var(--ink-dim)';
-        ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
-            ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
-            ${isHome ? '<span class="home-badge">🏠 home</span>' : ''}
-            <span style="color:${clinicColor};font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${cc ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;font-family:'JetBrains Mono',monospace;" title="${escHtml(ccFull)}"> · ${escHtml(cc)}</span>` : ''}
-          </span>
-          <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
-            <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
-            <button class="visit-action-btn" title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--red);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="delete">🗑</button>
-          </span>`;
-        ve.addEventListener('mouseenter', () => { ve.querySelector('.visit-entry-actions').style.display = 'flex'; });
-        ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
-        ve.addEventListener('click', (e) => {
-          if (e.target.closest('[data-action]')) return;
-          e.stopPropagation();
-          try { openVisit(v); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
-        });
-        ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
-        ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
-        attachVisitCtxMenu(ve, v);
-        entriesEl.appendChild(ve);
-      }
-      dg.appendChild(entriesEl);
-
-      // Arrow click always toggles expand/collapse
-      dlArrow.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const open = entriesEl.style.display === 'none';
-        entriesEl.style.display = open ? 'block' : 'none';
-        dlArrow.style.transform = open ? 'rotate(90deg)' : '';
-      });
-
-      // Date label click: single real visit (or invoice-only) → open directly; multiple → expand/collapse
-      dl.addEventListener('click', () => {
-        if (singleVisit && (nonInvoiceVisits.length <= 1 || isInvoiceOnly)) {
-          try { openVisit(singleVisit); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
-        } else {
-          const open = entriesEl.style.display === 'none';
-          entriesEl.style.display = open ? 'block' : 'none';
-          dlArrow.style.transform = open ? 'rotate(90deg)' : '';
-        }
-      });
-
-      (currentYearGroup || vlist).appendChild(dg);
+      yearContentEls[year] = content;
     }
 
-    // Build compact closed-folder row for older years
-    const closedYears = Object.entries(yearGroups)
-      .filter(([, g]) => g.closed)
-      .sort((a, b) => b[0].localeCompare(a[0]));
+    // Cabinet body — holds the active year's content
+    const cabinetBody = document.createElement('div');
+    cabinetBody.className = 'cabinet-body';
 
-    if (closedYears.length) {
-      const row = document.createElement('div');
-      row.className = 'closed-folders-row';
+    // Tab strip with scroll arrows
+    const tabsWrap = document.createElement('div');
+    tabsWrap.className = 'cabinet-tabs-wrap';
 
-      closedYears.forEach(([year, group]) => {
-        const item = document.createElement('div');
-        item.className = 'closed-folder-item';
+    const leftBtn = document.createElement('button');
+    leftBtn.className = 'cabinet-arrow';
+    leftBtn.textContent = '‹';
+    leftBtn.title = 'Older years';
 
-        const tab = document.createElement('div');
-        tab.className = 'cfi-tab';
-        tab.textContent = year;
+    const tabsScroll = document.createElement('div');
+    tabsScroll.className = 'cabinet-tabs-scroll';
 
-        const body = document.createElement('div');
-        body.className = 'cfi-body';
-        const n = group.count;
-        body.textContent = n + ' visit' + (n !== 1 ? 's' : '');
+    const rightBtn = document.createElement('button');
+    rightBtn.className = 'cabinet-arrow';
+    rightBtn.textContent = '›';
+    rightBtn.title = 'Newer years';
 
-        item.appendChild(tab);
-        item.appendChild(body);
+    tabsWrap.appendChild(leftBtn);
+    tabsWrap.appendChild(tabsScroll);
+    tabsWrap.appendChild(rightBtn);
 
-        // Click: expand this year into a full folder, remove from compact row
-        item.addEventListener('click', () => {
-          // Build a full folder and insert before the closed row
-          const folder = document.createElement('div');
-          folder.className = 'year-folder';
-          const ftab = document.createElement('div');
-          ftab.className = 'year-folder-tab open';
-          const farrow = document.createElement('span');
-          farrow.className = 'yf-arrow';
-          farrow.textContent = '▶';
-          ftab.appendChild(farrow);
-          ftab.appendChild(document.createTextNode(' ' + year));
-          folder.appendChild(ftab);
-          const fbody = document.createElement('div');
-          fbody.className = 'year-folder-body';
-          // Move the hidden date groups into the new folder body
-          while (group.el.firstChild) fbody.appendChild(group.el.firstChild);
-          folder.appendChild(fbody);
-          ftab.addEventListener('click', () => {
-            ftab.classList.toggle('open');
-            fbody.classList.toggle('closed');
-          });
-          vlist.insertBefore(folder, row);
-          // Remove this item from the compact row
-          item.remove();
-          if (!row.children.length) row.remove();
-        });
+    // Track scroll offset (in tab units)
+    let tabOffset = 0;
+    const TABS_VISIBLE = 5;
 
-        row.appendChild(item);
-      });
+    const tabEls = [];
+    let activeYear = years[0];
 
-      vlist.appendChild(row);
-    }
+    const selectYear = (year) => {
+      activeYear = year;
+      tabEls.forEach(t => t.el.classList.toggle('active', t.year === year));
+      cabinetBody.innerHTML = '';
+      const content = yearContentEls[year];
+      content.style.display = 'block';
+      cabinetBody.appendChild(content);
+    };
+
+    const renderTabs = () => {
+      tabsScroll.innerHTML = '';
+      const visible = tabEls.slice(tabOffset, tabOffset + TABS_VISIBLE);
+      visible.forEach(t => tabsScroll.appendChild(t.el));
+      leftBtn.disabled = tabOffset >= tabEls.length - TABS_VISIBLE;
+      rightBtn.disabled = tabOffset <= 0;
+    };
+
+    years.forEach((year, i) => {
+      const count = yearMap[year].reduce((sum, d) => sum + dates[d].length, 0);
+      const tabEl = document.createElement('div');
+      tabEl.className = 'cabinet-tab' + (year === activeYear ? ' active' : '');
+
+      const tabTop = document.createElement('div');
+      tabTop.className = 'ct-tab';
+      tabTop.textContent = year;
+
+      const tabBot = document.createElement('div');
+      tabBot.className = 'ct-body';
+      tabBot.textContent = count + (count === 1 ? ' visit' : ' visits');
+
+      tabEl.appendChild(tabTop);
+      tabEl.appendChild(tabBot);
+      tabEl.addEventListener('click', () => selectYear(year));
+
+      tabEls.push({ year, el: tabEl });
+    });
+
+    // Newest years on right — offset starts so most recent (index 0) is rightmost visible
+    tabOffset = Math.max(0, tabEls.length - TABS_VISIBLE);
+
+    leftBtn.addEventListener('click', () => {
+      tabOffset = Math.min(tabEls.length - 1, tabOffset + 1);
+      renderTabs();
+    });
+    rightBtn.addEventListener('click', () => {
+      tabOffset = Math.max(0, tabOffset - 1);
+      renderTabs();
+    });
+
+    renderTabs();
+    selectYear(activeYear);
+
+    cabinet.appendChild(tabsWrap);
+    cabinet.appendChild(cabinetBody);
 
     heading.onclick = () => {
       heading.classList.toggle('open');
-      vlist.classList.toggle('open');
+      cabinet.classList.toggle('open');
     };
+
     sec.appendChild(heading);
-    sec.appendChild(vlist);
+    sec.appendChild(cabinet);
     container.appendChild(sec);
   }
+}
+
+function buildDateGroup(visits, date) {
+  const dg = document.createElement('div');
+  dg.className = 'visit-date-group';
+
+  const dl = document.createElement('div');
+  dl.className = 'visit-date-label';
+  dl.style.cssText = 'display:flex;align-items:center;gap:0.4rem;cursor:pointer;user-select:none;padding:0.28rem 1rem 0.28rem 1.5rem;';
+
+  const dlArrow = document.createElement('span');
+  dlArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;flex-shrink:0;padding:0.3rem 0.5rem 0.3rem 0;margin-left:-0.25rem;cursor:pointer;';
+  dlArrow.textContent = '▶';
+
+  const dlText = document.createElement('span');
+  dlText.textContent = formatDate(date);
+  dlText.style.cssText = 'flex-shrink:0;';
+
+  const nonInvoiceVisits = visits.filter(v => v.docType !== 'Invoice');
+  const invoiceOnlyVisits = visits.filter(v => v.docType === 'Invoice');
+  const isInvoiceOnly = nonInvoiceVisits.length === 0 && invoiceOnlyVisits.length > 0;
+  const isMultiple = nonInvoiceVisits.length > 1;
+  const effectiveSingle = nonInvoiceVisits.length === 1 ? nonInvoiceVisits[0] : null;
+  const singleVisit = visits.length === 1 ? visits[0] : (effectiveSingle || (isInvoiceOnly ? invoiceOnlyVisits[0] : null));
+  const complaint = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit ? briefComplaint(singleVisit) : '');
+  const complaintFull = isInvoiceOnly ? briefInvoice(invoiceOnlyVisits[0]) : isMultiple ? 'multiple visits' : (singleVisit?.chiefComplaint || complaint);
+  const dateSuppressWell = isMultiple && nonInvoiceVisits.some(v => v.visitClass === 'problem' || visitTypeStyle(v) === null);
+  const singleStyle = (!isInvoiceOnly && !isMultiple && singleVisit && !dateSuppressWell) ? visitTypeStyle(singleVisit) : null;
+
+  if (singleStyle) {
+    dl.style.borderLeft = `2px solid ${singleStyle.color}`;
+    dl.style.paddingLeft = '0.85rem';
+    dlText.style.color = singleStyle.color;
+  }
+
+  if (complaint) {
+    const cc = document.createElement('span');
+    cc.className = 'date-complaint-span';
+    cc.textContent = complaint;
+    if (complaintFull && complaintFull !== complaint) cc.title = complaintFull;
+    const ccColor = isInvoiceOnly ? 'var(--ink-muted)' : isMultiple ? 'var(--ink-dim)' : (singleStyle ? singleStyle.color : 'var(--ink)');
+    cc.style.cssText = `font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:${ccColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;opacity:${isInvoiceOnly ? '0.75' : '1'};cursor:default;${isMultiple ? 'font-style:italic;' : ''}`;
+    if (isInvoiceOnly) dlText.style.color = 'var(--ink-muted)';
+    dl.appendChild(dlArrow);
+    dl.appendChild(dlText);
+    dl.appendChild(cc);
+  } else {
+    dl.appendChild(dlArrow);
+    dl.appendChild(dlText);
+  }
+
+  // Edit pencil for invoice-only dates
+  if (isInvoiceOnly && singleVisit) {
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✏';
+    editBtn.title = 'Edit chief complaint';
+    editBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;opacity:0;transition:opacity 0.15s;flex-shrink:0;line-height:1;';
+    dl.appendChild(editBtn);
+    dl.addEventListener('mouseenter', () => editBtn.style.opacity = '0.5');
+    dl.addEventListener('mouseleave', () => editBtn.style.opacity = '0');
+    editBtn.addEventListener('click', e => { e.stopPropagation(); openInvoiceComplaintEdit(singleVisit, dl); });
+  }
+
+  // Badges
+  if (nonInvoiceVisits.length > 1) {
+    const badge = document.createElement('span');
+    badge.textContent = nonInvoiceVisits.length;
+    badge.style.cssText = 'background:var(--surface2);border-radius:8px;padding:0 0.3rem;font-size:0.55rem;color:var(--ink-muted);flex-shrink:0;';
+    dl.appendChild(badge);
+  } else if (isInvoiceOnly || (visits.length > 1 && nonInvoiceVisits.length <= 1)) {
+    const invBadge = document.createElement('span');
+    invBadge.textContent = 'inv';
+    invBadge.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;flex-shrink:0;';
+    dl.appendChild(invBadge);
+  }
+  dg.appendChild(dl);
+
+  const entriesEl = document.createElement('div');
+  entriesEl.style.display = 'none';
+
+  const hasAnyProblem = nonInvoiceVisits.some(v => v.visitClass === 'problem' || (visitTypeStyle(v) === null && !v.docType));
+  const suppressWell = nonInvoiceVisits.length > 1 && hasAnyProblem;
+
+  for (const v of visits) {
+    const ve = document.createElement('div');
+    ve.className = 'visit-entry';
+    ve.style.cssText = 'position:relative;cursor:pointer;';
+    ve.dataset.visitId = v.id;
+    const clinicDisplay = v.clinic ? abbreviateClinic(v.clinic) : 'Visit';
+    const isInvoice = v.docType === 'Invoice';
+    const isHome = v.source === 'home';
+    const vStyle = suppressWell ? null : visitTypeStyle(v);
+    if (vStyle) { ve.style.borderLeft = `2px solid ${vStyle.color}`; ve.style.paddingLeft = '0.85rem'; }
+    const cc = (!isInvoice && !isHome && visits.filter(x => x.docType !== 'Invoice').length > 1) ? briefComplaint(v) : '';
+    const ccFull = v.chiefComplaint || cc;
+    const clinicColor = vStyle ? vStyle.color : 'var(--ink-dim)';
+    ve.innerHTML = `<span class="visit-entry-type" title="${escHtml(v.synopsis||v.chiefComplaint||'')}">
+        ${isInvoice ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:0.52rem;background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:0 3px;margin-right:3px;vertical-align:middle;">inv</span>' : ''}
+        ${isHome ? '<span class="home-badge">🏠 home</span>' : ''}
+        <span style="color:${clinicColor};font-weight:400;">${isHome ? escHtml(v.chiefComplaint || v.issueType || 'Issue') : escHtml(clinicDisplay)}</span>${cc ? `<span style="color:var(--ink-muted);font-weight:400;font-size:0.57rem;font-family:'JetBrains Mono',monospace;" title="${escHtml(ccFull)}"> · ${escHtml(cc)}</span>` : ''}
+      </span>
+      <span class="visit-entry-actions" style="display:none;gap:0.2rem;flex-shrink:0;">
+        <button class="visit-action-btn" title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--ink-muted);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="edit">✏</button>
+        <button class="visit-action-btn" title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.65rem;color:var(--red);padding:0.1rem 0.2rem;border-radius:3px;line-height:1;" data-action="delete">🗑</button>
+      </span>`;
+    ve.addEventListener('mouseenter', () => { ve.querySelector('.visit-entry-actions').style.display = 'flex'; });
+    ve.addEventListener('mouseleave', () => { ve.querySelector('.visit-entry-actions').style.display = 'none'; });
+    ve.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action]')) return;
+      e.stopPropagation();
+      try { openVisit(v); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); console.error('openVisit error:', err); }
+    });
+    ve.querySelector('[data-action="edit"]').onclick = (e) => { e.stopPropagation(); openVisitEdit(v); };
+    ve.querySelector('[data-action="delete"]').onclick = (e) => { e.stopPropagation(); confirmDeleteVisit(v); };
+    attachVisitCtxMenu(ve, v);
+    entriesEl.appendChild(ve);
+  }
+  dg.appendChild(entriesEl);
+
+  dlArrow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = entriesEl.style.display === 'none';
+    entriesEl.style.display = open ? 'block' : 'none';
+    dlArrow.style.transform = open ? 'rotate(90deg)' : '';
+  });
+
+  dl.addEventListener('click', () => {
+    if (singleVisit && (nonInvoiceVisits.length <= 1 || isInvoiceOnly)) {
+      try { openVisit(singleVisit); } catch(err) { showAlert('Error opening visit: ' + err.message, 'warning'); }
+    } else {
+      const open = entriesEl.style.display === 'none';
+      entriesEl.style.display = open ? 'block' : 'none';
+      dlArrow.style.transform = open ? 'rotate(90deg)' : '';
+    }
+  });
+
+  return dg;
 }
 
 function openInvoiceComplaintEdit(visit, dlEl) {
@@ -8475,6 +8466,123 @@ function parseMCS(v) {
   return null;
 }
 
+function openVitalsEditPopover(point, metric, dotEl, svgEl) {
+  // Remove any existing popover
+  document.querySelectorAll('.vitals-edit-popover').forEach(e => e.remove());
+
+  const metricLabels = { weight: 'Weight', bcs: 'BCS', mcs: 'MCS' };
+  const rawKey = { weight: 'rawWeight', bcs: 'rawBCS', mcs: 'rawMCS' };
+  const firestoreKey = { weight: 'vitals.weight', bcs: 'vitals.BCS', mcs: 'vitals.muscleConditionScore' };
+  const currentRaw = point[rawKey[metric]] || String(point[metric]);
+
+  const pop = document.createElement('div');
+  pop.className = 'vitals-edit-popover';
+  pop.style.cssText = 'position:fixed;z-index:500;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.65rem 0.75rem;box-shadow:0 4px 16px rgba(42,37,32,0.15);min-width:200px;font-family:"JetBrains Mono",monospace;';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:0.6rem;font-weight:700;color:var(--ink-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;';
+  title.textContent = `${metricLabels[metric]} · ${formatDate(point.date)}`;
+  pop.appendChild(title);
+
+  const sub = document.createElement('div');
+  sub.style.cssText = 'font-size:0.58rem;color:var(--ink-muted);margin-bottom:0.5rem;';
+  sub.textContent = point.label;
+  pop.appendChild(sub);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentRaw;
+  input.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:0.72rem;border:1px solid var(--accent);border-radius:5px;padding:0.3rem 0.5rem;color:var(--ink);background:var(--bg);outline:none;box-sizing:border-box;';
+  pop.appendChild(input);
+
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:0.55rem;color:var(--ink-muted);margin-top:0.25rem;opacity:0.7;';
+  hint.textContent = metric === 'weight' ? 'e.g. 8.25 lbs or 3.74 kg' : metric === 'bcs' ? 'e.g. 4.5/9' : 'e.g. 2/4';
+  pop.appendChild(hint);
+
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:0.4rem;margin-top:0.55rem;';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-icon free-icon';
+  saveBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.5rem;flex:1;';
+  saveBtn.innerHTML = '<span class="free-dot"></span> Save';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn-icon';
+  removeBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.5rem;color:var(--red);border-color:var(--red);';
+  removeBtn.textContent = 'Remove';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-icon';
+  cancelBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.5rem;';
+  cancelBtn.textContent = 'Cancel';
+
+  btns.appendChild(saveBtn);
+  btns.appendChild(removeBtn);
+  btns.appendChild(cancelBtn);
+  pop.appendChild(btns);
+
+  // Position near the dot
+  const svgRect = svgEl.getBoundingClientRect();
+  const dotCX = parseFloat(dotEl.getAttribute('cx'));
+  const dotCY = parseFloat(dotEl.getAttribute('cy'));
+  const svgVB = svgEl.viewBox.baseVal;
+  const scaleX = svgRect.width / svgVB.width;
+  const scaleY = svgRect.height / svgVB.height;
+  const screenX = svgRect.left + dotCX * scaleX;
+  const screenY = svgRect.top + dotCY * scaleY;
+  document.body.appendChild(pop);
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  pop.style.left = Math.min(screenX - pw / 2, window.innerWidth - pw - 8) + 'px';
+  pop.style.top = (screenY - ph - 10 < 8 ? screenY + 16 : screenY - ph - 10) + 'px';
+
+  input.focus(); input.select();
+
+  const close = () => pop.remove();
+  cancelBtn.addEventListener('click', close);
+
+  const save = async () => {
+    const val = input.value.trim();
+    if (!val || val === currentRaw) { close(); return; }
+    try {
+      const vitalsKey = { weight: 'weight', bcs: 'BCS', mcs: 'muscleConditionScore' }[metric];
+      await setDoc(doc(db, 'visits', point.visitId), { vitals: { [vitalsKey]: val } }, { merge: true });
+      // Invalidate cache so trends re-renders with new value
+      _allVisitsCache = null;
+      close();
+      showToast('Updated ✓', 'journal');
+      // Re-render trends
+      const sel = document.getElementById('trends-cat-sel');
+      if (sel) renderTrends(sel.value);
+    } catch(e) { showAlert('Save failed: ' + e.message, 'warning'); }
+  };
+
+  const remove = async () => {
+    if (!confirm(`Remove this ${metricLabels[metric]} data point (${formatDate(point.date)})?`)) return;
+    try {
+      const vitalsKey = { weight: 'weight', bcs: 'BCS', mcs: 'muscleConditionScore' }[metric];
+      await setDoc(doc(db, 'visits', point.visitId), { vitals: { [vitalsKey]: null } }, { merge: true });
+      _allVisitsCache = null;
+      close();
+      showToast('Removed ✓', 'journal');
+      const sel = document.getElementById('trends-cat-sel');
+      if (sel) renderTrends(sel.value);
+    } catch(e) { showAlert('Remove failed: ' + e.message, 'warning'); }
+  };
+
+  saveBtn.addEventListener('click', save);
+  removeBtn.addEventListener('click', remove);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') close(); });
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!pop.contains(e.target)) { close(); document.removeEventListener('click', handler); }
+    });
+  }, 10);
+}
+
 async function openTrendsModal() {
   $('trends-modal').style.display = 'flex';
 
@@ -8510,9 +8618,13 @@ async function renderTrends(cat) {
       .filter(v => v.date && v.vitals && v.docType !== 'Invoice')
       .map(v => ({
         date: v.date,
+        visitId: v.id,
         weight: parseKgFromWeight(v.vitals?.weight, isCatKitten(v.cat, v.date)),
         bcs: parseBCS(v.vitals?.BCS),
         mcs: parseMCS(v.vitals?.muscleConditionScore),
+        rawWeight: v.vitals?.weight || '',
+        rawBCS: v.vitals?.BCS || '',
+        rawMCS: v.vitals?.muscleConditionScore || '',
         source: v.source === 'home' ? 'home' : 'vet',
         label: v.source === 'home' ? (v.chiefComplaint || 'Home') : (v.clinic ? abbreviateClinic(v.clinic) : 'Visit'),
       }))
@@ -8591,19 +8703,7 @@ async function renderTrends(cat) {
       const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.date).toFixed(1)},${yOf(p[metric]).toFixed(1)}`).join(' ');
       svgContent += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
 
-      // Dots + labels
-      pts.forEach((p, i) => {
-        const cx = xOf(p.date), cy = yOf(p[metric]);
-        const isHome = p.source === 'home';
-        const dotColor = isHome ? '#3a7c52' : color;
-        svgContent += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${isHome ? 3.5 : 4}" fill="${dotColor}" stroke="white" stroke-width="1.5">
-          <title>${escHtml(p.date)} · ${escHtml(p.label)}: ${p[metric]}${metric === 'weight' ? ' kg' : metric === 'mcs' ? '/4' : '/9'}</title>
-        </circle>`;
-
-        // Value label — alternate above/below to avoid overlap
-        const labelY = i % 2 === 0 ? cy - 9 : cy + 16;
-        svgContent += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8" fill="${dotColor}" font-weight="600">${p[metric]}</text>`;
-      });
+      // Dots added as real SVG elements below (for click handling)
 
       // X-axis date labels (show every nth to avoid crowding)
       const step = Math.max(1, Math.ceil(pts.length / 6));
@@ -8624,8 +8724,47 @@ async function renderTrends(cat) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
       svg.setAttribute('width', '100%');
-      svg.style.cssText = 'display:block;max-width:100%;';
+      svg.style.cssText = 'display:block;max-width:100%;overflow:visible;';
       svg.innerHTML = svgContent;
+
+      // Add interactive dots as real SVG elements (so we can attach click handlers)
+      pts.forEach((p, i) => {
+        const cx = xOf(p.date), cy = yOf(p[metric]);
+        const isHome = p.source === 'home';
+        const dotColor = isHome ? '#3a7c52' : color;
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', cx.toFixed(1));
+        circle.setAttribute('cy', cy.toFixed(1));
+        circle.setAttribute('r', isHome ? 3.5 : 4.5);
+        circle.setAttribute('fill', dotColor);
+        circle.setAttribute('stroke', 'white');
+        circle.setAttribute('stroke-width', '1.5');
+        circle.style.cursor = 'pointer';
+        circle.innerHTML = `<title>${escHtml(p.date)} · ${escHtml(p.label)}: ${p[metric]}${metric === 'weight' ? ' kg' : metric === 'mcs' ? '/4' : '/9'} — click to edit</title>`;
+
+        // Value label
+        const labelY = i % 2 === 0 ? cy - 9 : cy + 16;
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', cx.toFixed(1));
+        text.setAttribute('y', labelY.toFixed(1));
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('font-family', "'JetBrains Mono',monospace");
+        text.setAttribute('font-size', '8');
+        text.setAttribute('fill', dotColor);
+        text.setAttribute('font-weight', '600');
+        text.style.pointerEvents = 'none';
+        text.textContent = p[metric];
+
+        circle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openVitalsEditPopover(p, metric, circle, svg);
+        });
+
+        svg.appendChild(text);
+        svg.appendChild(circle);
+      });
+
       section.appendChild(svg);
 
       // Most recent value callout
