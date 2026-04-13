@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paw Records — Data Audit</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+:root {
+  --bg:#f5f2ed; --surface:#edeae3; --surface2:#e4e0d8; --border:#d4cfc5;
+  --accent:#7c6f5b; --ink:#2a2520; --ink-dim:#6b6058; --ink-muted:#9e9288;
+  --green:#4a7c59; --green-bg:#edf5f0;
+  --amber:#9c6b1e; --amber-bg:#fdf5e6;
+  --red:#c0242a; --red-bg:#fdf0f0;
+  --blue:#0d47a1; --blue-bg:#eef3fa;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--ink);min-height:100vh;padding:2rem;}
+h1{font-family:'Instrument Serif',serif;font-size:1.5rem;font-weight:400;color:var(--accent);margin-bottom:0.25rem;}
+.subtitle{font-size:0.7rem;color:var(--ink-muted);margin-bottom:2rem;}
+
+/* Sign-in */
+#signin-section{max-width:400px;margin:4rem auto;text-align:center;}
+#signin-section h1{margin-bottom:0.5rem;}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:0.75rem;width:100%;background:white;border:1.5px solid var(--border);border-radius:10px;padding:0.85rem 1.25rem;font-family:'JetBrains Mono',monospace;font-size:0.88rem;color:var(--ink);cursor:pointer;transition:all 0.2s;box-shadow:0 2px 12px rgba(42,37,32,0.08);margin-top:2rem;}
+.btn-google:hover{border-color:var(--accent);background:var(--surface);}
+.btn-google svg{width:18px;height:18px;flex-shrink:0;}
+
+/* Layout */
+#audit-section{display:none;max-width:1000px;margin:0 auto;}
+.header-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2rem;flex-wrap:wrap;gap:1rem;}
+.run-btn{background:var(--accent);color:white;border:none;border-radius:8px;padding:0.6rem 1.2rem;font-family:'JetBrains Mono',monospace;font-size:0.75rem;cursor:pointer;transition:all 0.15s;}
+.run-btn:hover{background:var(--ink);}
+.run-btn:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* Summary cards */
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:2rem;}
+.card{background:white;border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;}
+.card-label{font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.4rem;}
+.card-value{font-size:1.6rem;font-weight:600;color:var(--ink);line-height:1;}
+.card-sub{font-size:0.62rem;color:var(--ink-muted);margin-top:0.25rem;}
+.card.warn .card-value{color:var(--amber);}
+.card.alert .card-value{color:var(--red);}
+.card.good .card-value{color:var(--green);}
+
+/* Sections */
+.section{background:white;border:1px solid var(--border);border-radius:10px;margin-bottom:1.5rem;overflow:hidden;}
+.section-header{padding:0.75rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;}
+.section-header:hover{background:var(--surface);}
+.section-title{font-size:0.8rem;font-weight:600;color:var(--ink);}
+.section-count{font-size:0.65rem;color:var(--ink-muted);}
+.section-arrow{font-size:0.55rem;color:var(--ink-muted);transition:transform 0.2s;}
+.section-header.open .section-arrow{transform:rotate(90deg);}
+.section-body{display:none;padding:0;}
+.section-body.open{display:block;}
+
+/* Tables */
+table{width:100%;border-collapse:collapse;font-size:0.65rem;}
+th{text-align:left;padding:0.5rem 1rem;background:var(--surface);color:var(--ink-muted);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;font-size:0.58rem;border-bottom:1px solid var(--border);}
+td{padding:0.45rem 1rem;border-bottom:1px solid var(--surface2);color:var(--ink-dim);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--surface);}
+.tag{display:inline-block;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.58rem;margin:0 0.15rem 0.15rem 0;}
+.tag.invoice{background:var(--amber-bg);color:var(--amber);}
+.tag.visit{background:var(--green-bg);color:var(--green);}
+.tag.empty{background:var(--red-bg);color:var(--red);}
+.tag.orphan{background:var(--blue-bg);color:var(--blue);}
+.tag.dup{background:var(--red-bg);color:var(--red);}
+.tag.rollover{background:var(--amber-bg);color:var(--amber);}
+
+/* Loading */
+.loading-msg{padding:2rem;text-align:center;color:var(--ink-muted);font-size:0.75rem;}
+.progress-wrap{margin-bottom:2rem;}
+.progress-bar-bg{background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;}
+.progress-bar-fill{height:100%;background:var(--accent);border-radius:4px;transition:width 0.3s;width:0%;}
+.progress-label{font-size:0.65rem;color:var(--ink-muted);margin-top:0.4rem;}
+
+.empty-note{padding:1.5rem;font-size:0.68rem;color:var(--ink-muted);text-align:center;}
+.clinic-mismatch{color:var(--ink-muted);font-size:0.6rem;font-style:italic;}
+</style>
+</head>
+<body>
+
+<div id="signin-section">
+  <h1>🐾 Paw Records</h1>
+  <div class="subtitle">Data Audit Tool — read-only diagnostic</div>
+  <button class="btn-google" id="signin-btn">
+    <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+    Sign in with Google
+  </button>
+  <div id="signin-error" style="margin-top:1rem;font-size:0.68rem;color:var(--red);display:none;"></div>
+</div>
+
+<div id="audit-section">
+  <div class="header-row">
+    <div>
+      <h1>🐾 Data Audit</h1>
+      <div class="subtitle" id="user-label">read-only · no writes</div>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;">
+      <button class="run-btn" id="run-btn">Run Audit</button>
+      <button class="run-btn" id="signout-btn" style="background:var(--surface);color:var(--ink-dim);border:1px solid var(--border);">Sign out</button>
+    </div>
+  </div>
+
+  <div id="progress-section" style="display:none;" class="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+    <div class="progress-label" id="progress-label">Loading…</div>
+  </div>
+
+  <div id="summary-grid" class="summary-grid" style="display:none;"></div>
+  <div id="results"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+import { getFirestore, collection, getDocs, query, orderBy }
+  from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBECkOIkB_rbreDsTo44Kvwq0jL6f29cv0",
+  authDomain: "pawrecords-1a8e6.firebaseapp.com",
+  projectId: "pawrecords-1a8e6",
+  storageBucket: "pawrecords-1a8e6.firebasestorage.app",
+  messagingSenderId: "434841981751",
+  appId: "1:434841981751:web:eb27c2ebb38920e9b040b2"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+const $ = id => document.getElementById(id);
+
+// ── AUTH ──
+onAuthStateChanged(auth, user => {
+  if (user) {
+    $('signin-section').style.display = 'none';
+    $('audit-section').style.display = 'block';
+    $('user-label').textContent = `signed in as ${user.email} · read-only · no writes`;
+  } else {
+    $('signin-section').style.display = 'block';
+    $('audit-section').style.display = 'none';
+  }
+});
+
+$('signin-btn').addEventListener('click', async () => {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch(e) {
+    $('signin-error').textContent = e.message;
+    $('signin-error').style.display = 'block';
+  }
+});
+
+$('signout-btn').addEventListener('click', () => signOut(auth));
+
+// ── HELPERS ──
+function normClinic(s) {
+  if (!s) return '';
+  return s.toLowerCase()
+    .replace(/\b(animal|veterinary|vet|hospital|clinic|center|care|pet|the|of|&|and)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function dateDiff(a, b) {
+  // Returns absolute day difference between two YYYY-MM-DD strings
+  if (!a || !b) return 9999;
+  return Math.abs((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 86400000);
+}
+
+function hasClinicValue(meds, procs) {
+  const NOISE = /syringe|disposal|fee|tax|bandage|glove|admin|stamp|label|microchip fee|nail trim|exam fee|office visit/i;
+  const mList = (meds || []).filter(m => m.name && !NOISE.test(m.name));
+  const pList = (procs || []).filter(p => p.name && !NOISE.test(p.name));
+  return mList.length > 0 || pList.length > 0;
+}
+
+function fmtDate(d) {
+  if (!d || d === 'unknown') return '—';
+  try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
+  catch { return d; }
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function makeSection(id, title, count, colorClass, rows) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+
+  const hdr = document.createElement('div');
+  hdr.className = 'section-header';
+  hdr.innerHTML = `
+    <span class="section-title">${title}</span>
+    <span style="display:flex;align-items:center;gap:0.75rem;">
+      <span class="section-count" style="color:${colorClass}">${count} item${count !== 1 ? 's' : ''}</span>
+      <span class="section-arrow">▶</span>
+    </span>`;
+  hdr.addEventListener('click', () => {
+    hdr.classList.toggle('open');
+    body.classList.toggle('open');
+  });
+
+  const body = document.createElement('div');
+  body.className = 'section-body';
+  body.innerHTML = rows;
+
+  sec.appendChild(hdr);
+  sec.appendChild(body);
+  return sec;
+}
+
+// ── PROGRESS ──
+function setProgress(pct, label) {
+  $('progress-fill').style.width = pct + '%';
+  $('progress-label').textContent = label;
+}
+
+// ── MAIN AUDIT ──
+$('run-btn').addEventListener('click', runAudit);
+
+async function runAudit() {
+  $('run-btn').disabled = true;
+  $('progress-section').style.display = 'block';
+  $('summary-grid').style.display = 'none';
+  $('results').innerHTML = '';
+  $('summary-grid').innerHTML = '';
+
+  try {
+    setProgress(5, 'Loading visits…');
+    const visitsSnap = await getDocs(query(collection(db, 'visits'), orderBy('date', 'desc')));
+    const visits = visitsSnap.docs.map(d => ({ _id: d.id, ...d.data() }));
+
+    setProgress(40, `Loaded ${visits.length} visit records. Analysing…`);
+
+    // ── ANALYSIS ──
+
+    const invoices = visits.filter(v => v.docType === 'Invoice');
+    const clinicalVisits = visits.filter(v => v.docType !== 'Invoice');
+
+    // 1. Empty invoices (no clinical value at all)
+    const emptyInvoices = invoices.filter(v => !hasClinicValue(v.medications, v.procedures));
+
+    // 2. Invoices with a matching clinical note (same cat + clinic ±3 days)
+    const matchedInvoices = [];
+    const orphanInvoices = [];
+    for (const inv of invoices) {
+      if (!hasClinicValue(inv.medications, inv.procedures)) continue; // already in emptyInvoices
+      const invClinic = normClinic(inv.clinic);
+      const match = clinicalVisits.find(v =>
+        v.cat === inv.cat &&
+        dateDiff(v.date, inv.date) <= 3 &&
+        (invClinic === '' || normClinic(v.clinic) === '' || normClinic(v.clinic) === invClinic)
+      );
+      if (match) {
+        matchedInvoices.push({ invoice: inv, match });
+      } else {
+        orphanInvoices.push(inv);
+      }
+    }
+
+    setProgress(60, 'Finding duplicate visits…');
+
+    // 3. Same cat + same date (potential duplicates — exclude invoices)
+    const sameDatePairs = [];
+    const checked = new Set();
+    for (let i = 0; i < clinicalVisits.length; i++) {
+      for (let j = i + 1; j < clinicalVisits.length; j++) {
+        const a = clinicalVisits[i], b = clinicalVisits[j];
+        if (a.cat !== b.cat || a.date !== b.date) continue;
+        const key = [a._id, b._id].sort().join('|');
+        if (checked.has(key)) continue;
+        checked.add(key);
+        sameDatePairs.push({ a, b });
+      }
+    }
+
+    setProgress(75, 'Finding lab-rollover candidates…');
+
+    // 4. Same cat + same clinic + adjacent dates (1-3 days) — potential lab rollover
+    const rolloverPairs = [];
+    const checkedR = new Set();
+    for (let i = 0; i < clinicalVisits.length; i++) {
+      for (let j = i + 1; j < clinicalVisits.length; j++) {
+        const a = clinicalVisits[i], b = clinicalVisits[j];
+        if (a.cat !== b.cat) continue;
+        const diff = dateDiff(a.date, b.date);
+        if (diff === 0 || diff > 3) continue;
+        const ca = normClinic(a.clinic), cb = normClinic(b.clinic);
+        if (ca === '' || cb === '' || ca !== cb) continue;
+        const key = [a._id, b._id].sort().join('|');
+        if (checkedR.has(key)) continue;
+        checkedR.add(key);
+        rolloverPairs.push({ a, b, diff });
+      }
+    }
+
+    setProgress(90, 'Building report…');
+
+    // ── SUMMARY CARDS ──
+    const cards = [
+      { label: 'Total visits', value: clinicalVisits.length, sub: 'clinical records', cls: '' },
+      { label: 'Total invoices', value: invoices.length, sub: `${emptyInvoices.length} empty`, cls: invoices.length > 0 ? 'warn' : '' },
+      { label: 'Matched invoices', value: matchedInvoices.length, sub: 'have a clinical note', cls: '' },
+      { label: 'Orphan invoices', value: orphanInvoices.length, sub: 'no matching clinical note', cls: orphanInvoices.length > 0 ? 'warn' : 'good' },
+      { label: 'Empty invoices', value: emptyInvoices.length, sub: 'safe to delete', cls: emptyInvoices.length > 0 ? 'alert' : 'good' },
+      { label: 'Same-date pairs', value: sameDatePairs.length, sub: 'possible duplicates', cls: sameDatePairs.length > 0 ? 'warn' : 'good' },
+      { label: 'Lab-rollover pairs', value: rolloverPairs.length, sub: 'same clinic ±1–3 days', cls: rolloverPairs.length > 0 ? 'warn' : 'good' },
+    ];
+
+    $('summary-grid').innerHTML = cards.map(c => `
+      <div class="card ${c.cls}">
+        <div class="card-label">${c.label}</div>
+        <div class="card-value">${c.value}</div>
+        <div class="card-sub">${c.sub}</div>
+      </div>`).join('');
+    $('summary-grid').style.display = 'grid';
+
+    // ── DETAIL SECTIONS ──
+    const results = $('results');
+
+    // Section 1: Empty invoices
+    {
+      let rows;
+      if (!emptyInvoices.length) {
+        rows = '<div class="empty-note">✓ No empty invoices found.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Date</th><th>Clinic</th><th>Source file</th><th>Notes</th></tr>
+          ${emptyInvoices.map(v => `
+          <tr>
+            <td>${esc(v.cat || '—')}</td>
+            <td>${fmtDate(v.date)}</td>
+            <td>${esc(v.clinic || '—')}</td>
+            <td style="font-size:0.58rem;color:var(--ink-muted);">${esc((v.sourceFiles||[v.sourceFile||''])[0] || '—')}</td>
+            <td><span class="tag empty">empty</span> no meds or procedures</td>
+          </tr>`).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('empty', '🗑 Empty invoices — safe to delete', emptyInvoices.length, 'var(--red)', rows));
+    }
+
+    // Section 2: Matched invoices (have a clinical note)
+    {
+      let rows;
+      if (!matchedInvoices.length) {
+        rows = '<div class="empty-note">No matched invoice+visit pairs found.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Invoice date</th><th>Matched visit date</th><th>Clinic</th><th>Invoice meds</th></tr>
+          ${matchedInvoices.map(({invoice: inv, match}) => {
+            const meds = (inv.medications||[]).map(m=>m.name).filter(Boolean).slice(0,3).join(', ');
+            const clinicMatch = normClinic(inv.clinic) === normClinic(match.clinic);
+            return `<tr>
+              <td>${esc(inv.cat||'—')}</td>
+              <td>${fmtDate(inv.date)}</td>
+              <td>${fmtDate(match.date)} <span style="font-size:0.58rem;color:var(--ink-muted);">(${dateDiff(inv.date,match.date)}d diff)</span></td>
+              <td>${esc(inv.clinic||'—')}${!clinicMatch ? `<br><span class="clinic-mismatch">vs. ${esc(match.clinic||'—')}</span>` : ''}</td>
+              <td style="font-size:0.6rem;">${esc(meds||'—')}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('matched', '🔗 Invoices with a matching clinical note', matchedInvoices.length, 'var(--amber)', rows));
+    }
+
+    // Section 3: Orphan invoices (no clinical note match — worth keeping)
+    {
+      let rows;
+      if (!orphanInvoices.length) {
+        rows = '<div class="empty-note">✓ No orphan invoices — all have matching clinical notes.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Date</th><th>Clinic</th><th>Meds / procedures</th><th>Source file</th></tr>
+          ${orphanInvoices.map(v => {
+            const meds = (v.medications||[]).map(m=>m.name).filter(Boolean).join(', ');
+            const procs = (v.procedures||[]).map(p=>p.name).filter(Boolean).join(', ');
+            const items = [meds, procs].filter(Boolean).join(' · ');
+            return `<tr>
+              <td>${esc(v.cat||'—')}</td>
+              <td>${fmtDate(v.date)}</td>
+              <td>${esc(v.clinic||'—')}</td>
+              <td style="font-size:0.6rem;">${esc(items||'—')}</td>
+              <td style="font-size:0.58rem;color:var(--ink-muted);">${esc((v.sourceFiles||[v.sourceFile||''])[0]||'—')}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('orphan', '📋 Orphan invoices — no matching clinical note (keep these)', orphanInvoices.length, 'var(--blue)', rows));
+    }
+
+    // Section 4: Same-date pairs
+    {
+      let rows;
+      if (!sameDatePairs.length) {
+        rows = '<div class="empty-note">✓ No same-date duplicate candidates found.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Date</th><th>Record A</th><th>Record B</th><th>Clinic match?</th></tr>
+          ${sameDatePairs.map(({a, b}) => {
+            const sameClinic = normClinic(a.clinic) !== '' && normClinic(a.clinic) === normClinic(b.clinic);
+            const clinicNote = sameClinic
+              ? '<span style="color:var(--red);font-size:0.6rem;">same clinic ⚠</span>'
+              : '<span style="color:var(--green);font-size:0.6rem;">diff clinics ✓</span>';
+            return `<tr>
+              <td>${esc(a.cat||'—')}</td>
+              <td>${fmtDate(a.date)}</td>
+              <td style="font-size:0.6rem;">${esc(a.clinic||'—')}<br><span style="color:var(--ink-muted);">${esc((a.chiefComplaint||'').slice(0,40)||'no complaint')}</span></td>
+              <td style="font-size:0.6rem;">${esc(b.clinic||'—')}<br><span style="color:var(--ink-muted);">${esc((b.chiefComplaint||'').slice(0,40)||'no complaint')}</span></td>
+              <td>${clinicNote}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('samedate', '⚠ Same-date pairs — possible duplicates', sameDatePairs.length, 'var(--amber)', rows));
+    }
+
+    // Section 5: Lab-rollover pairs
+    {
+      let rows;
+      if (!rolloverPairs.length) {
+        rows = '<div class="empty-note">✓ No lab-rollover candidates found.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Clinic</th><th>Visit A</th><th>Visit B</th><th>Day gap</th><th>Likely?</th></tr>
+          ${rolloverPairs.map(({a, b, diff}) => {
+            const aHasLabs = a.synopsis && /lab|cbc|chem|panel|ua |urinalysis/i.test(a.synopsis);
+            const bHasLabs = b.synopsis && /lab|cbc|chem|panel|ua |urinalysis/i.test(b.synopsis);
+            const likely = (aHasLabs || bHasLabs) ? '<span style="color:var(--amber);">likely rollover</span>' : '<span style="color:var(--ink-muted);">unclear</span>';
+            return `<tr>
+              <td>${esc(a.cat||'—')}</td>
+              <td style="font-size:0.6rem;">${esc(a.clinic||'—')}</td>
+              <td style="font-size:0.6rem;">${fmtDate(a.date)}<br><span style="color:var(--ink-muted);">${esc((a.chiefComplaint||'').slice(0,35)||'no complaint')}</span></td>
+              <td style="font-size:0.6rem;">${fmtDate(b.date)}<br><span style="color:var(--ink-muted);">${esc((b.chiefComplaint||'').slice(0,35)||'no complaint')}</span></td>
+              <td style="text-align:center;">${diff}d</td>
+              <td>${likely}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('rollover', '🔬 Lab-rollover pairs — same clinic, adjacent dates', rolloverPairs.length, 'var(--amber)', rows));
+    }
+
+    // Section 6: Unknown/missing dates
+    {
+      const unknownDate = clinicalVisits.filter(v => !v.date || v.date === 'unknown');
+      let rows;
+      if (!unknownDate.length) {
+        rows = '<div class="empty-note">✓ All clinical records have dates.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Cat</th><th>Clinic</th><th>Chief complaint</th><th>Source file</th></tr>
+          ${unknownDate.map(v => `<tr>
+            <td>${esc(v.cat||'—')}</td>
+            <td>${esc(v.clinic||'—')}</td>
+            <td style="font-size:0.6rem;">${esc((v.chiefComplaint||'').slice(0,50)||'—')}</td>
+            <td style="font-size:0.58rem;color:var(--ink-muted);">${esc((v.sourceFiles||[v.sourceFile||''])[0]||'—')}</td>
+          </tr>`).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('nodates', '📅 Missing dates', unknownDate.length, 'var(--red)', rows));
+    }
+
+    // Section 7: Unknown/missing cat
+    {
+      const unknownCat = visits.filter(v => !v.cat || v.cat === 'Unknown');
+      let rows;
+      if (!unknownCat.length) {
+        rows = '<div class="empty-note">✓ All records have a cat assigned.</div>';
+      } else {
+        rows = `<table>
+          <tr><th>Date</th><th>Clinic</th><th>Chief complaint</th><th>Source file</th></tr>
+          ${unknownCat.map(v => `<tr>
+            <td>${fmtDate(v.date)}</td>
+            <td>${esc(v.clinic||'—')}</td>
+            <td style="font-size:0.6rem;">${esc((v.chiefComplaint||'').slice(0,50)||'—')}</td>
+            <td style="font-size:0.58rem;color:var(--ink-muted);">${esc((v.sourceFiles||[v.sourceFile||''])[0]||'—')}</td>
+          </tr>`).join('')}
+        </table>`;
+      }
+      results.appendChild(makeSection('nocat', '🐱 Records without a cat assigned', unknownCat.length, 'var(--red)', rows));
+    }
+
+    // Auto-open any section with items
+    setTimeout(() => {
+      document.querySelectorAll('.section-header').forEach(hdr => {
+        const countEl = hdr.querySelector('.section-count');
+        const n = parseInt(countEl?.textContent || '0');
+        if (n > 0) {
+          hdr.classList.add('open');
+          hdr.nextElementSibling.classList.add('open');
+        }
+      });
+    }, 100);
+
+    setProgress(100, `Audit complete — ${visits.length} total records analysed.`);
+    setTimeout(() => { $('progress-section').style.display = 'none'; }, 1500);
+
+  } catch(err) {
+    $('progress-label').textContent = 'Error: ' + err.message;
+    console.error(err);
+  }
+
+  $('run-btn').disabled = false;
+}
+</script>
+</body>
+</html>
