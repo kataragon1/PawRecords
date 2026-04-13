@@ -66,6 +66,8 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .sidebar-tab{flex:1;padding:0.55rem 0.25rem;font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;text-align:center;border-bottom:2px solid transparent;user-select:none;}
 .sidebar-tab:hover{color:var(--ink);background:var(--surface);}
 .sidebar-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.cat-pill{font-family:'JetBrains Mono',monospace;font-size:0.6rem;padding:0.18rem 0.55rem;border-radius:10px;cursor:pointer;user-select:none;transition:all 0.15s;border:1px solid var(--border);background:transparent;color:var(--ink-muted);}
+.cat-pill.active{border-color:var(--accent);background:var(--accent);color:white;}
 .sidebar-panel{display:none;flex:1;overflow-y:auto;overflow-x:hidden;flex-direction:column;}
 #panel-labs{overflow-x:auto;}
 .sidebar-panel.active{display:flex;}
@@ -1434,18 +1436,8 @@ function renderCatFocusPills() {
 }
 
 function pillStyle(el, active) {
-  el.style.cssText = [
-    'font-family:\'JetBrains Mono\',monospace',
-    'font-size:0.6rem',
-    'padding:0.18rem 0.55rem',
-    'border-radius:10px',
-    'cursor:pointer',
-    'user-select:none',
-    'transition:all 0.15s',
-    `border:1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-    `background:${active ? 'var(--accent)' : 'transparent'}`,
-    `color:${active ? 'white' : 'var(--ink-muted)'}`,
-  ].join(';');
+  el.classList.add('cat-pill');
+  el.classList.toggle('active', active);
 }
 
 // ── RECORDS SIDEBAR ──
@@ -4282,7 +4274,14 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
 
   // Write to Firestore using batch
   try {
-    const fsBatch = writeBatch(db);
+    let fsBatch = writeBatch(db);
+    let fsBatchCount = 0;
+    const fsFlush = async () => {
+      if (fsBatchCount > 0 && fsBatchCount % 400 === 0) {
+        await fsBatch.commit();
+        fsBatch = writeBatch(db);
+      }
+    };
 
     for (const visit of allVisits) {
       if (!visit.cat || visit.cat === 'SKIP') continue;
@@ -4292,7 +4291,6 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (isAmendment && amendmentMatches[matchKey]) {
         const existDoc = amendmentMatches[matchKey];
         const existData = existDoc.data();
-        // Merge: prefer existing non-empty values, fill in anything missing from new extraction
         const merged = {
           synopsis: existData.synopsis || visit.synopsis,
           narrative: existData.narrative?.length > (visit.narrative?.length || 0) ? existData.narrative : (visit.narrative || existData.narrative),
@@ -4307,11 +4305,11 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
           sourceFiles: [...new Set([...(existData.sourceFiles||[]), file.name])],
           driveFileIds: [...new Set([...(existData.driveFileIds||[]), file.id])]
         };
-        // Remove nulls so we don't overwrite existing data with null
         Object.keys(merged).forEach(k => merged[k] === null && delete merged[k]);
         fsBatch.update(existDoc.ref, sanitizeForFirestore(merged));
         if (visit.cat) allCats.add(visit.cat);
         if (visit.date) allDates.add(visit.date);
+        fsBatchCount++; await fsFlush();
         continue;
       }
 
@@ -4332,6 +4330,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       }));
       if (visit.cat) allCats.add(visit.cat);
       if (visit.date) allDates.add(visit.date);
+      fsBatchCount++; await fsFlush();
     }
 
     for (const lab of allLabs) {
@@ -4340,7 +4339,6 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (!cat) continue;
       const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
 
-      // Skip if this exact test+cat+date already exists in Firestore (from a merged file)
       if (isAmendment && _allLabsCache) {
         const alreadyExists = _allLabsCache.some(l =>
           l.cat === cat &&
@@ -4358,6 +4356,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         sourceFile: file.name, driveFileId: file.id,
         createdAt: new Date().toISOString()
       }));
+      fsBatchCount++; await fsFlush();
     }
 
     for (const flag of allFlags) {
@@ -4368,6 +4367,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         resolved: false, resolvedAt: null, resolution: null,
         createdAt: new Date().toISOString()
       }));
+      fsBatchCount++; await fsFlush();
     }
 
     await fsBatch.commit();
@@ -7820,8 +7820,16 @@ async function processBatchResults(batchId) {
 async function writeBatchResultToFirestore(fileId, filename, parsed) {
   const allCats = new Set(parsed.cats || []);
   const allDates = new Set(parsed.dates || []);
-  const batch = writeBatch(db);
+  let batch = writeBatch(db);
   let writeCount = 0;
+
+  // Helper — flush and start a fresh batch when approaching Firestore's 500-op limit
+  const maybeFlush = async () => {
+    if (writeCount > 0 && writeCount % 400 === 0) {
+      await batch.commit();
+      batch = writeBatch(db); // IMPORTANT: must create a new batch after commit
+    }
+  };
 
   // Build reliable date pool from result.dates + all visit dates
   const visitDates = (parsed.visits || []).map(v => v.date).filter(Boolean);
@@ -7848,8 +7856,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
     allCats.add(visit.cat);
     if (visit.date) allDates.add(visit.date);
     writeCount++;
-    // Firestore batch limit is 500 — flush and start new batch
-    if (writeCount % 400 === 0) { await batch.commit(); }
+    await maybeFlush();
   }
 
   for (const lab of (parsed._normalizedLabs || [...(parsed.labs || []), ...(parsed.pcr || []).map(r => ({...r, labName:'PCR', labGroup:'PCR'}))])) {
@@ -7867,7 +7874,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       createdAt: new Date().toISOString()
     });
     writeCount++;
-    if (writeCount % 400 === 0) { await batch.commit(); }
+    await maybeFlush();
   }
 
   for (const flag of (parsed.flags || [])) {
@@ -7880,6 +7887,7 @@ async function writeBatchResultToFirestore(fileId, filename, parsed) {
       createdAt: new Date().toISOString()
     });
     writeCount++;
+    await maybeFlush();
   }
 
   await batch.commit();

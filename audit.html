@@ -173,7 +173,7 @@ tr:hover td{background:var(--surface);}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, orderBy, where }
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, query, orderBy, where, writeBatch }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -772,11 +772,57 @@ $('reviewer-overlay').onclick = e => { if (e.target === $('reviewer-overlay')) $
 $('reviewer-prev').onclick = () => { if (_reviewerIdx > 0) { _reviewerIdx--; renderReviewer(); } };
 $('reviewer-next').onclick = () => { const pairs = window._rolloverClusters||[]; if (_reviewerIdx < pairs.length-1) { _reviewerIdx++; renderReviewer(); } };
 
-$('reviewer-skip').onclick = () => {
-  const pairs = window._rolloverClusters||[];
-  if (_reviewerIdx < pairs.length-1) { _reviewerIdx++; renderReviewer(); }
+$('reviewer-skip').onclick = async () => {
+  const clusters = window._rolloverClusters||[];
+  const cluster = clusters[_reviewerIdx];
+  // Silently deduplicate labs across the cluster — same cat+test+value+date → keep one
+  try { await deduplicateClusterLabs(cluster); } catch(e) { console.warn('Lab dedup failed:', e.message); }
+  if (_reviewerIdx < clusters.length-1) { _reviewerIdx++; renderReviewer(); }
   else $('reviewer-overlay').style.display = 'none';
 };
+
+// Deduplicate labs for a cluster: for each exact duplicate (cat+test+value+date), keep one and delete the rest
+async function deduplicateClusterLabs(cluster) {
+  const allFileIds = [...new Set(cluster.flatMap(r => [...(r.driveFileIds||[]), r.sourceFileId].filter(Boolean)))];
+  if (!allFileIds.length) return;
+
+  // Load all labs referenced by any record in this cluster
+  const snaps = await Promise.all(
+    // Firestore 'in' queries max 30 items — chunk if needed
+    chunkArray(allFileIds, 10).map(ids =>
+      getDocs(query(collection(db, 'labs'), where('driveFileId', 'in', ids)))
+    )
+  );
+  const labs = snaps.flatMap(s => s.docs.map(d => ({ _docId: d.id, ...d.data() })));
+  if (!labs.length) return;
+
+  // Group by dedup key: cat + test + value + resultDate
+  const seen = new Map();
+  const toDelete = [];
+  for (const lab of labs) {
+    const key = `${lab.cat}||${lab.test}||${lab.value}||${lab.resultDate||lab.visitDate||''}`;
+    if (seen.has(key)) {
+      toDelete.push(lab._docId);
+    } else {
+      seen.set(key, lab._docId);
+    }
+  }
+  if (!toDelete.length) return;
+
+  // Delete in batches
+  for (const chunk of chunkArray(toDelete, 400)) {
+    const b = writeBatch(db);
+    chunk.forEach(id => b.delete(doc(db, 'labs', id)));
+    await b.commit();
+  }
+  console.log(`Deduped ${toDelete.length} lab records for cluster`);
+}
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 $('reviewer-delete-b').onclick = async () => {
   const clusters = window._rolloverClusters||[];
@@ -791,6 +837,7 @@ $('reviewer-delete-b').onclick = async () => {
       trackIgnoredSources(r);
     }
     showReviewerToast(`${toDelete.length} record${toDelete.length!==1?'s':''} deleted ✓`, 'green');
+    try { await deduplicateClusterLabs(cluster); } catch(e) { console.warn('Lab dedup failed:', e.message); }
     clusters.splice(_reviewerIdx, 1);
     if (_reviewerIdx >= clusters.length) _reviewerIdx = Math.max(0, clusters.length-1);
     if (clusters.length === 0) { $('reviewer-overlay').style.display = 'none'; return; }
@@ -816,6 +863,7 @@ $('reviewer-commit').onclick = async () => {
       trackIgnoredSources(r);
     }
     showReviewerToast(`Merged ✓ — ${secondaries.length} record${secondaries.length!==1?'s':''} deleted`, 'green');
+    try { await deduplicateClusterLabs(cluster); } catch(e) { console.warn('Lab dedup failed:', e.message); }
     clusters.splice(_reviewerIdx, 1);
     if (_reviewerIdx >= clusters.length) _reviewerIdx = Math.max(0, clusters.length-1);
     if (clusters.length === 0) {
