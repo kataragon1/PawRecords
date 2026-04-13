@@ -520,6 +520,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div id="sidebar-resize-handle" style="position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:100;background:transparent;transition:background 0.15s;" title="Drag to resize"></div>
     <div class="sidebar-top">
       <span class="sidebar-wordmark">🐾 Paw Records</span>
+      <span id="sidebar-pet-ages" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:center;"></span>
       <button onclick="openPetProfilesModal()" title="Pet profiles & birthdates" style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--ink-muted);padding:0.1rem 0.3rem;border-radius:4px;transition:color 0.15s;line-height:1;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--ink-muted)'">🐱</button>
       <span class="sidebar-user" id="sidebar-user-email"></span>
     </div>
@@ -1279,9 +1280,10 @@ async function updatePetList() {
     const snap = await getDocs(collection(db, 'visits'));
     const pets = [...new Set(snap.docs.map(d => d.data().cat).filter(Boolean))].sort();
     if (pets.length) {
-      APP_PETS = pets; // update global — used by prompts, context builder, dropdowns
+      APP_PETS = pets;
       if (window._renderNoteChips) window._renderNoteChips();
       renderCatFocusPills();
+      renderPetAges();
       const list = pets.length === 1 ? pets[0]
         : pets.slice(0, -1).join(', ') + ' & ' + pets[pets.length - 1];
       $('welcome-subtitle').textContent =
@@ -1298,7 +1300,29 @@ async function loadPetProfiles() {
   try {
     const d = await getDoc(doc(db, 'app_config', 'pet_profiles'));
     if (d.exists()) _petProfiles = d.data().profiles || {};
+    renderPetAges();
   } catch(e) { console.warn('Pet profiles load failed:', e.message); }
+}
+
+function renderPetAges() {
+  const el = document.getElementById('sidebar-pet-ages');
+  if (!el || !APP_PETS.length) return;
+  const today = new Date();
+  const parts = APP_PETS.map(cat => {
+    const bd = _petProfiles[cat]?.birthdate;
+    if (!bd) return null;
+    try {
+      const birth = new Date(bd + 'T12:00:00');
+      const ageMs = today - birth;
+      if (ageMs < 0) return null;
+      const years = Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
+      const months = Math.floor((ageMs % (365.25 * 24 * 3600 * 1000)) / (30.44 * 24 * 3600 * 1000));
+      const ageStr = years >= 1 ? `${years}yo` : `${months}mo`;
+      return `${cat} ${ageStr}`;
+    } catch { return null; }
+  }).filter(Boolean);
+  el.textContent = parts.join(' · ');
+  el.title = parts.join(', ');
 }
 
 async function savePetProfiles() {
@@ -1355,6 +1379,7 @@ function openPetProfilesModal() {
     });
     await savePetProfiles();
     modal.remove();
+    renderPetAges();
     showToast('Pet profiles saved ✓', 'journal');
   };
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -1419,6 +1444,9 @@ function pillStyle(el, active) {
 // ── RECORDS SIDEBAR ──
 let _recordsSidebarDebounce = null;
 let _recordsSidebarLoading = false;
+let _recordsSidebarDirty = true; // false = DOM is up to date with current cache
+function dirtyRecordsSidebar() { _recordsSidebarDirty = true; }
+
 async function loadRecordsSidebar() {
   // Debounce — if called repeatedly, only execute after 400ms of quiet
   if (_recordsSidebarDebounce) clearTimeout(_recordsSidebarDebounce);
@@ -1439,11 +1467,14 @@ async function loadRecordsSidebar() {
 
 async function _loadRecordsSidebarImpl() {
   try {
+    const cacheWasNull = !_allVisitsCache;
     if (!_allVisitsCache) {
       const q = query(collection(db, 'visits'), orderBy('date', 'desc'));
       const snap = await getDocs(q);
       _allVisitsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
+    // Skip DOM rebuild if nothing has changed since last render
+    if (!_recordsSidebarDirty && !cacheWasNull) return;
     const tree = {};
     _allVisitsCache.forEach(v => {
       if (!tree[v.cat]) tree[v.cat] = {};
@@ -1451,6 +1482,7 @@ async function _loadRecordsSidebarImpl() {
       if (!tree[v.cat][v.date].find(x => x.id === v.id)) tree[v.cat][v.date].push(v);
     });
     renderRecordsTree(tree);
+    _recordsSidebarDirty = false;
   } catch (err) {
     console.error('Records load error:', err);
   }
@@ -1493,11 +1525,7 @@ function briefInvoice(v) {
     v.invoiceSummary = null;
   }
   if (v.chiefComplaint) return v.chiefComplaint;
-  // Queue lazy generation (rate-limited — processes one at a time)
-  if (apiKey && (v.medications?.length || v.procedures?.length)) {
-    queueInvoiceSummary(v);
-  }
-  // Fallback: raw med list filtered of noise while summary generates
+  // Fallback: raw med list (invoice summaries not generated — not worth the API cost)
   const meds = (v.medications || [])
     .map(m => m.name).filter(Boolean)
     .filter(n => !/syringe|disposal|fee|tax|bandage|glove/i.test(n));
@@ -1510,56 +1538,10 @@ function briefInvoice(v) {
   return joined.length > 40 ? joined.slice(0, 38) + '…' : joined;
 }
 
-// Sequential queue for invoice summaries — processes one every 2s to avoid rate limits
-const _invoiceSummaryQueue = new Set();
-let _invoiceSummaryRunning = false;
-let _invoiceSummaryTimer = null;
-
-function queueInvoiceSummary(v) {
-  if (!v?.id) return;
-  if (_invoiceSummaryQueue.has(v.id)) return;
-  // Don't queue if cache not ready yet — will get queued on next render
-  if (!_allVisitsCache) return;
-  _invoiceSummaryQueue.add(v.id);
-  // Debounce start — wait 3s after last queue addition before starting
-  // so the initial render finishes collecting all invoices before we begin
-  if (_invoiceSummaryTimer) clearTimeout(_invoiceSummaryTimer);
-  _invoiceSummaryTimer = setTimeout(() => {
-    _invoiceSummaryTimer = null;
-    if (!_invoiceSummaryRunning) processInvoiceSummaryQueue();
-  }, 3000);
-}
-
-async function processInvoiceSummaryQueue() {
-  if (_invoiceSummaryRunning) return;
-  _invoiceSummaryRunning = true;
-  const toProcess = [..._invoiceSummaryQueue];
-  _invoiceSummaryQueue.clear();
-
-  let didUpdate = false;
-  for (let i = 0; i < toProcess.length; i++) {
-    const id = toProcess[i];
-    const v = _allVisitsCache?.find(x => x.id === id);
-    if (!v || v.invoiceSummary || v.chiefComplaint) continue;
-    try {
-      const summary = await getInvoiceSummary(v);
-      if (summary) {
-        v.invoiceSummary = summary;
-        didUpdate = true;
-        // Update just the date label text in the DOM without full reload
-        updateInvoiceLabelInDOM(v.id, summary);
-      }
-    } catch(e) { console.warn('Invoice summary failed:', e.message); }
-    if (i < toProcess.length - 1) await sleep(1500);
-  }
-
-  _invoiceSummaryRunning = false;
-
-  // If more were queued while running, process them after a delay
-  if (_invoiceSummaryQueue.size) {
-    setTimeout(() => processInvoiceSummaryQueue(), 2000);
-  }
-}
+// Invoice summary queue removed — briefInvoice() raw fallback is sufficient.
+// These stubs prevent errors if called from legacy code paths.
+function queueInvoiceSummary() {}
+async function processInvoiceSummaryQueue() {}
 
 function updateInvoiceLabelInDOM(visitId, summary) {
   // Find the date group for this visit and update its complaint span
@@ -2040,7 +2022,7 @@ function openVisitEdit(v) {
     try {
       await setDoc(doc(db, 'visits', v.id), updates, { merge: true });
       // Invalidate cache so search picks up the edit
-      _allVisitsCache = null;
+      _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
       showToast('Visit updated ✓', 'journal');
       $('record-popup').classList.remove('open');
       loadRecordsSidebar();
@@ -2070,19 +2052,23 @@ let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, 
 let _allLabsCache = null; // raw array cache — null means needs reload
 let flowsheetCat = null;
 
-function invalidateLabsCache() { _allLabsCache = null; }
+function invalidateLabsCache() { _allLabsCache = null; invalidateChatContext(); _labsSidebarDirty = true; }
 
 let _labsSidebarDebounce = null;
+let _labsSidebarDirty = true;
 async function loadLabsSidebar() {
   if (_labsSidebarDebounce) clearTimeout(_labsSidebarDebounce);
   return new Promise(resolve => {
     _labsSidebarDebounce = setTimeout(async () => {
       _labsSidebarDebounce = null;
       try {
+        const cacheWasNull = !_allLabsCache;
         if (!_allLabsCache) {
           const snap = await getDocs(query(collection(db, 'labs'), orderBy('resultDate', 'desc')));
           _allLabsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
+        // Skip DOM rebuild if nothing has changed
+        if (!_labsSidebarDirty && !cacheWasNull) { resolve(); return; }
         labDataCache = {};
         invalidateFlowsheetCache();
         _allLabsCache.forEach(l => {
@@ -2091,6 +2077,7 @@ async function loadLabsSidebar() {
           labDataCache[l.cat].push(l);
         });
         renderLabsSidebar();
+        _labsSidebarDirty = false;
       } catch (err) { console.error('Labs load error:', err); }
       resolve();
     }, 400);
@@ -2591,7 +2578,7 @@ function buildFlowsheetTable(cat, container) {
 }
 
 // ── JOURNAL SIDEBAR ──
-let _journalDocsCache = null;
+let _journalDocsCache = null; invalidateChatContext();
 let _journalSidebarDebounce = null;
 async function loadJournalSidebar() {
   _journalCache = null;
@@ -2905,7 +2892,7 @@ function openJournalEdit(item) {
       for (const f of fields) updates[f.key] = inputs[f.key].value || null;
       if (item._isNew) {
         if (!updates.text?.trim()) { showToast('Text is required', 'warning'); return; }
-        _journalDocsCache = null; await setDoc(doc(collection(db, 'journal')), {
+        _journalDocsCache = null; invalidateChatContext(); await setDoc(doc(collection(db, 'journal')), {
           cat: item.cat, list: item.list,
           text: updates.text, dose: updates.dose || null,
           status: updates.status || 'current',
@@ -2916,7 +2903,7 @@ function openJournalEdit(item) {
         showToast('Journal entry added', 'journal');
       } else {
         if (!item.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
-        _journalDocsCache = null; await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
+        _journalDocsCache = null; invalidateChatContext(); await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
         showToast('Journal entry updated', 'journal');
       }
       $('record-popup').classList.remove('open');
@@ -3699,7 +3686,7 @@ async function startProcessingQueue(files) {
   await requestWakeLock();
 
   // Ensure visits cache is fresh for duplicate detection during this run
-  _allVisitsCache = null;
+  _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
   await ensureDataCache();
 
   const progress = $('process-progress');
@@ -3757,7 +3744,7 @@ async function startProcessingQueue(files) {
   invalidateFileStatusCache();
   await reloadSidebars('all');
   await updatePetList();
-  _allVisitsCache = null;
+  _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
   _allLabsCache = null;
   if (_activeTab === 'files') loadDriveFiles();
   updateProcessButtons();
@@ -5170,7 +5157,7 @@ async function executeMerge(visitA, visitB, selections, FIELDS) {
     await batch.commit();
 
     $('merge-modal').style.display = 'none';
-    _allVisitsCache = null;
+    _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
     await loadRecordsSidebar();
     showToast('Visits merged ✓', 'journal');
   } catch(err) {
@@ -5605,7 +5592,7 @@ function attachJournalCtxMenu(el, item, cat, listName) {
 
 async function confirmDeleteJournalEntry(item) {
   if (!confirm(`Delete journal entry?\n"${item.text}"`)) return;
-  _journalDocsCache = null; await deleteDoc(doc(db, 'journal', item.id));
+  _journalDocsCache = null; invalidateChatContext(); await deleteDoc(doc(db, 'journal', item.id));
   await loadJournalSidebar();
   showToast('Journal entry deleted ✓', 'journal');
 }
@@ -6597,7 +6584,7 @@ async function sendMessage() {
   const typingEl = appendTyping();
   try {
     const context = await buildChatContext(text);
-    let response = await callClaude(convHistory, context);
+    let response = await callClaude(convHistory, context, text);
     typingEl.remove();
 
     // Extract and strip <journal> hint block before displaying
@@ -6856,8 +6843,12 @@ function addPendingItem(item) {
   if (pendingJournalItems.some(p => `${p.cat}_${p.text.toLowerCase()}_${p.status}` === key)) return;
   item.id = Math.random().toString(36).slice(2,9);
   pendingJournalItems.push(item);
-  loadJournalSidebar();
+  // Debounce sidebar rebuild — multiple items may be added in rapid succession
+  // (e.g. journal block from Claude response adds several at once)
+  if (_addPendingDebounce) clearTimeout(_addPendingDebounce);
+  _addPendingDebounce = setTimeout(() => { _addPendingDebounce = null; loadJournalSidebar(); }, 300);
 }
+let _addPendingDebounce = null;
 
 function updateJournalBadge() {
   const count = pendingJournalItems.length;
@@ -7534,7 +7525,7 @@ async function runSaveSession(resumeData) {
     });
   }
   await fsBatch.commit();
-  _journalDocsCache = null;
+  _journalDocsCache = null; invalidateChatContext();
   let noteAdds = 0, noteRemovals = 0;
   for (const sug of allNoteSuggestions) {
     if (!sug.text && sug.action !== 'remove') continue;
@@ -8440,7 +8431,7 @@ function appendTyping() {
 
 // ── CONTEXT BUILDER ──
 // In-memory cache of all visits and labs loaded at startup — used for client-side search
-let _allVisitsCache = null;
+let _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
 // _allLabsCache declared near loadLabsSidebar above
 
 async function ensureDataCache() {
@@ -8468,6 +8459,11 @@ let _journalCache = null;
 let _journalCacheTime = 0;
 const JOURNAL_CACHE_TTL = 60000; // 1 minute
 
+// Chat context cache — rebuilt only when underlying data changes
+let _chatContextCache = null;       // { cats: string, context: string }
+let _chatContextDirty = true;       // true = must rebuild on next message
+function invalidateChatContext() { _chatContextDirty = true; }
+
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
   const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
@@ -8477,12 +8473,19 @@ async function buildChatContext(userMessage) {
     : (mentioned.length ? mentioned : knownCats);
   if (!targetCats.length) return '';
 
+  // Search/full-history queries always rebuild — they depend on the message itself
+  const isSearchQuery = /search|find|mention|history|all visit|every time|when did|has she ever|back in|years? ago|look(ing)? for/i.test(userMessage);
+  const isFullHistoryRequest = /full history|load (all|everything)|all records|complete history/i.test(userMessage);
+  const catsKey = targetCats.sort().join(',');
+  const needsRebuild = _chatContextDirty || isSearchQuery || isFullHistoryRequest ||
+    !_chatContextCache || _chatContextCache.cats !== catsKey;
+
+  if (!needsRebuild) return _chatContextCache.context;
+
   await ensureDataCache();
 
   // Notes context always comes first — highest priority
   let context = buildNotesContext();
-  const isSearchQuery = /search|find|mention|history|all visit|every time|when did|has she ever|back in|years? ago|look(ing)? for/i.test(userMessage);
-  const isFullHistoryRequest = /full history|load (all|everything)|all records|complete history/i.test(userMessage);
 
   // Journal — cached for 1 minute to avoid a Firestore read on every message
   try {
@@ -8599,6 +8602,12 @@ async function buildChatContext(userMessage) {
     }
   } catch(e) { console.warn('Lab context failed:', e); }
 
+  // Cache result (skip for search/full-history — those are message-specific)
+  if (!isSearchQuery && !isFullHistoryRequest) {
+    _chatContextCache = { cats: catsKey, context };
+    _chatContextDirty = false;
+  }
+
   return context;
 }
 
@@ -8686,7 +8695,7 @@ async function saveHomeIssue() {
 
   try {
     await addDoc(collection(db, 'visits'), record);
-    _allVisitsCache = null;
+    _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
     $('home-issue-modal').style.display = 'none';
     showToast(`Home issue logged for ${cat} ✓`, 'journal');
     loadRecordsSidebar();
@@ -8828,7 +8837,7 @@ function openVitalsEditPopover(point, metric, dotEl, svgEl) {
       const vitalsKey = { weight: 'weight', bcs: 'BCS', mcs: 'muscleConditionScore' }[metric];
       await setDoc(doc(db, 'visits', point.visitId), { vitals: { [vitalsKey]: val } }, { merge: true });
       // Invalidate cache so trends re-renders with new value
-      _allVisitsCache = null;
+      _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
       close();
       showToast('Updated ✓', 'journal');
       // Re-render trends
@@ -9101,19 +9110,28 @@ $('trends-modal-close').addEventListener('click', () => { $('trends-modal').styl
 $('trends-modal').addEventListener('click', e => { if (e.target === $('trends-modal')) $('trends-modal').style.display = 'none'; });
 
 // ── CLAUDE CHAT API ──
-async function callClaude(history, context) {
-  const system = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
-You have access to their complete medical records, lab results, and care journal below.
-Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
-If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+// Heuristic: does this message look like it might contain new clinical info worth journaling?
+function _messageHasJournalIntent(userMessage) {
+  return /\b(start|started|starting|stopped|stopping|added|adding|switched|switching|prescribed|tried|trying|gave|giving|taking|on |diagnosed|diagnosed with|new med|new food|new diet|new supplement|vomit|diarrhea|seizure|limp|not eating|lethargy|lethargic|weight|dose|mg|every|daily|weekly|morning|evening|twice)\b/i.test(userMessage);
+}
 
-${context || '(No records loaded yet — records will appear after files are processed)'}
+async function callClaude(history, context, userMessage) {
+  const includeJournalHint = _messageHasJournalIntent(userMessage || '');
+
+  const journalInstruction = includeJournalHint ? `
 
 JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, symptoms, treatments, plans, diagnoses), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions or information requests.
 <journal>
 [{"cat":"Evie","list":"Diet","text":"z/d wet food transition","status":"current"},{"cat":"Evie","list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"}]
 </journal>
-The block must be valid JSON array. Use status: current/past/plan/maybe. Keep text concise (under 60 chars). Do not show the journal block to the user — it is parsed silently.`;
+The block must be valid JSON array. Use status: current/past/plan/maybe. Keep text concise (under 60 chars). Do not show the journal block to the user — it is parsed silently.` : '';
+
+  const system = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
+You have access to their complete medical records, lab results, and care journal below.
+Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
+If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+
+${context || '(No records loaded yet — records will appear after files are processed)'}${journalInstruction}`;
 
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -9125,7 +9143,7 @@ The block must be valid JSON array. Use status: current/past/plan/maybe. Keep te
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2048, system, messages: history })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system, messages: history })
     });
     if (res.ok) {
       const data = await res.json();
