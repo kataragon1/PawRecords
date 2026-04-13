@@ -66,10 +66,11 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .sidebar-tab{flex:1;padding:0.55rem 0.25rem;font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-muted);cursor:pointer;transition:all 0.15s;text-align:center;border-bottom:2px solid transparent;user-select:none;}
 .sidebar-tab:hover{color:var(--ink);background:var(--surface);}
 .sidebar-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.sidebar-panel{display:none;flex:1;overflow-y:auto;flex-direction:column;}
+.sidebar-panel{display:none;flex:1;overflow-y:auto;overflow-x:hidden;flex-direction:column;}
+#panel-labs{overflow-x:auto;}
 .sidebar-panel.active{display:flex;}
 #panel-files{overflow:hidden;}
-.sidebar-panel::-webkit-scrollbar{width:3px;}
+.sidebar-panel::-webkit-scrollbar{width:3px;height:3px;}
 .sidebar-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .sidebar-empty{padding:2rem 1.25rem;font-family:'JetBrains Mono',monospace;font-size:0.67rem;color:var(--ink-muted);text-align:center;line-height:1.8;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.5rem;}
 .sidebar-empty-icon{font-size:1.5rem;opacity:0.4;}
@@ -111,7 +112,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .lab-group-edit-btn{position:absolute;right:0.4rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:0.6rem;opacity:0;transition:opacity 0.15s;padding:0.1rem 0.2rem;border-radius:3px;color:var(--ink-muted);line-height:1;}
 .lab-summary-row:hover .lab-group-edit-btn{opacity:0.35;}
 .lab-group-edit-btn:hover{opacity:1!important;background:var(--surface2);}
-.lab-test-name{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lab-test-name{font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .lab-val{font-family:'JetBrains Mono',monospace;font-size:0.66rem;font-weight:600;flex-shrink:0;}
 .lab-val.high{color:#b91c1c;background:#fee2e2;border-radius:3px;padding:0 3px;}
 .lab-val.low{color:#1d4ed8;background:#dbeafe;border-radius:3px;padding:0 3px;}
@@ -767,6 +768,13 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div id="flowsheet-modal-header">
       <div id="flowsheet-modal-title">Lab Results</div>
       <select class="flowsheet-modal-cat-select" id="flowsheet-modal-cat"></select>
+      <div style="display:flex;align-items:center;gap:0.3rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem;">
+        <span style="font-size:0.65rem;color:var(--ink-muted);">🔍</span>
+        <input id="flowsheet-search" placeholder="Search test…" style="background:transparent;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink);width:120px;">
+        <span id="flowsheet-search-count" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);white-space:nowrap;min-width:32px;"></span>
+        <button id="flowsheet-search-prev" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↑</button>
+        <button id="flowsheet-search-next" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↓</button>
+      </div>
       <button id="flowsheet-modal-close">✕</button>
     </div>
     <div id="flowsheet-modal-body"></div>
@@ -789,6 +797,24 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div style="display:flex;gap:0.5rem;">
         <button class="btn-icon" id="merge-cancel-btn">Cancel</button>
         <button class="btn-icon free-icon" id="merge-confirm-btn" disabled><span class="free-dot"></span> Merge &amp; delete duplicate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ JOURNAL REVIEW MODAL ══ -->
+<div id="journal-review-modal" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:500;align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="background:white;border-radius:14px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.22);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);">Review Journal Entries</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);margin-top:0.2rem;">Review what Claude found before committing. Adjust status or dismiss anything that looks wrong.</div>
+    </div>
+    <div id="journal-review-body" style="flex:1;overflow-y:auto;padding:0.5rem 0;"></div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:0.5rem;">
+      <span id="journal-review-count" style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);"></span>
+      <div style="display:flex;gap:0.5rem;">
+        <button class="btn-icon" id="journal-review-cancel">Cancel</button>
+        <button class="btn-icon free-icon" id="journal-review-commit"><span class="free-dot"></span> Commit all</button>
       </div>
     </div>
   </div>
@@ -968,7 +994,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, onIdTokenChanged }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit }
+import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, arrayRemove, writeBatch, collection, getDocs, query, where, orderBy, limit, deleteField }
   from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
 
 // ── CONFIG ──
@@ -1581,12 +1607,12 @@ function renderRecordsTree(tree) {
 
     // Cat heading (collapsible)
     const heading = document.createElement('div');
-    heading.className = 'cat-heading open';
+    heading.className = 'cat-heading';
     heading.innerHTML = `<span class="cat-emoji">🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
 
     // Cabinet container
     const cabinet = document.createElement('div');
-    cabinet.className = 'cabinet visit-list open';
+    cabinet.className = 'cabinet visit-list';
 
     // Group dates by year, sorted newest first
     const currentYear = new Date().getFullYear();
@@ -2081,6 +2107,7 @@ function inferLabGroup(test) {
   if (['hematocrit','hemoglobin','platelets','neutrophils','lymphocytes',
        'monocytes','eosinophils','basophils','reticulocytes'].some(k => t.includes(k))) return 'CBC';
   if (['specific gravity','usg','urobilinogen','epithelial','cast','crystal'].some(k => t.includes(k))) return 'Urinalysis';
+  if (['sediment','rbc urine','wbc urine'].some(k => t.includes(k))) return 'Sediment';
   return null; // unknown — show as Other
 }
 
@@ -2094,7 +2121,7 @@ function makeLabRow(test, e, targetContainer, onClick) {
     ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
     : String(e.value || '');
   row.innerHTML = `
-    <span class="lab-test-name">${escHtml(test)}</span>
+    <span class="lab-test-name" title="${escHtml(test)}">${escHtml(test)}</span>
     <span class="lab-val ${valClass}">${escHtml(displayVal)}${e.unit ? ' <span style="font-weight:400;font-size:0.6rem;color:var(--ink-muted)">' + escHtml(e.unit) + '</span>' : ''}</span>
     <span class="lab-date">${formatDateShort(e.resultDate)}</span>
     <button class="lab-group-edit-btn" title="Change group">✏</button>`;
@@ -2152,8 +2179,15 @@ function renderLabsSidebar() {
 
   // Most recent value per test+group combination
   const latest = {};
+  const SUBCATEGORY_MAP = {}; // sediment stays as its own group, rendered indented under urinalysis
+  const SUBGROUP_OF = { 'sediment': 'urinalysis', 'urine sediment': 'urinalysis' };
+  const normalizeGroup = (raw) => {
+    const n = (raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return n;
+  };
+
   for (const e of entries) {
-    const g = (e.labGroup || inferLabGroup(e.test, e.labName) || 'Other').trim().toLowerCase().replace(/\s+/g, ' ');
+    const g = normalizeGroup(e.labGroup || inferLabGroup(e.test, e.labName) || 'Other');
     const key = e.test + '||' + g;
     if (!latest[key] || (e.resultDate||'') > (latest[key].resultDate||'')) latest[key] = e;
   }
@@ -2164,7 +2198,7 @@ function renderLabsSidebar() {
   const byGroup = {};
   for (const key of allRowKeys) {
     const e = latest[key];
-    const g = (e.labGroup || inferLabGroup(e.test, e.labName) || 'Other').trim().toLowerCase().replace(/\s+/g, ' ');
+    const g = normalizeGroup(e.labGroup || inferLabGroup(e.test, e.labName) || 'Other');
     if (!byGroup[g]) byGroup[g] = [];
     byGroup[g].push(key);
   }
@@ -2182,10 +2216,19 @@ function renderLabsSidebar() {
     ...Object.keys(byGroup).filter(g => !GROUP_ORDER_NORM_SB.includes(g)).sort()
   ];
 
-  // All groups are collapsible — known ones are in GROUP_ORDER, unknown ones (e.g. Hematology) too
-  const COLLAPSIBLE_GROUPS = new Set(orderedGroups);
+  // Insert subgroups immediately after their parent group
+  const finalGroups = [];
+  for (const g of orderedGroups) {
+    if (SUBGROUP_OF[g]) continue; // will be inserted after parent
+    finalGroups.push(g);
+    // append any subgroups that belong to this group
+    orderedGroups.filter(sg => SUBGROUP_OF[sg] === g).forEach(sg => finalGroups.push(sg));
+  }
 
-  for (const group of orderedGroups) {
+  // All groups are collapsible — known ones are in GROUP_ORDER, unknown ones (e.g. Hematology) too
+  const COLLAPSIBLE_GROUPS = new Set(finalGroups);
+
+  for (const group of finalGroups) {
     const keysInGroup = byGroup[group];
     // Sort dynamically: by labName then alphabetically by test name.
     const _seenSK = new Set();
@@ -2228,9 +2271,15 @@ function renderLabsSidebar() {
       }).join(' · ') || `${ordered.length} tests`;
     }
 
+    const isSubgroup = !!SUBGROUP_OF[group];
+
     // Group header — clickable if collapsible
     const header = document.createElement('div');
-    header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;border-top:1px solid var(--surface2);margin-top:0.25rem;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
+    if (isSubgroup) {
+      header.style.cssText = 'padding:0.2rem 0.75rem 0.1rem 1.75rem;font-family:JetBrains Mono,monospace;font-size:0.58rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-muted);border-top:1px dashed var(--surface2);margin-top:0.1rem;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
+    } else {
+      header.style.cssText = 'padding:0.3rem 0.75rem 0.15rem;font-family:JetBrains Mono,monospace;font-size:0.62rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;border-top:1px solid var(--surface2);margin-top:0.25rem;position:sticky;top:0;background:var(--bg);z-index:1;' + (isCollapsible ? 'cursor:pointer;user-select:none;' : '');
+    }
 
     if (isCollapsible) {
       const isCollapsed = true; // start collapsed
@@ -2269,7 +2318,8 @@ function renderLabsSidebar() {
 
       for (const key of ordered) {
         const e = latest[key];
-        makeLabRow(e.test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, e.test));
+        const row = makeLabRow(e.test, e, rowsEl, () => openFlowsheetModal(flowsheetCat, e.test));
+        if (isSubgroup) row.style.paddingLeft = '2rem';
       }
       container.appendChild(rowsEl);
     }
@@ -2285,9 +2335,83 @@ function renderLabsSidebar() {
 // ── FLOWSHEET MODAL ──
 function invalidateFlowsheetCache() {} // no-op, cache removed
 
+let _flowsheetSearchMatches = [];
+let _flowsheetSearchIdx = 0;
+
+function initFlowsheetSearch(body) {
+  const input = $('flowsheet-search');
+  const count = $('flowsheet-search-count');
+  const prevBtn = $('flowsheet-search-prev');
+  const nextBtn = $('flowsheet-search-next');
+
+  // Remove old listeners by replacing elements
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  const newPrev = prevBtn.cloneNode(true);
+  prevBtn.parentNode.replaceChild(newPrev, prevBtn);
+  const newNext = nextBtn.cloneNode(true);
+  nextBtn.parentNode.replaceChild(newNext, nextBtn);
+
+  newInput.addEventListener('input', () => runFlowsheetSearch(body, newInput.value, 0));
+  newInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); navigateFlowsheetSearch(body, 1); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); navigateFlowsheetSearch(body, -1); }
+    if (e.key === 'Escape') { newInput.value = ''; runFlowsheetSearch(body, '', 0); }
+  });
+  newPrev.addEventListener('click', () => navigateFlowsheetSearch(body, -1));
+  newNext.addEventListener('click', () => navigateFlowsheetSearch(body, 1));
+}
+
+function runFlowsheetSearch(body, query, startIdx) {
+  const count = $('flowsheet-search-count');
+  _flowsheetSearchMatches = [];
+
+  // Clear previous highlights
+  body.querySelectorAll('td[data-search-match]').forEach(td => {
+    td.removeAttribute('data-search-match');
+    td.style.outline = '';
+  });
+
+  if (!query.trim()) { count.textContent = ''; return; }
+
+  const q = query.toLowerCase();
+  body.querySelectorAll('tbody tr').forEach(row => {
+    const nameCell = row.querySelector('td:first-child');
+    if (nameCell && nameCell.textContent.toLowerCase().includes(q)) {
+      _flowsheetSearchMatches.push(row);
+    }
+  });
+
+  _flowsheetSearchIdx = startIdx;
+  count.textContent = _flowsheetSearchMatches.length ? `1/${_flowsheetSearchMatches.length}` : 'none';
+  if (_flowsheetSearchMatches.length) scrollToFlowsheetMatch(body);
+}
+
+function navigateFlowsheetSearch(body, dir) {
+  if (!_flowsheetSearchMatches.length) return;
+  _flowsheetSearchIdx = (_flowsheetSearchIdx + dir + _flowsheetSearchMatches.length) % _flowsheetSearchMatches.length;
+  $('flowsheet-search-count').textContent = `${_flowsheetSearchIdx + 1}/${_flowsheetSearchMatches.length}`;
+  scrollToFlowsheetMatch(body);
+}
+
+function scrollToFlowsheetMatch(body) {
+  // Clear previous outline
+  body.querySelectorAll('td[data-search-match]').forEach(td => {
+    td.removeAttribute('data-search-match');
+    td.style.outline = '';
+  });
+  const row = _flowsheetSearchMatches[_flowsheetSearchIdx];
+  if (!row) return;
+  row.querySelectorAll('td').forEach(td => {
+    td.setAttribute('data-search-match', '1');
+    td.style.outline = '2px solid var(--accent)';
+    td.style.outlineOffset = '-2px';
+  });
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
 function openFlowsheetModal(cat, focusTest) {
   flowsheetCat = cat || flowsheetCat || Object.keys(labDataCache).sort()[0];
-  // Populate cat selector
   const sel = $('flowsheet-modal-cat');
   sel.innerHTML = '';
   Object.keys(labDataCache).sort().forEach(c => {
@@ -2302,32 +2426,18 @@ function openFlowsheetModal(cat, focusTest) {
   buildFlowsheetTable(flowsheetCat, body);
   $('flowsheet-modal').classList.add('open');
 
-  // Scroll to the focused test row after the modal renders
+  // Reset search
+  const searchInput = $('flowsheet-search');
+  const searchCount = $('flowsheet-search-count');
+  searchInput.value = '';
+  searchCount.textContent = '';
+  initFlowsheetSearch(body);
+
   if (focusTest) {
-    requestAnimationFrame(() => {
-      const rows = body.querySelectorAll('tbody tr');
-      for (const row of rows) {
-        const nameCell = row.querySelector('td:first-child');
-        if (nameCell && nameCell.textContent.trim() === focusTest) {
-          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          // Highlight each cell individually so abnormal colors still show through
-          row.querySelectorAll('td').forEach(td => {
-            td._origBg = td.style.background || '';
-            td.style.transition = 'background 0.3s';
-            td.style.background = 'rgba(124,111,91,0.18)';
-          });
-          // Clear when mouse moves to any other row
-          const clearHighlight = (e) => {
-            if (!row.contains(e.relatedTarget)) {
-              row.querySelectorAll('td').forEach(td => { td.style.background = td._origBg || ''; });
-              body.removeEventListener('mouseover', clearHighlight);
-            }
-          };
-          setTimeout(() => body.addEventListener('mouseover', clearHighlight), 800);
-          break;
-        }
-      }
-    });
+    searchInput.value = focusTest;
+    requestAnimationFrame(() => runFlowsheetSearch(body, focusTest, 0));
+  } else {
+    setTimeout(() => searchInput.focus(), 80);
   }
 }
 
@@ -2368,20 +2478,20 @@ function buildFlowsheetTable(cat, container) {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'overflow:auto;height:100%;';
   const table = document.createElement('table');
-  table.style.cssText = 'border-collapse:collapse;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
+  table.style.cssText = 'border-collapse:separate;border-spacing:0;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
 
   // Header
   const thead = document.createElement('thead');
   const hrow = document.createElement('tr');
   const thTest = document.createElement('th');
   thTest.textContent = 'Test';
-  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);font-weight:500;position:sticky;left:0;top:0;z-index:4;';
+  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;left:0;top:0;z-index:4;';
   hrow.appendChild(thTest);
   for (const date of dates) {
     const th = document.createElement('th');
     th.textContent = date.slice(0,7);
     th.title = date;
-    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);font-weight:500;position:sticky;top:0;z-index:2;';
+    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;top:0;z-index:2;';
     hrow.appendChild(th);
   }
   thead.appendChild(hrow);
@@ -2416,7 +2526,7 @@ function buildFlowsheetTable(cat, container) {
     const sepTd = document.createElement('td');
     sepTd.colSpan = dates.length + 1;
     sepTd.textContent = groupDisplayName[group] || group;
-    sepTd.style.cssText = 'background:var(--surface2);color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--border);';
+    sepTd.style.cssText = 'background:var(--surface2);color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;';
     sepRow.appendChild(sepTd);
     tbody.appendChild(sepRow);
 
@@ -2436,11 +2546,11 @@ function buildFlowsheetTable(cat, container) {
       });
       const tdName = document.createElement('td');
       tdName.textContent = test;
-      tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);';
+      tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;';
       row.appendChild(tdName);
       for (const date of dates) {
         const td = document.createElement('td');
-        td.style.cssText = 'padding:0.3rem 0.6rem;border:1px solid var(--border);text-align:center;color:var(--ink);cursor:pointer;';
+        td.style.cssText = 'padding:0.3rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;text-align:center;color:var(--ink);cursor:pointer;';
         const entry = lookup[rowKey]?.[date];
         if (!entry) {
           td.textContent = '—';
@@ -2517,35 +2627,64 @@ function renderJournalSidebar(bycat) {
     empty.style.display = 'none';
     let pending = container.querySelector('.journal-pending-section');
     if (!pending) { pending = document.createElement('div'); pending.className = 'journal-pending-section'; container.prepend(pending); }
-    pending.innerHTML = `<div class="journal-pending-header"><span>⏳ Pending (${pendingJournalItems.length})</span><span style="font-size:0.58rem;color:var(--ink-muted);">Save Session to commit</span></div>`;
+    pending.innerHTML = `<div class="journal-pending-header"><span>~ Tracking (${pendingJournalItems.length})</span><span style="font-size:0.58rem;color:var(--ink-muted);">rough hints · Save Session to confirm</span></div>`;
+
     for (const item of pendingJournalItems) {
+      // Filter obviously bad AI entries
+      const badEntry = !item.text || item.text.trim().length < 3
+        || /^(another|something|item|entry|medication|supplement|this|that|the|a|an)$/i.test(item.text.trim());
+      if (badEntry) {
+        pendingJournalItems = pendingJournalItems.filter(i => i !== item);
+        continue;
+      }
+
       const el = document.createElement('div');
       el.className = 'journal-pending-item';
-      const autoBadge = item._source === 'auto'
-        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;" title="${escHtml(item._autoNote||'auto-detected')}">auto</span>`
-        : item._needsResolution
-        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--blue-bg);color:var(--blue);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">resolve</span>`
-        : '';
-      const statusBadge = item.status === 'past'
-        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--surface2);color:var(--ink-muted);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">past</span>`
-        : item.status === 'plan'
-        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--blue-bg);color:var(--blue);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">plan</span>`
-        : item.status === 'maybe'
-        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--amber-bg);color:var(--amber);border-radius:4px;padding:0 3px;margin-left:3px;vertical-align:middle;">maybe</span>`
-        : '';
+
       const listLabel = item.list || '?';
-      const badges = [autoBadge, statusBadge].filter(Boolean).join('');
-      el.innerHTML = `
-        <div style="flex:1;min-width:0;">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:0.52rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.1rem;">${escHtml(listLabel)} ${badges}</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(item.text)}">${escHtml(item.cat)}: ${escHtml(item.text.slice(0,32))}${item.text.length>32?'…':''}</div>
-        </div>
-        <button class="journal-pending-dismiss" title="Dismiss">✕</button>`;
-      el.querySelector('button').addEventListener('click', () => {
+      const textEl = document.createElement('div');
+      textEl.style.cssText = 'flex:1;min-width:0;';
+
+      const topRow = document.createElement('div');
+      topRow.style.cssText = 'display:flex;align-items:center;gap:0.3rem;margin-bottom:0.1rem;';
+
+      const listSpan = document.createElement('span');
+      listSpan.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;';
+      listSpan.textContent = listLabel;
+      topRow.appendChild(listSpan);
+
+      // Status dropdown
+      const statusSel = document.createElement('select');
+      statusSel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.5rem;border:1px solid var(--border);border-radius:3px;padding:0 3px;background:var(--surface);color:var(--ink);outline:none;cursor:pointer;';
+      [['current','current'],['past','past'],['plan','planned'],['maybe','potential']].forEach(([val, lbl]) => {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = lbl;
+        if ((item.status || 'current') === val) opt.selected = true;
+        statusSel.appendChild(opt);
+      });
+      statusSel.addEventListener('change', () => { item.status = statusSel.value; });
+      topRow.appendChild(statusSel);
+
+      textEl.appendChild(topRow);
+
+      const textLine = document.createElement('div');
+      textLine.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.68rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      textLine.title = item.text;
+      textLine.textContent = `${item.cat}: ${item.text.slice(0, 32)}${item.text.length > 32 ? '…' : ''}`;
+      textEl.appendChild(textLine);
+
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'journal-pending-dismiss';
+      dismissBtn.title = 'Dismiss';
+      dismissBtn.textContent = '✕';
+      dismissBtn.addEventListener('click', () => {
         pendingJournalItems = pendingJournalItems.filter(i => i !== item);
         updateJournalBadge();
         loadJournalSidebar();
       });
+
+      el.appendChild(textEl);
+      el.appendChild(dismissBtn);
       pending.appendChild(el);
     }
   }
@@ -2629,7 +2768,7 @@ function renderJournalSidebar(bycat) {
 
       // Group by status — order: current, plan, maybe, past
       const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
-      const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Maybe', past: 'Past' };
+      const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Potential', past: 'Past' };
       const groups = { current:[], plan:[], maybe:[], past:[] };
       for (const item of items) (groups[item.status] || groups.current).push(item);
 
@@ -2646,10 +2785,14 @@ function renderJournalSidebar(bycat) {
           const ee = document.createElement('div');
           ee.className = 'journal-entry-full';
           ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
+          ee.title = 'Double-click to edit';
 
           const textWrap = document.createElement('div');
           textWrap.style.cssText = 'flex:1;min-width:0;';
-          let inner = `<div class="journal-entry-text-full" title="${escHtml(item.text||'')}">${escHtml((item.text||'').slice(0,46))}${(item.text||'').length>46?'…':''}</div>`;
+          const truncLen = 60;
+          const fullText = item.text || '';
+          const displayText = fullText.length > truncLen ? fullText.slice(0, truncLen - 1) + '…' : fullText;
+          let inner = `<div class="journal-entry-text-full" title="${escHtml(fullText)}">${escHtml(displayText)}</div>`;
           if (item.dose) inner += `<div class="journal-entry-dose">${escHtml(item.dose)}</div>`;
           if (item.startDate) inner += `<div class="journal-entry-date-full">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
           textWrap.innerHTML = inner;
@@ -2659,6 +2802,7 @@ function renderJournalSidebar(bycat) {
           actions.innerHTML = `<button title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem;border-radius:3px;line-height:1;">✏</button><button title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--red);padding:0.1rem;border-radius:3px;line-height:1;">🗑</button>`;
           ee.addEventListener('mouseenter', () => { actions.style.display = 'flex'; });
           ee.addEventListener('mouseleave', () => { actions.style.display = 'none'; });
+          ee.addEventListener('dblclick', (e) => { e.stopPropagation(); openJournalEdit(item); });
           actions.querySelector('[title="Edit"]').addEventListener('click', e => { e.stopPropagation(); openJournalEdit(item); });
           actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); confirmDeleteJournalEntry(item); });
           ee.appendChild(textWrap);
@@ -2711,7 +2855,7 @@ function openJournalEdit(item) {
   body.innerHTML = '';
   const fields = [
     { label: 'Text', key: 'text', type: 'textarea', value: item.text || '' },
-    { label: 'Status', key: 'status', type: 'select', options: ['current','past','plan','maybe'], value: item.status || 'current' },
+    { label: 'Status', key: 'status', type: 'select', options: ['current','past','plan','maybe'], optionLabels: ['Current','Past','Planned','Potential'], value: item.status || 'current' },
     { label: 'Start Date', key: 'startDate', type: 'text', value: item.startDate || '' },
     { label: 'End Date', key: 'endDate', type: 'text', value: item.endDate || '' },
     { label: 'Dose / Detail', key: 'dose', type: 'text', value: item.dose || '' },
@@ -2733,12 +2877,13 @@ function openJournalEdit(item) {
     } else if (f.type === 'select') {
       el = document.createElement('select');
       el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
-      for (const opt of f.options) {
+      f.options.forEach((opt, i) => {
         const o = document.createElement('option');
-        o.value = opt; o.textContent = opt;
+        o.value = opt;
+        o.textContent = f.optionLabels ? f.optionLabels[i] : opt;
         if (opt === f.value) o.selected = true;
         el.appendChild(o);
-      }
+      });
     } else {
       el = document.createElement('input');
       el.type = 'text';
@@ -6106,7 +6251,12 @@ function navigatePopup(dir) {
 }
 
 // ── FLOWSHEET MODAL WIRING ──
-$('flowsheet-modal-close').addEventListener('click', () => $('flowsheet-modal').classList.remove('open'));
+$('flowsheet-modal-close').addEventListener('click', () => {
+  $('flowsheet-modal').classList.remove('open');
+  _flowsheetSearchMatches = [];
+  $('flowsheet-search').value = '';
+  $('flowsheet-search-count').textContent = '';
+});
 $('flowsheet-modal').addEventListener('click', e => { if (e.target === $('flowsheet-modal')) $('flowsheet-modal').classList.remove('open'); });
 $('flowsheet-modal-cat').addEventListener('change', () => {
   flowsheetCat = $('flowsheet-modal-cat').value;
@@ -6447,13 +6597,37 @@ async function sendMessage() {
   const typingEl = appendTyping();
   try {
     const context = await buildChatContext(text);
-    const response = await callClaude(convHistory, context);
+    let response = await callClaude(convHistory, context);
     typingEl.remove();
+
+    // Extract and strip <journal> hint block before displaying
+    const journalMatch = response.match(/<journal>\s*([\s\S]*?)\s*<\/journal>/);
+    if (journalMatch) {
+      response = response.replace(/<journal>[\s\S]*?<\/journal>/g, '').trim();
+      try {
+        const hints = JSON.parse(journalMatch[1]);
+        if (Array.isArray(hints)) {
+          const today = new Date().toISOString().split('T')[0];
+          hints.forEach(h => {
+            if (h.cat && h.text) {
+              addPendingItem({
+                cat: h.cat,
+                list: h.list || 'General',
+                text: h.text,
+                dose: h.dose || null,
+                status: h.status || 'current',
+                startDate: today,
+                _source: 'chat'
+              });
+            }
+          });
+        }
+      } catch(e) { /* malformed journal block — ignore */ }
+    }
+
     appendMsg('assistant', response);
     convHistory.push({ role: 'assistant', content: response });
     if (convHistory.length >= 2) $('save-session-btn').style.display = 'inline-flex';
-    // Client-side journal processing — no API call
-    processMessageForJournal(text, response);
   } catch (err) {
     typingEl.remove();
     const msg = err.message || '';
@@ -6672,8 +6846,13 @@ function capitalizeFirst(s) {
 }
 
 function addPendingItem(item) {
+  if (!item.text?.trim()) return;
+  // Filter obviously bad AI-generated entries
+  const t = item.text.trim();
+  if (t.length < 3) return;
+  if (/^(another|something|item|entry|medication|supplement|this|that|the|a|an|and|or|to|in|of|for)$/i.test(t)) return;
   // Avoid duplicates in pending
-  const key = `${item.cat}_${item.text.toLowerCase()}_${item.status}`;
+  const key = `${item.cat}_${t.toLowerCase()}_${item.status}`;
   if (pendingJournalItems.some(p => `${p.cat}_${p.text.toLowerCase()}_${p.status}` === key)) return;
   item.id = Math.random().toString(36).slice(2,9);
   pendingJournalItems.push(item);
@@ -7104,6 +7283,105 @@ function showConfirmDialog(title, message, confirmLabel, cancelLabel) {
   });
 }
 
+function showJournalReview(items) {
+  return new Promise((resolve) => {
+    const modal = $('journal-review-modal');
+    const body = $('journal-review-body');
+    const countEl = $('journal-review-count');
+    body.innerHTML = '';
+
+    // Working copy so dismissals/edits don't affect original
+    const working = items.map(item => ({ ...item, _dismissed: false }));
+
+    const updateCount = () => {
+      const n = working.filter(i => !i._dismissed).length;
+      countEl.textContent = `${n} of ${working.length} entries`;
+      $('journal-review-commit').disabled = n === 0;
+    };
+
+    const STATUS_OPTS = [['current','current'],['past','past'],['plan','planned'],['maybe','potential']];
+
+    working.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;gap:0.5rem;padding:0.5rem 1.25rem;border-bottom:1px solid var(--surface2);transition:opacity 0.15s;';
+
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+
+      const topLine = document.createElement('div');
+      topLine.style.cssText = 'display:flex;align-items:center;gap:0.35rem;margin-bottom:0.2rem;flex-wrap:wrap;';
+
+      const catSpan = document.createElement('span');
+      catSpan.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--accent);font-weight:700;';
+      catSpan.textContent = item.cat;
+      topLine.appendChild(catSpan);
+
+      const listSpan = document.createElement('span');
+      listSpan.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--ink-muted);';
+      listSpan.textContent = '→ ' + (item.list || 'General');
+      topLine.appendChild(listSpan);
+
+      const statusSel = document.createElement('select');
+      statusSel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.55rem;border:1px solid var(--border);border-radius:3px;padding:1px 4px;background:var(--surface);color:var(--ink);outline:none;cursor:pointer;';
+      STATUS_OPTS.forEach(([val, lbl]) => {
+        const o = document.createElement('option');
+        o.value = val; o.textContent = lbl;
+        if ((item.status || 'current') === val) o.selected = true;
+        statusSel.appendChild(o);
+      });
+      statusSel.addEventListener('change', () => { working[idx].status = statusSel.value; });
+      topLine.appendChild(statusSel);
+      info.appendChild(topLine);
+
+      const textEl = document.createElement('div');
+      textEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.68rem;color:var(--ink);line-height:1.5;word-break:break-word;';
+      textEl.textContent = item.text;
+      info.appendChild(textEl);
+
+      if (item.dose) {
+        const doseEl = document.createElement('div');
+        doseEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--accent2);margin-top:0.1rem;';
+        doseEl.textContent = item.dose;
+        info.appendChild(doseEl);
+      }
+      if (item.startDate) {
+        const dateEl = document.createElement('div');
+        dateEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.55rem;color:var(--ink-muted);margin-top:0.1rem;';
+        dateEl.textContent = item.startDate + (item.endDate ? ' → ' + item.endDate : '');
+        info.appendChild(dateEl);
+      }
+
+      const dismissBtn = document.createElement('button');
+      dismissBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--ink-muted);padding:0.1rem 0.2rem;flex-shrink:0;line-height:1;';
+      dismissBtn.textContent = '✕';
+      dismissBtn.title = 'Dismiss this entry';
+      dismissBtn.addEventListener('click', () => {
+        working[idx]._dismissed = true;
+        row.style.opacity = '0.3';
+        row.style.pointerEvents = 'none';
+        updateCount();
+      });
+
+      row.appendChild(info);
+      row.appendChild(dismissBtn);
+      body.appendChild(row);
+    });
+
+    updateCount();
+    modal.style.display = 'flex';
+
+    const cancel = () => { modal.style.display = 'none'; resolve(null); };
+    const commit = () => {
+      modal.style.display = 'none';
+      resolve(working.filter(i => !i._dismissed));
+    };
+
+    $('journal-review-cancel').onclick = cancel;
+    $('journal-review-commit').onclick = commit;
+    modal.onclick = (e) => { if (e.target === modal) cancel(); };
+  });
+}
+
 async function runSaveSession(resumeData) {
   const today = new Date().toISOString().split('T')[0];
 
@@ -7215,11 +7493,25 @@ async function runSaveSession(resumeData) {
     const key = (u.cat||'') + '||' + (u.text||'').toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key); return true;
-  });
+  }).filter(u => u.cat && u.text);
+
+  if (!deduped.length && !allNoteSuggestions.length) {
+    showToast('Nothing new to save', 'journal');
+    pendingJournalItems = [];
+    updateJournalBadge();
+    return;
+  }
+
+  // Show review modal — let user adjust before committing
+  const confirmed = await showJournalReview(deduped);
+  if (!confirmed) return; // user cancelled
+
+  // confirmed is the filtered+edited array
+  const finalItems = confirmed;
 
   // Write to Firestore
   const fsBatch = writeBatch(db);
-  for (const item of deduped) {
+  for (const item of finalItems) {
     if (!item.cat || !item.text) continue;
     if (item.updateOf) {
       const existing = existingJournal.find(j => j.cat === item.cat && j.text === item.updateOf);
@@ -8549,8 +8841,12 @@ function openVitalsEditPopover(point, metric, dotEl, svgEl) {
     if (!confirm(`Remove this ${metricLabels[metric]} data point (${formatDate(point.date)})?`)) return;
     try {
       const vitalsKey = { weight: 'weight', bcs: 'BCS', mcs: 'muscleConditionScore' }[metric];
-      await setDoc(doc(db, 'visits', point.visitId), { vitals: { [vitalsKey]: null } }, { merge: true });
-      _allVisitsCache = null;
+      await updateDoc(doc(db, 'visits', point.visitId), { [`vitals.${vitalsKey}`]: deleteField() });
+      // Update local cache directly so re-render is immediate
+      if (_allVisitsCache) {
+        const cached = _allVisitsCache.find(v => v.id === point.visitId);
+        if (cached?.vitals) delete cached.vitals[vitalsKey];
+      }
       close();
       showToast('Removed ✓', 'journal');
       const sel = document.getElementById('trends-cat-sel');
@@ -8811,7 +9107,13 @@ You have access to their complete medical records, lab results, and care journal
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
 If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
 
-${context || '(No records loaded yet — records will appear after files are processed)'}`;
+${context || '(No records loaded yet — records will appear after files are processed)'}
+
+JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, symptoms, treatments, plans, diagnoses), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions or information requests.
+<journal>
+[{"cat":"Evie","list":"Diet","text":"z/d wet food transition","status":"current"},{"cat":"Evie","list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"}]
+</journal>
+The block must be valid JSON array. Use status: current/past/plan/maybe. Keep text concise (under 60 chars). Do not show the journal block to the user — it is parsed silently.`;
 
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
