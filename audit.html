@@ -352,51 +352,85 @@ async function runAudit() {
       else orphanInvoices.push(inv);
     }
 
-    setProgress(60, 'Finding duplicate pairs…');
-    const mergePairs = [], sameDateDiffClinic = [];
-    const checked = new Set();
-    for (let i = 0; i < clinical.length; i++) {
-      for (let j = i+1; j < clinical.length; j++) {
-        const a = clinical[i], b = clinical[j];
-        if (a.cat !== b.cat || a.date !== b.date) continue;
-        const key = [a._id,b._id].sort().join('|');
-        if (checked.has(key)) continue;
-        checked.add(key);
-        const ca = normClinic(a.clinic), cb = normClinic(b.clinic);
-        if (ca !== '' && cb !== '' && ca === cb) mergePairs.push({a, b});
-        else sameDateDiffClinic.push({a, b});
+    setProgress(60, 'Finding duplicate clusters…');
+
+    // Group by cat + date + normalized clinic → clusters of 2+ records
+    const clusterMap = new Map();
+    const sameDateDiffClinic = [];
+    for (const v of clinical) {
+      const nc = normClinic(v.clinic);
+      const key = `${v.cat}||${v.date}||${nc}`;
+      if (!clusterMap.has(key)) clusterMap.set(key, []);
+      clusterMap.get(key).push(v);
+    }
+
+    const mergeClusters = []; // arrays of 2+ records with same cat+date+clinic
+    for (const [, records] of clusterMap) {
+      if (records.length < 2) continue;
+      mergeClusters.push(records);
+    }
+
+    // Same date, different clinics — legitimate separate visits
+    const dateMap = new Map();
+    for (const v of clinical) {
+      const key = `${v.cat}||${v.date}`;
+      if (!dateMap.has(key)) dateMap.set(key, []);
+      dateMap.get(key).push(v);
+    }
+    for (const [, records] of dateMap) {
+      if (records.length < 2) continue;
+      const clinics = [...new Set(records.map(r => normClinic(r.clinic)).filter(Boolean))];
+      if (clinics.length > 1) {
+        // Multiple clinics on same day — flag each unique pair across different clinics
+        for (let i = 0; i < records.length; i++) {
+          for (let j = i+1; j < records.length; j++) {
+            const ca = normClinic(records[i].clinic), cb = normClinic(records[j].clinic);
+            if (ca !== cb) sameDateDiffClinic.push({a: records[i], b: records[j]});
+          }
+        }
       }
     }
 
-    setProgress(75, 'Finding lab-rollover pairs…');
-    const rolloverPairs = [];
-    const checkedR = new Set();
-    for (let i = 0; i < clinical.length; i++) {
-      for (let j = i+1; j < clinical.length; j++) {
-        const a = clinical[i], b = clinical[j];
-        if (a.cat !== b.cat) continue;
-        const diff = dateDiff(a.date, b.date);
-        if (diff === 0 || diff > 3) continue;
-        const ca = normClinic(a.clinic), cb = normClinic(b.clinic);
-        if (ca==='' || cb==='' || ca!==cb) continue;
-        const key = [a._id,b._id].sort().join('|');
-        if (checkedR.has(key)) continue;
-        checkedR.add(key);
-        rolloverPairs.push({a, b, diff});
+    setProgress(75, 'Finding lab-rollover clusters…');
+
+    // Rollover: same cat + same normalized clinic + dates within 3 days
+    // Group into clusters using union-find so a 3-day chain becomes one cluster
+    const rolloverClusters = [];
+    const assignedR = new Set();
+    const sortedClinical = [...clinical].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    for (let i = 0; i < sortedClinical.length; i++) {
+      const v = sortedClinical[i];
+      if (assignedR.has(v._id)) continue;
+      const cluster = [v];
+      assignedR.add(v._id);
+      for (let j = i+1; j < sortedClinical.length; j++) {
+        const w = sortedClinical[j];
+        if (assignedR.has(w._id)) continue;
+        if (w.cat !== v.cat) continue;
+        const diff = dateDiff(cluster[cluster.length-1].date, w.date);
+        if (diff === 0) continue; // same date handled by merge clusters
+        if (diff > 3) break; // sorted by date so no point continuing
+        const ca = normClinic(cluster[0].clinic), cb = normClinic(w.clinic);
+        if (ca === '' || cb === '' || ca !== cb) continue;
+        cluster.push(w);
+        assignedR.add(w._id);
       }
+      if (cluster.length > 1) rolloverClusters.push(cluster);
     }
 
     setProgress(90, 'Building report…');
 
     // Summary cards
+    const mergeRecordCount = mergeClusters.reduce((sum, c) => sum + c.length, 0);
+    const rolloverRecordCount = rolloverClusters.reduce((sum, c) => sum + c.length, 0);
     const cards = [
       {label:'Total visits', value:clinical.length, sub:'clinical records', cls:''},
       {label:'Total invoices', value:invoices.length, sub:`${emptyInvoices.length} empty`, cls:invoices.length>0?'warn':''},
-      {label:'Merge candidates', value:mergePairs.length, sub:'same date + clinic', cls:mergePairs.length>0?'alert':'good'},
+      {label:'Merge clusters', value:mergeClusters.length, sub:`${mergeRecordCount} records affected`, cls:mergeClusters.length>0?'alert':'good'},
       {label:'Legit same-day', value:sameDateDiffClinic.length, sub:'diff clinics ✓', cls:''},
       {label:'Orphan invoices', value:orphanInvoices.length, sub:'no clinical match', cls:orphanInvoices.length>0?'warn':'good'},
       {label:'Empty invoices', value:emptyInvoices.length, sub:'safe to delete', cls:emptyInvoices.length>0?'alert':'good'},
-      {label:'Lab-rollover pairs', value:rolloverPairs.length, sub:'same clinic ±1–3d', cls:rolloverPairs.length>0?'warn':'good'},
+      {label:'Rollover clusters', value:rolloverClusters.length, sub:`${rolloverRecordCount} records`, cls:rolloverClusters.length>0?'warn':'good'},
     ];
     $('summary-grid').innerHTML = cards.map(c=>`
       <div class="card ${c.cls}">
@@ -407,8 +441,8 @@ async function runAudit() {
     $('summary-grid').style.display = 'grid';
 
     // Merge section
-    if (mergePairs.length) {
-      buildMergeSection(mergePairs);
+    if (mergeClusters.length) {
+      buildMergeSection(mergeClusters);
       $('merge-section').style.display = 'block';
       $('merge-header').classList.add('open');
       $('merge-body').classList.add('open');
@@ -474,24 +508,28 @@ async function runAudit() {
           }).join('')}</table>`
     ));
 
-    // Store rollover pairs globally so the reviewer can access them
-    window._rolloverPairs = rolloverPairs;
-    window._allVisits = visits; // needed for source file cross-reference check
+    // Store clusters globally so the reviewer can access them
+    window._rolloverClusters = rolloverClusters;
+    window._allVisits = visits;
 
     results.appendChild(buildSection(
-      '🔬 Lab-rollover pairs — same clinic, adjacent dates',
-      rolloverPairs.length, 'var(--amber)',
-      rolloverPairs.length === 0
+      '🔬 Lab-rollover clusters — same clinic, adjacent dates',
+      rolloverClusters.length, 'var(--amber)',
+      rolloverClusters.length === 0
         ? '<div class="empty-note">✓ None found.</div>'
-        : `<table><tr><th>Cat</th><th>Clinic</th><th>Visit A</th><th>Visit B</th><th>Gap</th><th></th></tr>
-          ${rolloverPairs.map(({a,b,diff},idx)=>`<tr>
-            <td>${esc(a.cat||'—')}</td>
-            <td style="font-size:0.6rem;">${esc(a.clinic||'—')}</td>
-            <td style="font-size:0.6rem;">${fmtDate(a.date)}<br><span style="color:var(--ink-muted);">${esc((a.chiefComplaint||'').slice(0,35)||'—')}</span></td>
-            <td style="font-size:0.6rem;">${fmtDate(b.date)}<br><span style="color:var(--ink-muted);">${esc((b.chiefComplaint||'').slice(0,35)||'—')}</span></td>
-            <td>${diff}d</td>
-            <td><button class="btn" style="font-size:0.6rem;padding:0.25rem 0.6rem;" onclick="openRolloverReviewer(${idx})">Review →</button></td>
-          </tr>`).join('')}</table>`
+        : `<table><tr><th>Cat</th><th>Clinic</th><th>Records</th><th>Date range</th><th></th></tr>
+          ${rolloverClusters.map((cluster, idx) => {
+            const dates = [...new Set(cluster.map(r=>r.date))].sort();
+            const dateRange = dates.length === 1 ? fmtDate(dates[0]) : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}`;
+            const complaints = cluster.map(r=>(r.chiefComplaint||'').slice(0,25)||'—').join(' · ');
+            return `<tr>
+              <td>${esc(cluster[0].cat||'—')}</td>
+              <td style="font-size:0.6rem;">${esc(cluster[0].clinic||'—')}</td>
+              <td style="font-size:0.6rem;">${cluster.length} records<br><span style="color:var(--ink-muted);">${esc(complaints)}</span></td>
+              <td style="font-size:0.6rem;">${dateRange}</td>
+              <td><button class="btn" style="font-size:0.6rem;padding:0.25rem 0.6rem;" onclick="openRolloverReviewer(${idx})">Review →</button></td>
+            </tr>`;
+          }).join('')}</table>`
     ));
 
     const noDates = clinical.filter(v => !v.date || v.date==='unknown');
@@ -535,42 +573,33 @@ async function runAudit() {
 }
 
 // ── MERGE SECTION ──
-function buildMergeSection(pairs) {
-  $('merge-count').textContent = `${pairs.length} pairs`;
+function buildMergeSection(clusters) {
+  const totalRecords = clusters.reduce((s,c)=>s+c.length,0);
+  $('merge-count').textContent = `${clusters.length} cluster${clusters.length!==1?'s':''}`;
   $('merge-toolbar-info').textContent =
-    `${pairs.length} pairs with same cat + date + clinic. Uncheck any you want to skip, then generate previews.`;
+    `${clusters.length} cluster${clusters.length!==1?'s':''} (${totalRecords} records) · same cat + date + clinic. Uncheck any to skip.`;
 
   const list = $('merge-pairs-list');
   list.innerHTML = '';
 
-  pairs.forEach((pair, idx) => {
-    const { a, b } = pair;
+  clusters.forEach((cluster, idx) => {
     const row = document.createElement('div');
     row.className = 'merge-pair-row';
-
-    const aFiles = (a.sourceFiles||[a.sourceFile||'']).filter(Boolean).join(', ');
-    const bFiles = (b.sourceFiles||[b.sourceFile||'']).filter(Boolean).join(', ');
-    const aMeds = (a.medications||[]).map(m=>m.name).filter(Boolean).slice(0,3).join(', ');
-    const bMeds = (b.medications||[]).map(m=>m.name).filter(Boolean).slice(0,3).join(', ');
-
+    const cardHtml = cluster.map((r, ri) => {
+      const files = (r.sourceFiles||[r.sourceFile||'']).filter(Boolean).join(', ');
+      const meds = (r.medications||[]).map(m=>m.name).filter(Boolean).slice(0,3).join(', ');
+      return `<div class="merge-record-card">
+        <strong>Record ${String.fromCharCode(65+ri)} · ${fmtDate(r.date)}</strong>
+        ${esc(r.chiefComplaint||'no complaint')}<br>
+        <span style="color:var(--ink-muted);">meds: ${esc(meds||'none')}</span><br>
+        <span style="color:var(--ink-muted);font-size:0.56rem;">${esc(files||'—')}</span>
+      </div>`;
+    }).join('');
     row.innerHTML = `
       <input type="checkbox" class="merge-pair-check" data-idx="${idx}" checked>
       <div class="merge-pair-body">
-        <div class="merge-pair-header">${esc(a.cat)} · ${fmtDate(a.date)} · ${esc(a.clinic||'unknown clinic')}</div>
-        <div class="merge-pair-cards">
-          <div class="merge-record-card">
-            <strong>Record A</strong>
-            ${esc(a.chiefComplaint||'no complaint')}<br>
-            <span style="color:var(--ink-muted);">meds: ${esc(aMeds||'none')}</span><br>
-            <span style="color:var(--ink-muted);font-size:0.56rem;">${esc(aFiles||'—')}</span>
-          </div>
-          <div class="merge-record-card">
-            <strong>Record B</strong>
-            ${esc(b.chiefComplaint||'no complaint')}<br>
-            <span style="color:var(--ink-muted);">meds: ${esc(bMeds||'none')}</span><br>
-            <span style="color:var(--ink-muted);font-size:0.56rem;">${esc(bFiles||'—')}</span>
-          </div>
-        </div>
+        <div class="merge-pair-header">${esc(cluster[0].cat)} · ${fmtDate(cluster[0].date)} · ${esc(cluster[0].clinic||'unknown clinic')} · ${cluster.length} records</div>
+        <div class="merge-pair-cards" style="grid-template-columns:repeat(${Math.min(cluster.length,3)},1fr);">${cardHtml}</div>
         <div class="merge-status" id="merge-status-${idx}">awaiting preview generation</div>
         <div id="merge-preview-${idx}"></div>
       </div>`;
@@ -579,60 +608,59 @@ function buildMergeSection(pairs) {
 
   $('check-all-btn').onclick = () => list.querySelectorAll('.merge-pair-check').forEach(c=>c.checked=true);
   $('uncheck-all-btn').onclick = () => list.querySelectorAll('.merge-pair-check').forEach(c=>c.checked=false);
-  $('generate-previews-btn').onclick = () => generatePreviews(pairs);
-  $('regenerate-btn').onclick = () => generatePreviews(pairs);
+  $('generate-previews-btn').onclick = () => generatePreviews(clusters);
+  $('regenerate-btn').onclick = () => generatePreviews(clusters);
   $('commit-btn').onclick = () => commitMerges();
 }
 
-async function generatePreviews(pairs) {
+async function generatePreviews(clusters) {
   if (!apiKey) {
     alert('No API key loaded. Make sure it is set in the main Paw Records app and try signing in again.');
     return;
   }
   const checkedIdxs = [...document.querySelectorAll('.merge-pair-check:checked')].map(c=>parseInt(c.dataset.idx));
-  if (!checkedIdxs.length) { alert('No pairs checked.'); return; }
+  if (!checkedIdxs.length) { alert('No clusters checked.'); return; }
 
   $('generate-previews-btn').disabled = true;
   $('generate-previews-btn').textContent = `Generating ${checkedIdxs.length} previews…`;
   $('merge-commit-bar').style.display = 'none';
   mergeResults = [];
 
-  // Reset statuses for checked pairs
   checkedIdxs.forEach(idx => {
     $(`merge-status-${idx}`).className = 'merge-status';
     $(`merge-status-${idx}`).textContent = 'queued…';
     $(`merge-preview-${idx}`).innerHTML = '';
   });
 
-  // Process in batches of 3 with backoff on rate limit
   for (let i = 0; i < checkedIdxs.length; i += 3) {
     const batch = checkedIdxs.slice(i, i+3);
     await Promise.all(batch.map(async idx => {
-      const { a, b } = pairs[idx];
+      const cluster = clusters[idx];
       const statusEl = $(`merge-status-${idx}`);
       const previewEl = $(`merge-preview-${idx}`);
       statusEl.className = 'merge-status merging';
-      statusEl.textContent = 'calling Claude…';
-
+      statusEl.textContent = `merging ${cluster.length} records…`;
       let attempts = 0;
       while (attempts < 3) {
         try {
-          const aClean = Object.fromEntries(Object.entries(a).filter(([k])=>k!=='_id'));
-          const bClean = Object.fromEntries(Object.entries(b).filter(([k])=>k!=='_id'));
-          const merged = await callClaudeMerge(aClean, bClean);
-          mergeResults.push({ idx, merged, primaryId: a._id, secondaryId: b._id });
-
+          let merged = Object.fromEntries(Object.entries(cluster[0]).filter(([k])=>k!=='_id'));
+          for (let r = 1; r < cluster.length; r++) {
+            const next = Object.fromEntries(Object.entries(cluster[r]).filter(([k])=>k!=='_id'));
+            merged = await callClaudeMerge(merged, next);
+            if (r < cluster.length - 1) statusEl.textContent = `merged ${r+1}/${cluster.length}…`;
+          }
+          const secondaryIds = cluster.slice(1).map(r=>r._id);
+          mergeResults.push({ idx, merged, primaryId: cluster[0]._id, secondaryIds });
           const mMeds = (merged.medications||[]).map(m=>m.name).filter(Boolean).slice(0,4).join(', ');
-          const synopsisPreview = (merged.synopsis||'').slice(0,140);
           previewEl.innerHTML = `
             <div class="merge-result-card">
-              <strong>Merged result</strong>
+              <strong>Merged result (${cluster.length} → 1)</strong>
               ${esc(merged.chiefComplaint||'—')}<br>
-              <span style="color:var(--ink-dim);">${esc(synopsisPreview)}${(merged.synopsis||'').length>140?'…':''}</span><br>
+              <span style="color:var(--ink-dim);">${esc((merged.synopsis||'').slice(0,140))}${(merged.synopsis||'').length>140?'…':''}</span><br>
               <span style="color:var(--ink-muted);">meds: ${esc(mMeds||'none')} · ${(merged.medications||[]).length} total</span>
             </div>`;
           statusEl.className = 'merge-status done';
-          statusEl.textContent = '✓ preview ready';
+          statusEl.textContent = `✓ preview ready — ${cluster.length} records → 1`;
           break;
         } catch(err) {
           if (err.message === 'rate_limit' && attempts < 2) {
@@ -655,16 +683,18 @@ async function generatePreviews(pairs) {
 
   if (mergeResults.length) {
     $('merge-commit-bar').style.display = 'flex';
+    const totalDeleted = mergeResults.reduce((s,r)=>s+r.secondaryIds.length, 0);
     $('merge-commit-info').textContent =
-      `${mergeResults.length} of ${checkedIdxs.length} previews ready. Review above then commit — updates primary record, deletes secondary.`;
+      `${mergeResults.length} clusters ready. Will write ${mergeResults.length} merged records and delete ${totalDeleted} secondaries.`;
   }
 }
 
 async function commitMerges() {
   if (!mergeResults.length) return;
+  const totalDeleted = mergeResults.reduce((s,r)=>s+r.secondaryIds.length, 0);
   const ok = await showConfirm(
     'Commit all merges?',
-    `This will write <strong>${mergeResults.length} merged records</strong> to Firestore and permanently delete ${mergeResults.length} secondary records.<br><br>
+    `This will write <strong>${mergeResults.length} merged records</strong> to Firestore and permanently delete <strong>${totalDeleted} secondary records</strong>.<br><br>
     Make sure the previews above look correct. <strong>This cannot be undone.</strong>`
   );
   if (!ok) return;
@@ -673,19 +703,19 @@ async function commitMerges() {
   $('commit-btn').textContent = 'Committing…';
 
   let succeeded = 0, failed = 0;
-  for (const { idx, merged, primaryId, secondaryId } of mergeResults) {
+  for (const { idx, merged, primaryId, secondaryIds } of mergeResults) {
     const statusEl = $(`merge-status-${idx}`);
     statusEl.className = 'merge-status merging';
     statusEl.textContent = 'writing to Firestore…';
     try {
       const { _id, ...clean } = merged;
-      clean.mergedFrom = [primaryId, secondaryId];
+      clean.mergedFrom = [primaryId, ...secondaryIds];
       clean.mergedAt = new Date().toISOString();
-      clean.sourceFiles = [...new Set([...(clean.sourceFiles||[]), ...(clean.driveFileIds||[])])]; // ensure union
+      clean.sourceFiles = [...new Set([...(clean.sourceFiles||[])])];
       await setDoc(doc(db, 'visits', primaryId), clean);
-      await deleteDoc(doc(db, 'visits', secondaryId));
+      for (const sid of secondaryIds) await deleteDoc(doc(db, 'visits', sid));
       statusEl.className = 'merge-status done';
-      statusEl.textContent = '✓ committed — secondary deleted';
+      statusEl.textContent = `✓ committed — ${secondaryIds.length} record${secondaryIds.length!==1?'s':''} deleted`;
       succeeded++;
     } catch(err) {
       statusEl.className = 'merge-status error';
@@ -698,7 +728,7 @@ async function commitMerges() {
   $('commit-btn').disabled = false;
   $('commit-btn').textContent = '✓ Commit merges to Firestore';
   $('merge-commit-info').textContent = failed === 0
-    ? `✓ All ${succeeded} merges committed. Reload the main app to see changes.`
+    ? `✓ All ${succeeded} clusters merged. Reload the main app to see changes.`
     : `${succeeded} succeeded, ${failed} failed — check console for details.`;
   $('merge-count').textContent = `${succeeded} merged ✓`;
 }
@@ -740,26 +770,30 @@ function openRolloverReviewer(idx) {
 $('reviewer-close').onclick = () => { $('reviewer-overlay').style.display = 'none'; };
 $('reviewer-overlay').onclick = e => { if (e.target === $('reviewer-overlay')) $('reviewer-overlay').style.display = 'none'; };
 $('reviewer-prev').onclick = () => { if (_reviewerIdx > 0) { _reviewerIdx--; renderReviewer(); } };
-$('reviewer-next').onclick = () => { const pairs = window._rolloverPairs||[]; if (_reviewerIdx < pairs.length-1) { _reviewerIdx++; renderReviewer(); } };
+$('reviewer-next').onclick = () => { const pairs = window._rolloverClusters||[]; if (_reviewerIdx < pairs.length-1) { _reviewerIdx++; renderReviewer(); } };
 
 $('reviewer-skip').onclick = () => {
-  const pairs = window._rolloverPairs||[];
+  const pairs = window._rolloverClusters||[];
   if (_reviewerIdx < pairs.length-1) { _reviewerIdx++; renderReviewer(); }
   else $('reviewer-overlay').style.display = 'none';
 };
 
 $('reviewer-delete-b').onclick = async () => {
-  const pairs = window._rolloverPairs||[];
-  const { a, b } = pairs[_reviewerIdx];
-  if (!confirm(`Delete Record B (${fmtDate(b.date)} · ${b.chiefComplaint||'no complaint'})?\n\nRecord A will be kept unchanged. This cannot be undone.`)) return;
+  const clusters = window._rolloverClusters||[];
+  const cluster = clusters[_reviewerIdx];
+  // "Delete B" now means delete all records except the first (primary)
+  const toDelete = cluster.slice(1);
+  const desc = toDelete.map(r=>`${fmtDate(r.date)} · ${r.chiefComplaint||'no complaint'}`).join('\n');
+  if (!confirm(`Delete ${toDelete.length} secondary record${toDelete.length!==1?'s':''}:\n${desc}\n\nRecord A will be kept unchanged. This cannot be undone.`)) return;
   try {
-    await deleteDoc(doc(db, 'visits', b._id));
-    // Track ignored source files
-    trackIgnoredSources(b);
-    showReviewerToast(`Record B deleted ✓`, 'green');
-    pairs.splice(_reviewerIdx, 1);
-    if (_reviewerIdx >= pairs.length) _reviewerIdx = Math.max(0, pairs.length-1);
-    if (pairs.length === 0) { $('reviewer-overlay').style.display = 'none'; return; }
+    for (const r of toDelete) {
+      await deleteDoc(doc(db, 'visits', r._id));
+      trackIgnoredSources(r);
+    }
+    showReviewerToast(`${toDelete.length} record${toDelete.length!==1?'s':''} deleted ✓`, 'green');
+    clusters.splice(_reviewerIdx, 1);
+    if (_reviewerIdx >= clusters.length) _reviewerIdx = Math.max(0, clusters.length-1);
+    if (clusters.length === 0) { $('reviewer-overlay').style.display = 'none'; return; }
     renderReviewer();
   } catch(e) { showReviewerToast(`Delete failed: ${e.message}`, 'red'); }
 };
@@ -767,20 +801,24 @@ $('reviewer-delete-b').onclick = async () => {
 $('reviewer-commit').onclick = async () => {
   const merged = collectMergedRecord();
   if (!merged) return;
-  const pairs = window._rolloverPairs||[];
-  const { a, b } = pairs[_reviewerIdx];
-  if (!confirm(`Write merged record and delete Record B?\n\nThis replaces Record A (${fmtDate(a.date)}) with the merged version and permanently deletes Record B (${fmtDate(b.date)}).\n\nCannot be undone.`)) return;
+  const clusters = window._rolloverClusters||[];
+  const cluster = clusters[_reviewerIdx];
+  const primary = cluster[0];
+  const secondaries = cluster.slice(1);
+  if (!confirm(`Write merged record and delete ${secondaries.length} secondary record${secondaries.length!==1?'s':''}?\n\nReplaces Record A (${fmtDate(primary.date)}) with merged version.\n\nCannot be undone.`)) return;
   try {
-    merged.mergedFrom = [a._id, b._id];
+    merged.mergedFrom = cluster.map(r=>r._id);
     merged.mergedAt = new Date().toISOString();
     const { _id, ...clean } = merged;
-    await setDoc(doc(db, 'visits', a._id), clean);
-    await deleteDoc(doc(db, 'visits', b._id));
-    trackIgnoredSources(b);
-    showReviewerToast(`Merged ✓ — Record B deleted`, 'green');
-    pairs.splice(_reviewerIdx, 1);
-    if (_reviewerIdx >= pairs.length) _reviewerIdx = Math.max(0, pairs.length-1);
-    if (pairs.length === 0) {
+    await setDoc(doc(db, 'visits', primary._id), clean);
+    for (const r of secondaries) {
+      await deleteDoc(doc(db, 'visits', r._id));
+      trackIgnoredSources(r);
+    }
+    showReviewerToast(`Merged ✓ — ${secondaries.length} record${secondaries.length!==1?'s':''} deleted`, 'green');
+    clusters.splice(_reviewerIdx, 1);
+    if (_reviewerIdx >= clusters.length) _reviewerIdx = Math.max(0, clusters.length-1);
+    if (clusters.length === 0) {
       $('reviewer-overlay').style.display = 'none';
       maybeExportIgnoredSources();
       return;
@@ -821,21 +859,27 @@ async function maybeExportIgnoredSources() {
   URL.revokeObjectURL(url);
 }
 
-// Export button — always available from reviewer header area
 function renderReviewer() {
-  const pairs = window._rolloverPairs||[];
-  if (!pairs.length) { $('reviewer-overlay').style.display = 'none'; return; }
-  const { a, b, diff } = pairs[_reviewerIdx];
+  const clusters = window._rolloverClusters||[];
+  if (!clusters.length) { $('reviewer-overlay').style.display = 'none'; return; }
+  const cluster = clusters[_reviewerIdx];
+  const primary = cluster[0]; // Record A — the primary to keep
 
-  $('reviewer-title').textContent = `${a.cat} · ${a.clinic||'unknown clinic'} · ${fmtDate(a.date)} / ${fmtDate(b.date)}`;
-  $('reviewer-counter').textContent = `${_reviewerIdx+1} of ${pairs.length}`;
+  const dates = [...new Set(cluster.map(r=>r.date))].sort();
+  const dateRange = dates.length === 1 ? fmtDate(dates[0]) : fmtDate(dates[0]) + ' – ' + fmtDate(dates[dates.length-1]);
+  $('reviewer-title').textContent = `${primary.cat} · ${primary.clinic||'unknown clinic'} · ${dateRange} (${cluster.length} records)`;
+  $('reviewer-counter').textContent = `${_reviewerIdx+1} of ${clusters.length}`;
   $('reviewer-prev').disabled = _reviewerIdx === 0;
-  $('reviewer-next').disabled = _reviewerIdx === pairs.length-1;
+  $('reviewer-next').disabled = _reviewerIdx === clusters.length-1;
+
+  // Update delete-B button label
+  $('reviewer-delete-b').textContent = cluster.length === 2
+    ? 'Delete Record B (keep A only)'
+    : `Delete Records B–${String.fromCharCode(64+cluster.length)} (keep A only)`;
 
   const body = $('reviewer-body');
   body.innerHTML = '';
 
-  // ── FIELD SECTIONS ──
   const fields = [
     { key: 'chiefComplaint', label: 'Chief Complaint', type: 'text' },
     { key: 'synopsis',       label: 'Synopsis',        type: 'textarea' },
@@ -843,26 +887,25 @@ function renderReviewer() {
     { key: 'vitals',         label: 'Vitals',          type: 'vitals' },
   ];
 
-  const fieldEls = {}; // key → editable input/textarea
+  const fieldEls = {};
 
   for (const f of fields) {
-    const aVal = f.type === 'vitals' ? formatVitals(a.vitals) : (a[f.key] || '');
-    const bVal = f.type === 'vitals' ? formatVitals(b.vitals) : (b[f.key] || '');
-    if (!aVal && !bVal) continue;
+    const vals = cluster.map(r => f.type === 'vitals' ? formatVitals(r.vitals) : (r[f.key] || ''));
+    if (vals.every(v => !v)) continue;
 
     const sec = document.createElement('div');
     sec.style.cssText = 'margin-bottom:1.25rem;';
-
     const lbl = document.createElement('div');
     lbl.style.cssText = 'font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;';
     lbl.textContent = f.label;
     sec.appendChild(lbl);
 
-    // Radio pick row
+    // Radio cards — one per record in cluster
+    const cols = Math.min(cluster.length, 3);
     const pickRow = document.createElement('div');
-    pickRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;';
+    pickRow.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:0.5rem;margin-bottom:0.5rem;`;
 
-    const makeOption = (label, val, which) => {
+    const makeOption = (recLabel, val, idx) => {
       const card = document.createElement('div');
       card.style.cssText = 'border:2px solid var(--border);border-radius:7px;padding:0.5rem 0.65rem;cursor:pointer;transition:all 0.15s;';
       const top = document.createElement('div');
@@ -870,11 +913,11 @@ function renderReviewer() {
       const radio = document.createElement('input');
       radio.type = 'radio';
       radio.name = `field-${f.key}`;
-      radio.value = which;
+      radio.value = idx;
       radio.style.accentColor = 'var(--accent)';
       const lbl2 = document.createElement('label');
       lbl2.style.cssText = 'font-size:0.6rem;font-weight:600;color:var(--ink-muted);cursor:pointer;';
-      lbl2.textContent = label;
+      lbl2.textContent = recLabel;
       top.appendChild(radio);
       top.appendChild(lbl2);
       const preview = document.createElement('div');
@@ -883,31 +926,27 @@ function renderReviewer() {
       if (!val) preview.style.color = 'var(--ink-muted)';
       card.appendChild(top);
       card.appendChild(preview);
-
-      // Click card or radio → populate editable field
       const populate = () => {
         radio.checked = true;
         card.style.borderColor = 'var(--accent)';
         card.style.background = 'var(--surface)';
-        // Deselect sibling
         pickRow.querySelectorAll('div[data-which]').forEach(c => {
           if (c !== card) { c.style.borderColor = 'var(--border)'; c.style.background = 'white'; }
         });
         if (fieldEls[f.key]) fieldEls[f.key].value = val;
       };
-      card.dataset.which = which;
+      card.dataset.which = idx;
       card.addEventListener('click', populate);
       radio.addEventListener('change', populate);
-      return card;
+      return { card, populate, val };
     };
 
-    const cardA = makeOption(`Record A · ${fmtDate(a.date)}`, aVal, 'a');
-    const cardB = makeOption(`Record B · ${fmtDate(b.date)}`, bVal, 'b');
-    pickRow.appendChild(cardA);
-    pickRow.appendChild(cardB);
+    const options = cluster.map((r, ri) =>
+      makeOption(`Record ${String.fromCharCode(65+ri)} · ${fmtDate(r.date)}`, vals[ri], ri)
+    );
+    options.forEach(o => pickRow.appendChild(o.card));
     sec.appendChild(pickRow);
 
-    // Editable result field
     let editEl;
     if (f.type === 'textarea' || f.type === 'vitals') {
       editEl = document.createElement('textarea');
@@ -917,42 +956,42 @@ function renderReviewer() {
       editEl.type = 'text';
     }
     editEl.style.cssText = 'width:100%;font-family:"JetBrains Mono",monospace;font-size:0.68rem;border:1.5px solid var(--accent);border-radius:7px;padding:0.5rem 0.65rem;color:var(--ink);outline:none;resize:vertical;line-height:1.6;background:white;';
-    editEl.placeholder = 'Select A or B above, or type directly…';
+    editEl.placeholder = 'Select a record above, or type directly…';
     fieldEls[f.key] = editEl;
 
-    // Auto-select whichever side has content
-    if (aVal && !bVal) { cardA.click(); }
-    else if (bVal && !aVal) { cardB.click(); }
-    else if (aVal) { cardA.click(); } // both have content — default to A
+    // Auto-select: first record with content
+    const firstWithContent = options.findIndex(o => o.val);
+    if (firstWithContent >= 0) options[firstWithContent].populate();
 
     sec.appendChild(editEl);
     body.appendChild(sec);
   }
 
-  // ── MEDICATIONS ──
+  // ── MEDICATIONS (union of all records) ──
   {
-    const aMeds = (a.medications||[]);
-    const bMeds = (b.medications||[]);
-    const allMeds = unionItems(aMeds, bMeds, m => (m.name||'').toLowerCase().replace(/\s+/g,''));
+    let allMeds = (cluster[0].medications||[]).map(m=>({...m,_src:'A'}));
+    for (let ri = 1; ri < cluster.length; ri++) {
+      const label = String.fromCharCode(65+ri);
+      const extras = unionItems(allMeds, (cluster[ri].medications||[]).map(m=>({...m,_src:label})), m=>(m.name||'').toLowerCase().replace(/\s+/g,''));
+      allMeds = extras;
+    }
     if (allMeds.length) {
       const sec = document.createElement('div');
       sec.style.cssText = 'margin-bottom:1.25rem;';
-      sec.innerHTML = `<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Medications</div>`;
+      sec.innerHTML = '<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Medications</div>';
       const list = document.createElement('div');
       list.style.cssText = 'display:flex;flex-direction:column;gap:0.3rem;';
       allMeds.forEach((item, i) => {
         const row = document.createElement('label');
         row.style.cssText = 'display:flex;align-items:baseline;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:5px;background:var(--surface);cursor:pointer;font-size:0.65rem;';
         const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = true;
-        cb.dataset.medIdx = i;
+        cb.type = 'checkbox'; cb.checked = true; cb.dataset.medIdx = i;
         cb.style.accentColor = 'var(--accent)';
         const src = document.createElement('span');
         src.style.cssText = 'font-size:0.55rem;color:var(--ink-muted);margin-left:auto;';
         src.textContent = item._src;
         row.appendChild(cb);
-        row.appendChild(document.createTextNode(`${item.name||'—'}${item.dose?' · '+item.dose:''}${item.frequency?' · '+item.frequency:''}`));
+        row.appendChild(document.createTextNode((item.name||'—') + (item.dose?' · '+item.dose:'') + (item.frequency?' · '+item.frequency:'')));
         row.appendChild(src);
         list.appendChild(row);
       });
@@ -963,30 +1002,30 @@ function renderReviewer() {
     }
   }
 
-  // ── PROCEDURES ──
+  // ── PROCEDURES (union of all records) ──
   {
-    const aProcs = (a.procedures||[]);
-    const bProcs = (b.procedures||[]);
-    const allProcs = unionItems(aProcs, bProcs, p => (p.name||'').toLowerCase().replace(/\s+/g,''));
+    let allProcs = (cluster[0].procedures||[]).map(p=>({...p,_src:'A'}));
+    for (let ri = 1; ri < cluster.length; ri++) {
+      const label = String.fromCharCode(65+ri);
+      allProcs = unionItems(allProcs, (cluster[ri].procedures||[]).map(p=>({...p,_src:label})), p=>(p.name||'').toLowerCase().replace(/\s+/g,''));
+    }
     if (allProcs.length) {
       const sec = document.createElement('div');
       sec.style.cssText = 'margin-bottom:1.25rem;';
-      sec.innerHTML = `<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Procedures</div>`;
+      sec.innerHTML = '<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Procedures</div>';
       const list = document.createElement('div');
       list.style.cssText = 'display:flex;flex-direction:column;gap:0.3rem;';
       allProcs.forEach((item, i) => {
         const row = document.createElement('label');
         row.style.cssText = 'display:flex;align-items:baseline;gap:0.5rem;padding:0.3rem 0.5rem;border-radius:5px;background:var(--surface);cursor:pointer;font-size:0.65rem;';
         const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = true;
-        cb.dataset.procIdx = i;
+        cb.type = 'checkbox'; cb.checked = true; cb.dataset.procIdx = i;
         cb.style.accentColor = 'var(--accent)';
         const src = document.createElement('span');
         src.style.cssText = 'font-size:0.55rem;color:var(--ink-muted);margin-left:auto;';
         src.textContent = item._src;
         row.appendChild(cb);
-        row.appendChild(document.createTextNode(`${item.name||'—'}${item.findings?' — '+item.findings:''}`));
+        row.appendChild(document.createTextNode((item.name||'—') + (item.findings?' — '+item.findings:'')));
         row.appendChild(src);
         list.appendChild(row);
       });
@@ -997,13 +1036,11 @@ function renderReviewer() {
     }
   }
 
-  // ── LABS DIFF ──
-  buildLabsDiff(a, b, body);
+  // ── LABS DIFF (across all records in cluster) ──
+  buildLabsDiff(cluster, body);
 
-  // Store refs for collectMergedRecord
   body._fieldEls = fieldEls;
-  body._a = a;
-  body._b = b;
+  body._cluster = cluster;
 }
 
 function formatVitals(v) {
@@ -1037,7 +1074,7 @@ function unionItems(listA, listB, keyFn) {
   return [...seen.values()];
 }
 
-async function buildLabsDiff(a, b, container) {
+async function buildLabsDiff(cluster, container) {
   // Load labs for both records from Firestore
   const sec = document.createElement('div');
   sec.style.cssText = 'margin-bottom:1.25rem;';
@@ -1046,60 +1083,60 @@ async function buildLabsDiff(a, b, container) {
   container.appendChild(sec);
 
   try {
-    const [snapA, snapB] = await Promise.all([
-      getDocs(query(collection(db, 'labs'), where('driveFileId', 'in', [...new Set([...(a.driveFileIds||[a.sourceFileId||'']).filter(Boolean)])]))),
-      getDocs(query(collection(db, 'labs'), where('driveFileId', 'in', [...new Set([...(b.driveFileIds||[b.sourceFileId||'']).filter(Boolean)])])))
-    ]);
+    // Load labs for each record in cluster by driveFileId
+    const labsByRecord = await Promise.all(cluster.map(async (r, ri) => {
+      const ids = [...new Set([...(r.driveFileIds||[]), r.sourceFileId].filter(Boolean))];
+      if (!ids.length) return [];
+      const snap = await getDocs(query(collection(db, 'labs'), where('driveFileId', 'in', ids)));
+      return snap.docs.map(d=>({_id:d.id,...d.data(),_recIdx:ri}));
+    }));
 
-    const labsA = snapA.docs.map(d=>({_id:d.id,...d.data()}));
-    const labsB = snapB.docs.map(d=>({_id:d.id,...d.data()}));
-
-    if (!labsA.length && !labsB.length) {
-      sec.innerHTML = sec.innerHTML.replace('Loading labs…', 'No lab records found for either visit.');
+    const allLabs = labsByRecord.flat();
+    if (!allLabs.length) {
+      sec.innerHTML = sec.innerHTML.replace('Loading labs…', 'No lab records found for this cluster.');
       return;
     }
 
-    // Build diff: match by test name
-    const allTests = new Map();
-    for (const l of labsA) {
+    // Build unified test map — for each test, track value per record
+    const testMap = new Map();
+    for (const l of allLabs) {
       const k = (l.test||'').toLowerCase();
-      allTests.set(k, { test: l.test, a: l, b: null });
-    }
-    for (const l of labsB) {
-      const k = (l.test||'').toLowerCase();
-      if (allTests.has(k)) allTests.get(k).b = l;
-      else allTests.set(k, { test: l.test, a: null, b: l });
+      if (!testMap.has(k)) testMap.set(k, { test: l.test, records: new Array(cluster.length).fill(null) });
+      testMap.get(k).records[l._recIdx] = l;
     }
 
-    const rows = [...allTests.values()].sort((x,y)=>(x.test||'').localeCompare(y.test||''));
-    const isDup = row => row.a && row.b && String(row.a.value) === String(row.b.value);
+    const rows = [...testMap.values()].sort((x,y)=>(x.test||'').localeCompare(y.test||''));
+    const isDup = row => {
+      const vals = row.records.filter(Boolean).map(l=>String(l.value));
+      return vals.length > 1 && vals.every(v=>v===vals[0]);
+    };
+    const dupCount = rows.filter(isDup).length;
+    const uniqueCount = rows.length - dupCount;
 
-    sec.innerHTML = `<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Labs <span style="font-weight:400;font-style:italic;">(${rows.filter(isDup).length} duplicates auto-resolved, ${rows.filter(r=>!isDup(r)).length} unique)</span></div>`;
+    sec.innerHTML = `<div style="font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-muted);margin-bottom:0.5rem;font-weight:600;">Labs <span style="font-weight:400;font-style:italic;">(${dupCount} duplicates auto-resolved, ${uniqueCount} unique)</span></div>`;
 
     const table = document.createElement('table');
-    table.innerHTML = `<tr><th>Test</th><th>Record A</th><th>Record B</th><th>Action</th></tr>`;
+    const headerCells = cluster.map((_,ri)=>`<th>Record ${String.fromCharCode(65+ri)}</th>`).join('');
+    table.innerHTML = `<tr><th>Test</th>${headerCells}<th>Action</th></tr>`;
 
     for (const row of rows) {
       const dup = isDup(row);
       const tr = document.createElement('tr');
       if (dup) tr.style.opacity = '0.5';
-
-      const aVal = row.a ? `${row.a.value}${row.a.unit?' '+row.a.unit:''}${row.a.abnormal?' ['+row.a.abnormal+']':''}` : '—';
-      const bVal = row.b ? `${row.b.value}${row.b.unit?' '+row.b.unit:''}${row.b.abnormal?' ['+row.b.abnormal+']':''}` : '—';
-
-      tr.innerHTML = `
-        <td style="font-size:0.62rem;">${esc(row.test||'—')}</td>
-        <td style="font-size:0.62rem;${row.a?.abnormal?'color:var(--red);font-weight:600;':''}">${esc(aVal)}</td>
-        <td style="font-size:0.62rem;${row.b?.abnormal?'color:var(--red);font-weight:600;':''}">${esc(bVal)}</td>
-        <td style="font-size:0.6rem;color:var(--ink-muted);">${dup ? '✓ dup — keep one' : row.a && !row.b ? 'A only — keep' : !row.a && row.b ? 'B only — keep' : '⚠ diff values'}</td>`;
+      const cells = row.records.map(l => {
+        if (!l) return '<td style="font-size:0.62rem;color:var(--ink-muted);">—</td>';
+        const val = `${l.value}${l.unit?' '+l.unit:''}${l.abnormal?' ['+l.abnormal+']':''}`;
+        return `<td style="font-size:0.62rem;${l.abnormal?'color:var(--red);font-weight:600;':''}">${esc(val)}</td>`;
+      }).join('');
+      const presentIn = row.records.map((l,ri)=>l?String.fromCharCode(65+ri):null).filter(Boolean);
+      const action = dup ? '✓ dup — keep one'
+        : presentIn.length === 1 ? `${presentIn[0]} only — keep`
+        : '⚠ diff values';
+      tr.innerHTML = `<td style="font-size:0.62rem;">${esc(row.test||'—')}</td>${cells}<td style="font-size:0.6rem;color:var(--ink-muted);">${action}</td>`;
       table.appendChild(tr);
     }
     sec.appendChild(table);
-
-    // Store lab diff info for commit
     sec._labRows = rows;
-    sec._labsA = labsA;
-    sec._labsB = labsB;
 
   } catch(e) {
     sec.innerHTML = sec.innerHTML.replace('Loading labs…', `Could not load labs: ${esc(e.message)}`);
@@ -1109,15 +1146,14 @@ async function buildLabsDiff(a, b, container) {
 function collectMergedRecord() {
   const body = $('reviewer-body');
   const fieldEls = body._fieldEls;
-  const a = body._a;
-  const b = body._b;
-  if (!a || !b) return null;
+  const cluster = body._cluster;
+  if (!cluster?.length) return null;
+  const primary = cluster[0];
 
-  // Base: start from Record A, overlay selections
-  const merged = { ...a };
-  merged._id = a._id; // keep for reference, stripped before write
+  // Base: start from primary record, overlay user selections
+  const merged = { ...primary };
 
-  // Text fields
+  // Text fields — use whatever the user typed/selected
   for (const [key, el] of Object.entries(fieldEls)) {
     if (el.value.trim()) {
       merged[key] = key === 'vitals' ? parseVitals(el.value) : el.value.trim();
@@ -1140,9 +1176,9 @@ function collectMergedRecord() {
       .map(({ _src, ...item }) => item);
   }
 
-  // Source files — union
-  merged.sourceFiles = [...new Set([...(a.sourceFiles||[]), ...(b.sourceFiles||[])])];
-  merged.driveFileIds = [...new Set([...(a.driveFileIds||[]), ...(b.driveFileIds||[])])];
+  // Source files — union across all cluster records
+  merged.sourceFiles = [...new Set(cluster.flatMap(r => r.sourceFiles||[]))];
+  merged.driveFileIds = [...new Set(cluster.flatMap(r => r.driveFileIds||[]))];
 
   return merged;
 }

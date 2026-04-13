@@ -1038,6 +1038,7 @@ let APP_PETS = []; // populated from visits collection on load — never hardcod
 let _chatContextCache = null;  // { cats: string, context: string }
 let _chatContextDirty = true;  // true = must rebuild on next message
 function invalidateChatContext() { _chatContextDirty = true; }
+let _addPendingDebounce = null; // debounce for journal sidebar rebuild in addPendingItem
 
 // Popup state
 let popupRawText = '';
@@ -2059,6 +2060,7 @@ let _allLabsCache = null; // raw array cache — null means needs reload
 let flowsheetCat = null;
 
 let _labsSidebarDirty = true;
+let _labsSidebarDebounce = null;
 function invalidateLabsCache() { _allLabsCache = null; invalidateChatContext(); _labsSidebarDirty = true; }
 async function loadLabsSidebar() {
   if (_labsSidebarDebounce) clearTimeout(_labsSidebarDebounce);
@@ -6847,12 +6849,9 @@ function addPendingItem(item) {
   if (pendingJournalItems.some(p => `${p.cat}_${p.text.toLowerCase()}_${p.status}` === key)) return;
   item.id = Math.random().toString(36).slice(2,9);
   pendingJournalItems.push(item);
-  // Debounce sidebar rebuild — multiple items may be added in rapid succession
-  // (e.g. journal block from Claude response adds several at once)
   if (_addPendingDebounce) clearTimeout(_addPendingDebounce);
   _addPendingDebounce = setTimeout(() => { _addPendingDebounce = null; loadJournalSidebar(); }, 300);
 }
-let _addPendingDebounce = null;
 
 function updateJournalBadge() {
   const count = pendingJournalItems.length;
