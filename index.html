@@ -1033,6 +1033,12 @@ let pendingJournalItems = []; // queued during session, saved in batch
 let APP_PETS = []; // populated from visits collection on load — never hardcoded
 // mentionTracker and sessionActiveCat declared in journal section below
 
+// Chat context cache — must be declared early as invalidateChatContext() is called
+// throughout the file wherever visits/labs/journal are written
+let _chatContextCache = null;  // { cats: string, context: string }
+let _chatContextDirty = true;  // true = must rebuild on next message
+function invalidateChatContext() { _chatContextDirty = true; }
+
 // Popup state
 let popupRawText = '';
 let popupMatches = [];
@@ -2052,10 +2058,8 @@ let labDataCache = {}; // {cat: [{test, value, unit, refLow, refHigh, abnormal, 
 let _allLabsCache = null; // raw array cache — null means needs reload
 let flowsheetCat = null;
 
-function invalidateLabsCache() { _allLabsCache = null; invalidateChatContext(); _labsSidebarDirty = true; }
-
-let _labsSidebarDebounce = null;
 let _labsSidebarDirty = true;
+function invalidateLabsCache() { _allLabsCache = null; invalidateChatContext(); _labsSidebarDirty = true; }
 async function loadLabsSidebar() {
   if (_labsSidebarDebounce) clearTimeout(_labsSidebarDebounce);
   return new Promise(resolve => {
@@ -8431,7 +8435,7 @@ function appendTyping() {
 
 // ── CONTEXT BUILDER ──
 // In-memory cache of all visits and labs loaded at startup — used for client-side search
-let _allVisitsCache = null; invalidateChatContext(); dirtyRecordsSidebar();
+let _allVisitsCache = null;
 // _allLabsCache declared near loadLabsSidebar above
 
 async function ensureDataCache() {
@@ -8458,11 +8462,6 @@ function searchVisits(query) {
 let _journalCache = null;
 let _journalCacheTime = 0;
 const JOURNAL_CACHE_TTL = 60000; // 1 minute
-
-// Chat context cache — rebuilt only when underlying data changes
-let _chatContextCache = null;       // { cats: string, context: string }
-let _chatContextDirty = true;       // true = must rebuild on next message
-function invalidateChatContext() { _chatContextDirty = true; }
 
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
