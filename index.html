@@ -1393,6 +1393,7 @@ function openPetProfilesModal() {
   };
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
+window.openPetProfilesModal = openPetProfilesModal;
 
 // ── CAT FOCUS PILLS ──
 function renderCatFocusPills() {

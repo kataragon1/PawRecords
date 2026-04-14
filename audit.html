@@ -268,14 +268,19 @@ function showConfirm(title, bodyHtml) {
 }
 
 // ── CLAUDE MERGE ──
+const MERGE_STRIP_FIELDS = new Set(['createdAt','updatedAt','mergedFrom','mergedAt','visitCluster','sourceFileId','driveFileIds','sourceFiles','confidence','flags','_id']);
+function stripForMerge(record) {
+  return Object.fromEntries(Object.entries(record).filter(([k]) => !MERGE_STRIP_FIELDS.has(k)));
+}
+
 async function callClaudeMerge(a, b) {
   const prompt = `You are merging two veterinary visit records for the same cat on the same day at the same clinic. They came from two different source documents.
 
 Record A:
-${JSON.stringify(a, null, 2)}
+${JSON.stringify(stripForMerge(a), null, 2)}
 
 Record B:
-${JSON.stringify(b, null, 2)}
+${JSON.stringify(stripForMerge(b), null, 2)}
 
 Merge rules:
 - chiefComplaint: prefer the more specific/detailed value
@@ -302,7 +307,7 @@ Return ONLY valid JSON — the merged visit record with all fields. No markdown,
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -646,7 +651,7 @@ async function generatePreviews(clusters) {
           let merged = Object.fromEntries(Object.entries(cluster[0]).filter(([k])=>k!=='_id'));
           for (let r = 1; r < cluster.length; r++) {
             const next = Object.fromEntries(Object.entries(cluster[r]).filter(([k])=>k!=='_id'));
-            merged = await callClaudeMerge(merged, next);
+            merged = await callClaudeMerge(stripForMerge(merged), stripForMerge(next));
             if (r < cluster.length - 1) statusEl.textContent = `merged ${r+1}/${cluster.length}…`;
           }
           const secondaryIds = cluster.slice(1).map(r=>r._id);
