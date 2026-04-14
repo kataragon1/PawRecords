@@ -2593,7 +2593,11 @@ async function loadJournalSidebar() {
       try {
         if (!_journalDocsCache) {
           const snap = await getDocs(query(collection(db, 'journal'), orderBy('addedDate', 'desc')));
-          _journalDocsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          _journalDocsCache = snap.docs.map(d => {
+            const data = { id: d.id, ...d.data() };
+            data.list = normalizeListName(data.list);
+            return data;
+          });
         }
         renderJournalSidebar(_journalDocsCache);
       } catch (err) { console.error('Journal load error:', err); }
@@ -2694,7 +2698,7 @@ function renderJournalSidebar(docs) {
     t.style.cssText = tabStyle(key === _journalActiveCat);
     t.addEventListener('click', () => {
       _journalActiveCat = key;
-      renderJournalSidebar(docs);
+      renderJournalSidebar(_journalDocsCache || docs);
     });
     return t;
   };
@@ -2735,11 +2739,12 @@ function renderJournalSidebar(docs) {
 }
 
 function renderJournalSection(container, docs, listOrder, showCatChips) {
-  // Group by list → status
+  // Group by list → status (normalize list names first)
   const byList = {};
   for (const j of docs) {
-    if (!byList[j.list]) byList[j.list] = [];
-    byList[j.list].push(j);
+    const listKey = normalizeListName(j.list);
+    if (!byList[listKey]) byList[listKey] = [];
+    byList[listKey].push({...j, list: listKey}); // normalize on the copy
   }
 
   const allListNames = Object.keys(byList);
@@ -3106,6 +3111,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
     tab.classList.add('active');
     _activeTab = tab.dataset.tab;
     $(`panel-${tab.dataset.tab}`).classList.add('active');
+    if (tab.dataset.tab === 'records' && _recordsSidebarDirty) loadRecordsSidebar();
     if (tab.dataset.tab === 'labs') renderLabsSidebar();
     // Load Drive files only once per session — user can manually refresh via button
     if (tab.dataset.tab === 'files') {
@@ -5786,7 +5792,7 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     const res2 = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,system:SYSTEM_EXTRACTION,messages})
+      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,system:getSystemExtraction(),messages})
     });
     if (res2.status === 429 || res2.status === 529) {
       // Still rate limited — show pause overlay, wait for user
@@ -6725,7 +6731,10 @@ async function sendMessage() {
   const typingEl = appendTyping();
   try {
     const context = await buildChatContext(text);
-    let response = await callClaude(convHistory, context, text);
+    // Only send last 10 messages — system prompt has full medical records so history
+    // beyond that adds cost without meaningful quality improvement
+    const trimmedHistory = convHistory.length > 10 ? convHistory.slice(-10) : convHistory;
+    let response = await callClaude(trimmedHistory, context, text);
     typingEl.remove();
 
     // Extract and strip <journal> hint block before displaying
@@ -6832,6 +6841,22 @@ function jCats(j) {
   if (Array.isArray(j.cats) && j.cats.length) return j.cats;
   if (j.cat) return [j.cat];
   return [];
+}
+
+// Normalize list names — Claude sometimes outputs variants
+const LIST_NAME_MAP = {
+  'medication': 'Medications', 'meds': 'Medications', 'med': 'Medications',
+  'supplement': 'Supplements', 'supp': 'Supplements', 'supps': 'Supplements',
+  'food': 'Foods', 'food items': 'Foods',
+  'diet plan': 'Diet', 'nutrition': 'Diet',
+  'general': 'Supplements', // fallback
+};
+function normalizeListName(list) {
+  if (!list) return 'Supplements';
+  const known = ['Medications', 'Supplements', 'Diet', 'Foods'];
+  if (known.includes(list)) return list;
+  const lower = list.toLowerCase().trim();
+  return LIST_NAME_MAP[lower] || list; // preserve custom lists as-is
 }
 
 // ── EXPLICIT COMMAND PATTERNS ──
@@ -6984,11 +7009,11 @@ function addPendingItem(item) {
   const t = item.text.trim();
   if (t.length < 3) return;
   if (/^(another|something|item|entry|medication|supplement|this|that|the|a|an|and|or|to|in|of|for)$/i.test(t)) return;
-  // Avoid duplicates in pending
+  // Avoid duplicates — key on cats+text only, ignore status differences
   const itemCatsKey = jCats(item).sort().join(',');
-  const key = `${itemCatsKey}_${t.toLowerCase()}_${item.status}`;
+  const key = `${itemCatsKey}_${t.toLowerCase()}`;
   if (pendingJournalItems.some(p => {
-    const pKey = `${jCats(p).sort().join(',')}_${p.text.toLowerCase()}_${p.status}`;
+    const pKey = `${jCats(p).sort().join(',')}_${(p.text||'').toLowerCase().trim()}`;
     return pKey === key;
   })) return;
   item.id = Math.random().toString(36).slice(2,9);
@@ -8741,23 +8766,28 @@ async function buildChatContext(userMessage) {
         }
       }
 
-      // Older visits: one-liner each
+      // Older visits: one-liner each — cap at 20 to control context size
       if (visits.length > 3) {
         context += `\nOlder visits:\n`;
-        for (const v of visits.slice(3)) {
+        for (const v of visits.slice(3, 23)) {
           const synopsis = v.synopsis ? v.synopsis.split('.')[0] : (v.chiefComplaint || 'visit');
           const location = v.source === 'home' ? '🏠 Home' : (v.clinic || '');
           context += `- ${v.date}${location ? ' · ' + location : ''}${v.homeStatus ? ' [' + v.homeStatus + ']' : ''}: ${synopsis}\n`;
         }
+        if (visits.length > 23) context += `- (${visits.length - 23} older visits not shown — ask to search for specifics)\n`;
       }
     }
   }
 
-  // Always include recent labs (structured — always complete)
+  // Include labs — last 6 months by default to control context size
   try {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
+
     for (const cat of targetCats) {
       const labs = _allLabsCache
-        .filter(l => l.cat === cat)
+        .filter(l => l.cat === cat && (l.resultDate || l.visitDate || '') >= cutoff)
         .sort((a,b) => (b.resultDate||'') > (a.resultDate||'') ? 1 : -1);
 
       if (!labs.length) continue;
