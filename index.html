@@ -558,11 +558,13 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 
     <!-- Journal Panel -->
     <div class="sidebar-panel" id="panel-journal">
+      <div id="journal-cat-tabs" style="display:none;flex-shrink:0;border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap;padding:0 0.5rem;background:white;">
+      </div>
       <div class="sidebar-empty" id="journal-empty">
         <div class="sidebar-empty-icon">📓</div>
         <div>Journal is empty.<br>Start chatting to build it.</div>
       </div>
-      <div id="journal-tree"></div>
+      <div id="journal-tree" style="flex:1;overflow-y:auto;"></div>
     </div>
 
     <!-- Notes Panel -->
@@ -2579,6 +2581,8 @@ function buildFlowsheetTable(cat, container) {
 // ── JOURNAL SIDEBAR ──
 let _journalDocsCache = null; invalidateChatContext();
 let _journalSidebarDebounce = null;
+let _journalActiveCat = 'all'; // 'all' or a cat name
+
 async function loadJournalSidebar() {
   _journalCache = null;
   _journalCacheTime = 0;
@@ -2588,58 +2592,46 @@ async function loadJournalSidebar() {
       _journalSidebarDebounce = null;
       try {
         if (!_journalDocsCache) {
-          const snap = await getDocs(query(collection(db, 'journal'), orderBy('cat')));
+          const snap = await getDocs(query(collection(db, 'journal'), orderBy('addedDate', 'desc')));
           _journalDocsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
-        const bycat = {};
-        _journalDocsCache.forEach(j => {
-          if (!bycat[j.cat]) bycat[j.cat] = {};
-          if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
-          bycat[j.cat][j.list].push(j);
-        });
-        renderJournalSidebar(bycat);
+        renderJournalSidebar(_journalDocsCache);
       } catch (err) { console.error('Journal load error:', err); }
       resolve();
     }, 400);
   });
 }
 
-function renderJournalSidebar(bycat) {
+function renderJournalSidebar(docs) {
   const container = $('journal-tree');
   const empty = $('journal-empty');
+  const tabBar = $('journal-cat-tabs');
 
-  // Pending items section
+  // Pending items section — always first
+  const existingPending = container.querySelector('.journal-pending-section');
+  if (existingPending) existingPending.remove();
+
   if (pendingJournalItems.length) {
     empty.style.display = 'none';
-    let pending = container.querySelector('.journal-pending-section');
-    if (!pending) { pending = document.createElement('div'); pending.className = 'journal-pending-section'; container.prepend(pending); }
+    const pending = document.createElement('div');
+    pending.className = 'journal-pending-section';
     pending.innerHTML = `<div class="journal-pending-header"><span>~ Tracking (${pendingJournalItems.length})</span><span style="font-size:0.58rem;color:var(--ink-muted);">rough hints · Save Session to confirm</span></div>`;
-
-    for (const item of pendingJournalItems) {
-      // Filter obviously bad AI entries
-      const badEntry = !item.text || item.text.trim().length < 3
-        || /^(another|something|item|entry|medication|supplement|this|that|the|a|an)$/i.test(item.text.trim());
-      if (badEntry) {
+    for (const item of [...pendingJournalItems]) {
+      const t = item.text?.trim() || '';
+      if (t.length < 3 || /^(another|something|item|entry|medication|supplement|this|that|the|a|an)$/i.test(t)) {
         pendingJournalItems = pendingJournalItems.filter(i => i !== item);
         continue;
       }
-
       const el = document.createElement('div');
       el.className = 'journal-pending-item';
-
-      const listLabel = item.list || '?';
       const textEl = document.createElement('div');
       textEl.style.cssText = 'flex:1;min-width:0;';
-
       const topRow = document.createElement('div');
       topRow.style.cssText = 'display:flex;align-items:center;gap:0.3rem;margin-bottom:0.1rem;';
-
       const listSpan = document.createElement('span');
       listSpan.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.52rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;';
-      listSpan.textContent = listLabel;
+      listSpan.textContent = item.list || '?';
       topRow.appendChild(listSpan);
-
-      // Status dropdown
       const statusSel = document.createElement('select');
       statusSel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.5rem;border:1px solid var(--border);border-radius:3px;padding:0 3px;background:var(--surface);color:var(--ink);outline:none;cursor:pointer;';
       [['current','current'],['past','past'],['plan','planned'],['maybe','potential']].forEach(([val, lbl]) => {
@@ -2650,15 +2642,14 @@ function renderJournalSidebar(bycat) {
       });
       statusSel.addEventListener('change', () => { item.status = statusSel.value; });
       topRow.appendChild(statusSel);
-
       textEl.appendChild(topRow);
-
       const textLine = document.createElement('div');
       textLine.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.68rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      const cats = jCats(item);
+      const catPrefix = cats.length ? cats.join(', ') + ': ' : '';
+      textLine.textContent = `${catPrefix}${t.slice(0, 32)}${t.length > 32 ? '…' : ''}`;
       textLine.title = item.text;
-      textLine.textContent = `${item.cat}: ${item.text.slice(0, 32)}${item.text.length > 32 ? '…' : ''}`;
       textEl.appendChild(textLine);
-
       const dismissBtn = document.createElement('button');
       dismissBtn.className = 'journal-pending-dismiss';
       dismissBtn.title = 'Dismiss';
@@ -2668,241 +2659,384 @@ function renderJournalSidebar(bycat) {
         updateJournalBadge();
         loadJournalSidebar();
       });
-
       el.appendChild(textEl);
       el.appendChild(dismissBtn);
       pending.appendChild(el);
     }
+    container.prepend(pending);
   }
 
-  const cats = Object.keys(bycat);
-  if (!cats.length && !pendingJournalItems.length) { empty.style.display = 'flex'; container.innerHTML = ''; return; }
+  if (!docs.length && !pendingJournalItems.length) {
+    empty.style.display = 'flex';
+    tabBar.style.display = 'none';
+    container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
+    return;
+  }
   empty.style.display = 'none';
 
+  // Build tab list: All + unique cats across all entries
+  const allCatsInJournal = [...new Set(docs.flatMap(j => jCats(j)))].sort();
+
+  // Validate active tab still exists
+  if (_journalActiveCat !== 'all' && !allCatsInJournal.includes(_journalActiveCat)) {
+    _journalActiveCat = 'all';
+  }
+
+  // Render tab bar
+  tabBar.innerHTML = '';
+  tabBar.style.display = 'block';
+  const tabStyle = (active) =>
+    `display:inline-block;padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;cursor:pointer;border-bottom:2px solid ${active ? 'var(--accent)' : 'transparent'};color:${active ? 'var(--accent)' : 'var(--ink-muted)'};user-select:none;transition:all 0.15s;white-space:nowrap;`;
+
+  const makeTab = (label, key) => {
+    const t = document.createElement('span');
+    t.textContent = label;
+    t.style.cssText = tabStyle(key === _journalActiveCat);
+    t.addEventListener('click', () => {
+      _journalActiveCat = key;
+      renderJournalSidebar(docs);
+    });
+    return t;
+  };
+
+  tabBar.appendChild(makeTab('All', 'all'));
+  for (const cat of allCatsInJournal) tabBar.appendChild(makeTab(cat, cat));
+
+  // Filter docs for active tab
+  const visibleDocs = _journalActiveCat === 'all'
+    ? docs
+    : docs.filter(j => jCats(j).includes(_journalActiveCat));
+
+  // Clear existing rendered sections
   container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
 
-  // List order — standard ones first, then any extras alphabetically
-  const LIST_ORDER = ['Medications', 'Supplements', 'Foods', 'Diet', 'Symptoms', 'Plans', 'Procedures', 'Weight Log'];
+  if (!visibleDocs.length) return;
 
-  for (const cat of cats.sort()) {
-    const lists = bycat[cat];
+  const LIST_ORDER = ['Medications', 'Supplements', 'Diet', 'Foods'];
+
+  if (_journalActiveCat === 'all') {
+    // All view — one flat section, entries show cat chips
+    renderJournalSection(container, visibleDocs, LIST_ORDER, true);
+  } else {
+    // Per-cat view — single cat, no chips needed
     const sec = document.createElement('div');
     sec.className = 'journal-cat-section';
+    // Add entry button for this cat
+    const addBtn = document.createElement('button');
+    addBtn.style.cssText = 'width:100%;background:none;border:none;border-bottom:1px solid var(--surface2);padding:0.3rem 0.75rem;font-family:JetBrains Mono,monospace;font-size:0.6rem;color:var(--ink-muted);cursor:pointer;text-align:left;letter-spacing:0.04em;transition:color 0.12s;';
+    addBtn.textContent = '+ Add entry';
+    addBtn.addEventListener('mouseenter', () => addBtn.style.color = 'var(--accent)');
+    addBtn.addEventListener('mouseleave', () => addBtn.style.color = 'var(--ink-muted)');
+    addBtn.addEventListener('click', () => openJournalAddItem([_journalActiveCat], null));
+    sec.appendChild(addBtn);
+    renderJournalSection(sec, visibleDocs, LIST_ORDER, false);
+    container.appendChild(sec);
+  }
+}
 
-    // Cat heading — collapsible
-    const heading = document.createElement('div');
-    heading.className = 'journal-cat-heading';
-    const arrow = document.createElement('span');
-    arrow.className = 'cat-arrow';
-    arrow.textContent = '▶';
-    arrow.style.cssText = 'font-size:0.5rem;color:var(--ink-muted);transition:transform 0.2s;margin-left:auto;';
-    heading.innerHTML = `<span style="font-size:0.85rem;">🐱</span><span>${escHtml(cat)}</span>`;
-    heading.appendChild(arrow);
+function renderJournalSection(container, docs, listOrder, showCatChips) {
+  // Group by list → status
+  const byList = {};
+  for (const j of docs) {
+    if (!byList[j.list]) byList[j.list] = [];
+    byList[j.list].push(j);
+  }
 
-    const body = document.createElement('div');
-    body.className = 'journal-cat-body open';
-    arrow.style.transform = 'rotate(90deg)';
+  const allListNames = Object.keys(byList);
+  const orderedLists = [
+    ...listOrder.filter(l => allListNames.includes(l)),
+    ...allListNames.filter(l => !listOrder.includes(l)).sort()
+  ];
 
-    heading.addEventListener('click', () => {
-      const open = body.classList.toggle('open');
-      arrow.style.transform = open ? 'rotate(90deg)' : '';
+  const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
+  const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Potential', past: 'Past' };
+
+  for (const listName of orderedLists) {
+    const items = byList[listName];
+    if (!items?.length) continue;
+
+    const ls = document.createElement('div');
+    ls.className = 'journal-list-section';
+
+    const lh = document.createElement('div');
+    lh.className = 'journal-list-heading';
+    const listArrow = document.createElement('span');
+    listArrow.textContent = '▶';
+    listArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;';
+    const countBadge = document.createElement('span');
+    countBadge.className = 'journal-list-count';
+    countBadge.textContent = items.length;
+    const addEntryBtn = document.createElement('button');
+    addEntryBtn.title = `Add to ${listName}`;
+    addEntryBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 0.2rem;margin-left:0.2rem;line-height:1;border-radius:3px;transition:color 0.12s;';
+    addEntryBtn.textContent = '+';
+    addEntryBtn.addEventListener('mouseenter', () => addEntryBtn.style.color = 'var(--accent)');
+    addEntryBtn.addEventListener('mouseleave', () => addEntryBtn.style.color = 'var(--ink-muted)');
+    addEntryBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const cats = _journalActiveCat === 'all' ? [] : [_journalActiveCat];
+      openJournalAddItem(cats, listName);
     });
-    sec.appendChild(heading);
+    lh.appendChild(listArrow);
+    lh.appendChild(document.createTextNode(' ' + listName));
+    lh.appendChild(countBadge);
+    lh.appendChild(addEntryBtn);
 
-    // Sort lists
-    const allListNames = Object.keys(lists);
-    const orderedLists = [
-      ...LIST_ORDER.filter(l => allListNames.includes(l)),
-      ...allListNames.filter(l => !LIST_ORDER.includes(l)).sort()
-    ];
+    const lb = document.createElement('div');
+    lb.className = 'journal-list-body open';
+    listArrow.style.transform = 'rotate(90deg)';
+    lh.addEventListener('click', () => {
+      const open = lb.classList.toggle('open');
+      listArrow.style.transform = open ? 'rotate(90deg)' : '';
+    });
 
-    for (const listName of orderedLists) {
-      const items = lists[listName];
-      if (!items?.length) continue;
+    const groups = { current:[], plan:[], maybe:[], past:[] };
+    for (const item of items) (groups[item.status] || groups.current).push(item);
 
-      const ls = document.createElement('div');
-      ls.className = 'journal-list-section';
+    for (const grp of STATUS_ORDER) {
+      const grpItems = groups[grp];
+      if (!grpItems.length) continue;
 
-      // List heading
-      const lh = document.createElement('div');
-      lh.className = 'journal-list-heading';
-      const listArrow = document.createElement('span');
-      listArrow.textContent = '▶';
-      listArrow.style.cssText = 'font-size:0.45rem;color:var(--ink-muted);transition:transform 0.15s;';
-      const countBadge = document.createElement('span');
-      countBadge.className = 'journal-list-count';
-      countBadge.textContent = items.length;
-      const addBtn = document.createElement('button');
-      addBtn.title = `Add to ${listName}`;
-      addBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 0.2rem;margin-left:0.2rem;line-height:1;border-radius:3px;transition:color 0.12s;';
-      addBtn.textContent = '+';
-      addBtn.addEventListener('mouseenter', () => addBtn.style.color = 'var(--accent)');
-      addBtn.addEventListener('mouseleave', () => addBtn.style.color = 'var(--ink-muted)');
-      addBtn.addEventListener('click', e => { e.stopPropagation(); openJournalAddItem(cat, listName); });
-      lh.appendChild(listArrow);
-      lh.appendChild(document.createTextNode(' ' + listName));
-      lh.appendChild(countBadge);
-      lh.appendChild(addBtn);
+      const sl = document.createElement('div');
+      sl.className = 'journal-status-label';
+      sl.textContent = STATUS_LABELS[grp];
+      lb.appendChild(sl);
 
-      const lb = document.createElement('div');
-      lb.className = 'journal-list-body open';
-      listArrow.style.transform = 'rotate(90deg)';
-      lh.addEventListener('click', () => {
-        const open = lb.classList.toggle('open');
-        listArrow.style.transform = open ? 'rotate(90deg)' : '';
-      });
+      for (const item of grpItems) {
+        const ee = document.createElement('div');
+        ee.className = 'journal-entry-full';
+        ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
+        ee.title = 'Double-click to edit';
 
-      // Group by status — order: current, plan, maybe, past
-      const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
-      const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Potential', past: 'Past' };
-      const groups = { current:[], plan:[], maybe:[], past:[] };
-      for (const item of items) (groups[item.status] || groups.current).push(item);
+        const textWrap = document.createElement('div');
+        textWrap.style.cssText = 'flex:1;min-width:0;';
+        const fullText = item.text || '';
+        const displayText = fullText.length > 60 ? fullText.slice(0, 59) + '…' : fullText;
+        let inner = `<div class="journal-entry-text-full" title="${escHtml(fullText)}">${escHtml(displayText)}</div>`;
+        if (item.dose) inner += `<div class="journal-entry-dose">${escHtml(item.dose)}</div>`;
 
-      for (const grp of STATUS_ORDER) {
-        const grpItems = groups[grp];
-        if (!grpItems.length) continue;
-
-        const sl = document.createElement('div');
-        sl.className = 'journal-status-label';
-        sl.textContent = STATUS_LABELS[grp];
-        lb.appendChild(sl);
-
-        for (const item of grpItems) {
-          const ee = document.createElement('div');
-          ee.className = 'journal-entry-full';
-          ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
-          ee.title = 'Double-click to edit';
-
-          const textWrap = document.createElement('div');
-          textWrap.style.cssText = 'flex:1;min-width:0;';
-          const truncLen = 60;
-          const fullText = item.text || '';
-          const displayText = fullText.length > truncLen ? fullText.slice(0, truncLen - 1) + '…' : fullText;
-          let inner = `<div class="journal-entry-text-full" title="${escHtml(fullText)}">${escHtml(displayText)}</div>`;
-          if (item.dose) inner += `<div class="journal-entry-dose">${escHtml(item.dose)}</div>`;
-          if (item.startDate) inner += `<div class="journal-entry-date-full">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
-          textWrap.innerHTML = inner;
-
-          const actions = document.createElement('span');
-          actions.style.cssText = 'display:none;gap:0.15rem;flex-shrink:0;margin-top:0.1rem;';
-          actions.innerHTML = `<button title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem;border-radius:3px;line-height:1;">✏</button><button title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--red);padding:0.1rem;border-radius:3px;line-height:1;">🗑</button>`;
-          ee.addEventListener('mouseenter', () => { actions.style.display = 'flex'; });
-          ee.addEventListener('mouseleave', () => { actions.style.display = 'none'; });
-          ee.addEventListener('dblclick', (e) => { e.stopPropagation(); openJournalEdit(item); });
-          actions.querySelector('[title="Edit"]').addEventListener('click', e => { e.stopPropagation(); openJournalEdit(item); });
-          actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); confirmDeleteJournalEntry(item); });
-          ee.appendChild(textWrap);
-          ee.appendChild(actions);
-          attachJournalCtxMenu(ee, item, cat, listName);
-          lb.appendChild(ee);
+        // Cat chips — only shown in All view
+        if (showCatChips) {
+          const cats = jCats(item);
+          if (cats.length) {
+            const chipHtml = cats.map(c =>
+              `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--surface2);color:var(--accent);border-radius:3px;padding:0 3px;margin-right:2px;">${escHtml(c)}</span>`
+            ).join('');
+            inner += `<div style="margin-top:0.15rem;">${chipHtml}</div>`;
+          }
         }
-      }
+        if (item.startDate) inner += `<div class="journal-entry-date-full">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
+        textWrap.innerHTML = inner;
 
-      ls.appendChild(lh);
-      ls.appendChild(lb);
-      body.appendChild(ls);
+        const actions = document.createElement('span');
+        actions.style.cssText = 'display:none;gap:0.15rem;flex-shrink:0;margin-top:0.1rem;';
+        actions.innerHTML = `<button title="Edit" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--ink-muted);padding:0.1rem;border-radius:3px;line-height:1;">✏</button><button title="Delete" style="background:none;border:none;cursor:pointer;font-size:0.6rem;color:var(--red);padding:0.1rem;border-radius:3px;line-height:1;">🗑</button>`;
+        ee.addEventListener('mouseenter', () => { actions.style.display = 'flex'; });
+        ee.addEventListener('mouseleave', () => { actions.style.display = 'none'; });
+        ee.addEventListener('dblclick', e => { e.stopPropagation(); openJournalEdit(item); });
+        actions.querySelector('[title="Edit"]').addEventListener('click', e => { e.stopPropagation(); openJournalEdit(item); });
+        actions.querySelector('[title="Delete"]').addEventListener('click', e => { e.stopPropagation(); confirmDeleteJournalEntry(item); });
+        ee.appendChild(textWrap);
+        ee.appendChild(actions);
+        attachJournalCtxMenu(ee, item, jCats(item)[0] || '', listName);
+        lb.appendChild(ee);
+      }
     }
 
-    // "Add list" button at bottom of each cat
+    ls.appendChild(lh);
+    ls.appendChild(lb);
+    container.appendChild(ls);
+  }
+
+  // Add list button — only in per-cat view
+  if (!showCatChips && _journalActiveCat !== 'all') {
     const addListBtn = document.createElement('button');
     addListBtn.style.cssText = 'width:100%;background:none;border:none;border-top:1px solid var(--surface2);padding:0.35rem 1.25rem;font-family:JetBrains Mono,monospace;font-size:0.6rem;color:var(--ink-muted);cursor:pointer;text-align:left;letter-spacing:0.04em;transition:color 0.12s;';
     addListBtn.textContent = '+ New list';
     addListBtn.addEventListener('mouseenter', () => addListBtn.style.color = 'var(--accent)');
     addListBtn.addEventListener('mouseleave', () => addListBtn.style.color = 'var(--ink-muted)');
-    addListBtn.addEventListener('click', () => openJournalAddList(cat));
-    body.appendChild(addListBtn);
-
-    sec.appendChild(body);
-    container.appendChild(sec);
+    addListBtn.addEventListener('click', () => openJournalAddList(_journalActiveCat));
+    container.appendChild(addListBtn);
   }
 }
 
-
 // ── JOURNAL EDIT / DELETE ──
 function openJournalAddList(cat) {
-  const name = prompt(`New list name for ${cat}:`);
+  const name = prompt(`New list name${cat ? ' for ' + cat : ''}:`);
   if (!name?.trim()) return;
-  // Add a placeholder item so the list appears; user can edit or add real items after
-  openJournalAddItem(cat, name.trim());
+  openJournalAddItem(cat ? [cat] : [], name.trim());
 }
 
-function openJournalAddItem(cat, listName) {
+function openJournalAddItem(cats, listName) {
   const today = new Date().toISOString().split('T')[0];
-  // Reuse the edit popup with blank fields
   openJournalEdit({
-    cat, list: listName, text: '', dose: '', status: 'current',
+    cats: cats || [], list: listName, text: '', dose: '', status: 'current',
     startDate: today, endDate: null, _isNew: true
   });
 }
 
 function openJournalEdit(item) {
-  $('popup-title').textContent = `Edit Journal — ${item.cat} · ${item.list}`;
+  const itemCats = jCats(item);
+  const isNew = !!item._isNew;
+  $('popup-title').textContent = isNew ? 'Add Journal Entry' : `Edit Journal — ${itemCats.join(', ')} · ${item.list}`;
   const body = $('popup-body');
   body.innerHTML = '';
-  const fields = [
-    { label: 'Text', key: 'text', type: 'textarea', value: item.text || '' },
-    { label: 'Status', key: 'status', type: 'select', options: ['current','past','plan','maybe'], optionLabels: ['Current','Past','Planned','Potential'], value: item.status || 'current' },
-    { label: 'Start Date', key: 'startDate', type: 'text', value: item.startDate || '' },
-    { label: 'End Date', key: 'endDate', type: 'text', value: item.endDate || '' },
-    { label: 'Dose / Detail', key: 'dose', type: 'text', value: item.dose || '' },
-  ];
+
   const form = document.createElement('div');
   form.style.cssText = 'display:flex;flex-direction:column;gap:0.75rem;';
-  const inputs = {};
-  for (const f of fields) {
-    const wrap = document.createElement('div');
+
+  const mkLabel = (text) => {
+    const l = document.createElement('label');
+    l.textContent = text;
+    l.style.cssText = 'display:block;font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.25rem;';
+    return l;
+  };
+  const mkInput = (type, value, placeholder) => {
+    const el = type === 'textarea' ? document.createElement('textarea') : document.createElement('input');
+    if (type === 'textarea') { el.rows = 3; }
+    else { el.type = 'text'; }
+    el.value = value || '';
+    if (placeholder) el.placeholder = placeholder;
+    el.style.cssText = `width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:${type==='textarea'?'0.5rem':'0.4rem 0.6rem'};${type==='textarea'?'resize:vertical;':''}outline:none;color:var(--ink);line-height:1.5;background:var(--bg);`;
+    return el;
+  };
+
+  // ── Cats checkboxes ──
+  const catsWrap = document.createElement('div');
+  catsWrap.appendChild(mkLabel('Cats'));
+  const catsRow = document.createElement('div');
+  catsRow.style.cssText = 'display:flex;gap:0.5rem;flex-wrap:wrap;';
+  const catChecks = {};
+  const displayCats = APP_PETS.length ? APP_PETS : itemCats;
+  for (const cat of displayCats) {
     const lbl = document.createElement('label');
-    lbl.textContent = f.label;
-    lbl.style.cssText = 'display:block;font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:0.25rem;';
-    wrap.appendChild(lbl);
-    let el;
-    if (f.type === 'textarea') {
-      el = document.createElement('textarea');
-      el.rows = 3;
-      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.5rem;resize:vertical;outline:none;color:var(--ink);line-height:1.5;';
-    } else if (f.type === 'select') {
-      el = document.createElement('select');
-      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
-      f.options.forEach((opt, i) => {
-        const o = document.createElement('option');
-        o.value = opt;
-        o.textContent = f.optionLabels ? f.optionLabels[i] : opt;
-        if (opt === f.value) o.selected = true;
-        el.appendChild(o);
-      });
-    } else {
-      el = document.createElement('input');
-      el.type = 'text';
-      el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;outline:none;color:var(--ink);background:var(--bg);';
-    }
-    el.value = f.value;
-    inputs[f.key] = el;
-    wrap.appendChild(el);
-    form.appendChild(wrap);
+    lbl.style.cssText = 'display:flex;align-items:center;gap:0.3rem;font-family:JetBrains Mono,monospace;font-size:0.68rem;color:var(--ink-dim);cursor:pointer;padding:0.25rem 0.5rem;border:1px solid var(--border);border-radius:6px;transition:all 0.15s;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = cat;
+    cb.checked = itemCats.includes(cat);
+    cb.style.accentColor = 'var(--accent)';
+    cb.addEventListener('change', () => {
+      lbl.style.borderColor = cb.checked ? 'var(--accent)' : 'var(--border)';
+      lbl.style.background = cb.checked ? 'var(--surface)' : '';
+    });
+    if (cb.checked) { lbl.style.borderColor = 'var(--accent)'; lbl.style.background = 'var(--surface)'; }
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(cat));
+    catChecks[cat] = cb;
+    catsRow.appendChild(lbl);
   }
+  catsWrap.appendChild(catsRow);
+  form.appendChild(catsWrap);
+
+  // ── List ──
+  const listWrap = document.createElement('div');
+  listWrap.appendChild(mkLabel('List'));
+  const listSel = document.createElement('select');
+  listSel.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
+  const listOptions = [...STANDARD_LISTS];
+  if (item.list && !listOptions.includes(item.list)) listOptions.push(item.list);
+  listOptions.push('+ New list…');
+  for (const opt of listOptions) {
+    const o = document.createElement('option');
+    o.value = opt; o.textContent = opt;
+    if (opt === item.list) o.selected = true;
+    listSel.appendChild(o);
+  }
+  let customList = null;
+  const customListInput = mkInput('text', '', 'New list name…');
+  customListInput.style.display = 'none';
+  listSel.addEventListener('change', () => {
+    if (listSel.value === '+ New list…') {
+      customListInput.style.display = 'block';
+      customListInput.focus();
+    } else {
+      customListInput.style.display = 'none';
+    }
+  });
+  listWrap.appendChild(listSel);
+  listWrap.appendChild(customListInput);
+  form.appendChild(listWrap);
+
+  // ── Text ──
+  const textWrap = document.createElement('div');
+  textWrap.appendChild(mkLabel('Entry'));
+  const textEl = mkInput('textarea', item.text || '');
+  textWrap.appendChild(textEl);
+  form.appendChild(textWrap);
+
+  // ── Status ──
+  const statusWrap = document.createElement('div');
+  statusWrap.appendChild(mkLabel('Status'));
+  const statusSel = document.createElement('select');
+  statusSel.style.cssText = listSel.style.cssText;
+  [['current','Current'],['past','Past'],['plan','Planned'],['maybe','Potential']].forEach(([val, lbl]) => {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = lbl;
+    if ((item.status || 'current') === val) o.selected = true;
+    statusSel.appendChild(o);
+  });
+  statusWrap.appendChild(statusSel);
+  form.appendChild(statusWrap);
+
+  // ── Dose ──
+  const doseWrap = document.createElement('div');
+  doseWrap.appendChild(mkLabel('Dose / Detail'));
+  const doseEl = mkInput('text', item.dose || '', 'e.g. 2.5g, 5mg SID');
+  doseWrap.appendChild(doseEl);
+  form.appendChild(doseWrap);
+
+  // ── Dates ──
+  const datesRow = document.createElement('div');
+  datesRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;';
+  const startWrap = document.createElement('div');
+  startWrap.appendChild(mkLabel('Start Date'));
+  const startEl = mkInput('text', item.startDate || '', 'YYYY-MM-DD');
+  startWrap.appendChild(startEl);
+  const endWrap = document.createElement('div');
+  endWrap.appendChild(mkLabel('End Date'));
+  const endEl = mkInput('text', item.endDate || '', 'YYYY-MM-DD');
+  endWrap.appendChild(endEl);
+  datesRow.appendChild(startWrap);
+  datesRow.appendChild(endWrap);
+  form.appendChild(datesRow);
+
+  // ── Save button ──
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn-icon free-icon';
-  saveBtn.style.cssText = 'margin-top:0.5rem;';
-  saveBtn.innerHTML = item._isNew ? '<span class="free-dot"></span> Add Entry' : '<span class="free-dot"></span> Save Changes';
+  saveBtn.style.marginTop = '0.5rem';
+  saveBtn.innerHTML = `<span class="free-dot"></span> ${isNew ? 'Add Entry' : 'Save Changes'}`;
   saveBtn.onclick = async () => {
     const today = new Date().toISOString().split('T')[0];
+    const selectedCats = Object.entries(catChecks).filter(([,cb])=>cb.checked).map(([cat])=>cat);
+    if (!selectedCats.length) { showToast('Select at least one cat', 'warning'); return; }
+    const text = textEl.value.trim();
+    if (!text) { showToast('Entry text is required', 'warning'); return; }
+    const listVal = listSel.value === '+ New list…'
+      ? (customListInput.value.trim() || null)
+      : listSel.value;
+    if (!listVal) { showToast('List name is required', 'warning'); return; }
+
+    const data = {
+      cats: selectedCats,
+      list: listVal,
+      text,
+      dose: doseEl.value.trim() || null,
+      status: statusSel.value || 'current',
+      startDate: startEl.value.trim() || today,
+      endDate: endEl.value.trim() || null,
+    };
+
     try {
-      const updates = {};
-      for (const f of fields) updates[f.key] = inputs[f.key].value || null;
-      if (item._isNew) {
-        if (!updates.text?.trim()) { showToast('Text is required', 'warning'); return; }
-        _journalDocsCache = null; invalidateChatContext(); await setDoc(doc(collection(db, 'journal')), {
-          cat: item.cat, list: item.list,
-          text: updates.text, dose: updates.dose || null,
-          status: updates.status || 'current',
-          startDate: updates.startDate || today,
-          endDate: updates.endDate || null,
-          addedDate: today, updatedDate: today, updates: []
+      _journalDocsCache = null; invalidateChatContext();
+      if (isNew) {
+        await setDoc(doc(collection(db, 'journal')), {
+          ...data, addedDate: today, updatedDate: today, updates: []
         });
         showToast('Journal entry added', 'journal');
       } else {
         if (!item.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
-        _journalDocsCache = null; invalidateChatContext(); await setDoc(doc(db, 'journal', item.id), updates, { merge: true });
+        await setDoc(doc(db, 'journal', item.id), { ...data, updatedDate: today }, { merge: true });
         showToast('Journal entry updated', 'journal');
       }
       $('record-popup').classList.remove('open');
@@ -6603,9 +6737,10 @@ async function sendMessage() {
         if (Array.isArray(hints)) {
           const today = new Date().toISOString().split('T')[0];
           hints.forEach(h => {
-            if (h.cat && h.text) {
+            const hCats = Array.isArray(h.cats) ? h.cats : (h.cat ? [h.cat] : []);
+            if (hCats.length && h.text) {
               addPendingItem({
-                cat: h.cat,
+                cats: hCats,
                 list: h.list || 'General',
                 text: h.text,
                 dose: h.dose || null,
@@ -6690,7 +6825,14 @@ let sessionActiveCat = null; // last explicitly named cat in conversation
 const MENTION_THRESHOLD = 4; // mentions before auto-promoting to "potential"
 
 // Standard list names — open-ended, user can create new ones via explicit command
-const STANDARD_LISTS = ['Medications', 'Supplements', 'Foods', 'Diet', 'Symptoms', 'Plans', 'Procedures', 'Weight Log'];
+const STANDARD_LISTS = ['Medications', 'Supplements', 'Diet', 'Foods'];
+
+// Compatibility: journal entries may have legacy `cat` string or new `cats` array
+function jCats(j) {
+  if (Array.isArray(j.cats) && j.cats.length) return j.cats;
+  if (j.cat) return [j.cat];
+  return [];
+}
 
 // ── EXPLICIT COMMAND PATTERNS ──
 // These are detected client-side per message with no API call
@@ -6736,8 +6878,8 @@ function processMessageForJournal(userMsg, assistantMsg) {
       // We can't resolve this client-side without context — mark for Save-time resolution
       if (pattern.re.test(userMsg) && sessionActiveCat) {
         addPendingItem({
-          cat: sessionActiveCat,
-          list: 'Plans',
+          cats: [sessionActiveCat],
+          list: 'General',
           text: `[Confirm at save] User indicated interest: "${userMsg.slice(0,60)}"`,
           status: 'maybe',
           startDate: today,
@@ -6764,7 +6906,7 @@ function processMessageForJournal(userMsg, assistantMsg) {
         : 'plan';
 
       addPendingItem({
-        cat,
+        cats: cat ? [cat] : [],
         list,
         text: capitalizeFirst(match[1].trim()),
         status,
@@ -6788,11 +6930,11 @@ function processMessageForJournal(userMsg, assistantMsg) {
     if (mentionTracker[key].count === MENTION_THRESHOLD) {
       // Check not already in pending or journal
       const alreadyPending = pendingJournalItems.some(p =>
-        p.cat === cat && p.text.toLowerCase().includes(term.toLowerCase())
+        jCats(p).includes(cat) && p.text.toLowerCase().includes(term.toLowerCase())
       );
       if (!alreadyPending) {
         addPendingItem({
-          cat,
+          cats: [cat],
           list: guessListForTerm(term),
           text: capitalizeFirst(term),
           status: 'maybe',
@@ -6828,9 +6970,6 @@ function guessListForTerm(term) {
   if (/\b(supplement|vitamin|probiotic|omega|cobalamin|b12|fish oil|lysine|pumpkin|fiber|fortiflora|azodyl|epakitin|denamarin|tumil)\b/.test(t)) return 'Supplements';
   if (/\b(food|kibble|canned|dry|wet|purina|hills|royal canin|ultamino|hydrolyzed|instinct|blue buffalo|wellness)\b/.test(t)) return 'Foods';
   if (/\b(diet|feeding|meal plan|kcal|calor|portion)\b/.test(t)) return 'Diet';
-  if (/\b(symptom|vomit|diarrhea|limp|sneez|cough|scratch|itch|letharg|weight loss|appetite)\b/.test(t)) return 'Symptoms';
-  if (/\b(dental|procedure|surgery|vaccine|injection|blood|ultrasound|x.ray|recheck|appointment)\b/.test(t)) return 'Procedures';
-  // Check if it's a known pharmaceutical
   if (/\b(prednisolone|gabapentin|omeprazole|cerenia|convenia|metronidazole|mirtazapine|famotidine|sucralfate|atenolol|amlodipine|methimazole|cyclosporine|solensia|buprenorphine|tramadol|meloxicam|adequan)\b/.test(t)) return 'Medications';
   return 'Supplements'; // default for ambiguous terms
 }
@@ -6846,8 +6985,12 @@ function addPendingItem(item) {
   if (t.length < 3) return;
   if (/^(another|something|item|entry|medication|supplement|this|that|the|a|an|and|or|to|in|of|for)$/i.test(t)) return;
   // Avoid duplicates in pending
-  const key = `${item.cat}_${t.toLowerCase()}_${item.status}`;
-  if (pendingJournalItems.some(p => `${p.cat}_${p.text.toLowerCase()}_${p.status}` === key)) return;
+  const itemCatsKey = jCats(item).sort().join(',');
+  const key = `${itemCatsKey}_${t.toLowerCase()}_${item.status}`;
+  if (pendingJournalItems.some(p => {
+    const pKey = `${jCats(p).sort().join(',')}_${p.text.toLowerCase()}_${p.status}`;
+    return pKey === key;
+  })) return;
   item.id = Math.random().toString(36).slice(2,9);
   pendingJournalItems.push(item);
   if (_addPendingDebounce) clearTimeout(_addPendingDebounce);
@@ -7219,12 +7362,13 @@ CONVERSATION:
 ${conversationText}
 
 Rules:
-- Extract every medication, supplement, diet item, plan, symptom, and monitoring parameter that is decided or currently in effect
-- If the conversation contains a structured care summary, treat every item in it as decided/current unless explicitly rejected
+- Extract every medication, supplement, and diet item that is decided or currently in effect
+- If an item applies to multiple cats with the same dose, use cats array with all of them
+- If doses differ per cat, create separate entries per cat
 - Rejected/discontinued items → status "past", not omitted
 - Include dose and frequency whenever mentioned
 - Do NOT duplicate items already in the existing journal
-- Track which cat each item belongs to — resolve all pronouns using context
+- Track which cats each item belongs to — resolve all pronouns using context
 - Never suggest removing pinned notes
 - If uncertain about a cat assignment, use status "maybe" and note the ambiguity in the text
 
@@ -7232,8 +7376,8 @@ Return ONLY valid JSON — no markdown fences, no preamble:
 {
   "journalUpdates": [
     {
-      "cat": "Mocha",
-      "list": "Medications|Supplements|Foods|Diet|Symptoms|Plans|Procedures|Weight Log|<custom>",
+      "cats": ["Mocha", "Evie"],
+      "list": "Medications|Supplements|Diet|Foods|<custom>",
       "text": "terse factual entry",
       "dose": "dose/frequency or null",
       "status": "current|past|plan|maybe",
@@ -7308,7 +7452,8 @@ function showJournalReview(items) {
 
       const catSpan = document.createElement('span');
       catSpan.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:var(--accent);font-weight:700;';
-      catSpan.textContent = item.cat;
+      const itemCatsArr = Array.isArray(item.cats) ? item.cats : (item.cat ? [item.cat] : []);
+      catSpan.textContent = itemCatsArr.join(', ') || '?';
       topLine.appendChild(catSpan);
 
       const listSpan = document.createElement('span');
@@ -7385,11 +7530,11 @@ async function runSaveSession(resumeData) {
   const existingJournal = [];
   jSnap.forEach(d => existingJournal.push({ id: d.id, ...d.data() }));
   const journalContext = existingJournal.length
-    ? existingJournal.map(j => `${j.cat} / ${j.list} [${j.status}]: ${j.text}${j.dose?' ('+j.dose+')':''}`)
+    ? existingJournal.map(j => `${jCats(j).join(', ')||'?'} / ${j.list} [${j.status}]: ${j.text}${j.dose?' ('+j.dose+')':''}`)
         .join('\n')
     : '(empty)';
   const pendingContext = pendingJournalItems.length
-    ? pendingJournalItems.map(p => `${p.cat} / ${p.list} [${p.status}]: ${p.text}`).join('\n')
+    ? pendingJournalItems.map(p => `${jCats(p).join(', ')||'?'} / ${p.list} [${p.status}]: ${p.text}`).join('\n')
     : '(none)';
   const notesContext = _notesCache.length
     ? _notesCache.map(n => `${n.pinned?'[PINNED] ':''}${n.cats?.length?'['+n.cats.join('/')+'] ':''}${n.text}`).join('\n')
@@ -7428,7 +7573,7 @@ async function runSaveSession(resumeData) {
     $('save-session-btn').innerHTML = `<span class="free-dot"></span> Saving${chunkLabel}…`;
 
     const priorContext = allUpdates.length
-      ? `\nALREADY EXTRACTED FROM PRIOR CHUNKS:\n${allUpdates.map(u => `${u.cat} / ${u.list}: ${u.text}`).join('\n')}\n`
+      ? `\nALREADY EXTRACTED FROM PRIOR CHUNKS:\n${allUpdates.map(u => `${(Array.isArray(u.cats)?u.cats:[u.cat||'?']).join(', ')} / ${u.list}: ${u.text}`).join('\n')}\n`
       : '';
     const convText = priorContext + (chunks.length > 1 ? `[Conversation part ${i+1} of ${chunks.length}]\n` : '') + chunks[i];
 
@@ -7482,13 +7627,14 @@ async function runSaveSession(resumeData) {
     }
   }
 
-  // Deduplicate updates by cat+text
+  // Deduplicate updates by cats+text
   const seen = new Set();
   const deduped = allUpdates.filter(u => {
-    const key = (u.cat||'') + '||' + (u.text||'').toLowerCase().trim();
+    const cats = Array.isArray(u.cats) ? u.cats : (u.cat ? [u.cat] : []);
+    const key = cats.sort().join(',') + '||' + (u.text||'').toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key); return true;
-  }).filter(u => u.cat && u.text);
+  }).filter(u => (u.cats?.length || u.cat) && u.text);
 
   if (!deduped.length && !allNoteSuggestions.length) {
     showToast('Nothing new to save', 'journal');
@@ -7497,19 +7643,20 @@ async function runSaveSession(resumeData) {
     return;
   }
 
-  // Show review modal — let user adjust before committing
   const confirmed = await showJournalReview(deduped);
-  if (!confirmed) return; // user cancelled
+  if (!confirmed) return;
 
-  // confirmed is the filtered+edited array
   const finalItems = confirmed;
 
-  // Write to Firestore
   const fsBatch = writeBatch(db);
   for (const item of finalItems) {
-    if (!item.cat || !item.text) continue;
+    const itemCatsArr = Array.isArray(item.cats) ? item.cats : (item.cat ? [item.cat] : []);
+    if (!itemCatsArr.length || !item.text) continue;
     if (item.updateOf) {
-      const existing = existingJournal.find(j => j.cat === item.cat && j.text === item.updateOf);
+      const existing = existingJournal.find(j => {
+        const jc = jCats(j);
+        return itemCatsArr.some(c => jc.includes(c)) && j.text === item.updateOf;
+      });
       if (existing) {
         fsBatch.update(doc(db, 'journal', existing.id), {
           status: item.status || existing.status,
@@ -7522,7 +7669,7 @@ async function runSaveSession(resumeData) {
       }
     }
     fsBatch.set(doc(collection(db, 'journal')), {
-      cat: item.cat, list: item.list || 'General', text: item.text,
+      cats: itemCatsArr, list: item.list || 'General', text: item.text,
       dose: item.dose || null, status: item.status || 'current',
       startDate: item.startDate || today, endDate: item.endDate || null,
       addedDate: today, updatedDate: today, updates: []
@@ -8498,25 +8645,48 @@ async function buildChatContext(userMessage) {
   try {
     const now = Date.now();
     if (!_journalCache || now - _journalCacheTime > JOURNAL_CACHE_TTL) {
-      const jsnap = await getDocs(query(collection(db, 'journal'), where('cat', 'in', targetCats)));
-      _journalCache = jsnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const snap = await getDocs(collection(db, 'journal'));
+      _journalCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _journalCacheTime = now;
     }
-    const jDocs = _journalCache.filter(j => targetCats.includes(j.cat));
+    // Filter to entries that include at least one target cat, exclude past
+    const jDocs = _journalCache.filter(j => {
+      if (j.status === 'past') return false;
+      const cats = jCats(j);
+      return cats.some(c => targetCats.includes(c));
+    });
     if (jDocs.length) {
-      const bycat = {};
+      // Build per-cat view — each entry appears under each of its cats
+      // but deduplicates: shared entries (all target cats) go in a shared section
+      const shared = jDocs.filter(j => {
+        const cats = jCats(j);
+        return targetCats.length > 1 && targetCats.every(c => cats.includes(c));
+      });
+      const perCat = {};
       for (const j of jDocs) {
-        if (j.status === 'past') continue;
-        if (!bycat[j.cat]) bycat[j.cat] = {};
-        if (!bycat[j.cat][j.list]) bycat[j.cat][j.list] = [];
-        bycat[j.cat][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+        if (shared.includes(j)) continue;
+        for (const c of jCats(j)) {
+          if (!targetCats.includes(c)) continue;
+          if (!perCat[c]) perCat[c] = {};
+          if (!perCat[c][j.list]) perCat[c][j.list] = [];
+          perCat[c][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+        }
       }
-      if (Object.keys(bycat).length) {
-        context += '\n\n## Care Journal (current)\n';
-        for (const [cat, lists] of Object.entries(bycat)) {
-          for (const [list, items] of Object.entries(lists)) {
-            context += `${cat} / ${list}: ${items.join(', ')}\n`;
-          }
+      context += '\n\n## Care Journal (current)\n';
+      if (shared.length) {
+        const sharedByList = {};
+        for (const j of shared) {
+          if (!sharedByList[j.list]) sharedByList[j.list] = [];
+          sharedByList[j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+        }
+        context += `All cats / `;
+        for (const [list, items] of Object.entries(sharedByList)) {
+          context += `${list}: ${items.join(', ')}\n`;
+        }
+      }
+      for (const [cat, lists] of Object.entries(perCat)) {
+        for (const [list, items] of Object.entries(lists)) {
+          context += `${cat} / ${list}: ${items.join(', ')}\n`;
         }
       }
     }
@@ -9127,11 +9297,11 @@ async function callClaude(history, context, userMessage) {
 
   const journalInstruction = includeJournalHint ? `
 
-JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, symptoms, treatments, plans, diagnoses), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions or information requests.
+JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, supplements), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions.
 <journal>
-[{"cat":"Evie","list":"Diet","text":"z/d wet food transition","status":"current"},{"cat":"Evie","list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"}]
+[{"cats":["Evie"],"list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"},{"cats":["Mocha","Evie","Latte"],"list":"Supplements","text":"Psyllium husk","dose":"2.5g","status":"current"}]
 </journal>
-The block must be valid JSON array. Use status: current/past/plan/maybe. Keep text concise (under 60 chars). Do not show the journal block to the user — it is parsed silently.` : '';
+The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all of them. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.` : '';
 
   const system = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 You have access to their complete medical records, lab results, and care journal below.
