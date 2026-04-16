@@ -2690,7 +2690,7 @@ function renderJournalSidebar(docs) {
   tabBar.innerHTML = '';
   tabBar.style.display = 'block';
   const tabStyle = (active) =>
-    `display:inline-block;padding:0.4rem 0.6rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;cursor:pointer;border-bottom:2px solid ${active ? 'var(--accent)' : 'transparent'};color:${active ? 'var(--accent)' : 'var(--ink-muted)'};user-select:none;transition:all 0.15s;white-space:nowrap;`;
+    `display:inline-block;padding:0.4rem 0.65rem;font-family:'JetBrains Mono',monospace;font-size:0.6rem;cursor:pointer;border-bottom:2px solid ${active ? 'var(--accent)' : 'transparent'};color:${active ? 'var(--accent)' : 'var(--ink-muted)'};background:${active ? 'var(--surface)' : 'transparent'};font-weight:${active ? '600' : '400'};user-select:none;transition:all 0.15s;white-space:nowrap;border-radius:${active ? '4px 4px 0 0' : '0'};`;
 
   const makeTab = (label, key) => {
     const t = document.createElement('span');
@@ -2754,7 +2754,12 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
   ];
 
   const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
-  const STATUS_LABELS = { current: 'Current', plan: 'Planned', maybe: 'Potential', past: 'Past' };
+  const STATUS_STYLE = {
+    current: { bg: '',                    color: '',                   extra: '' },
+    plan:    { bg: 'var(--blue-bg)',       color: 'var(--blue)',        extra: '' },
+    maybe:   { bg: 'var(--amber-bg)',      color: 'var(--amber)',       extra: '' },
+    past:    { bg: 'var(--surface2)',      color: 'var(--ink-muted)',   extra: 'text-decoration:line-through;opacity:0.75;' },
+  };
 
   for (const listName of orderedLists) {
     const items = byList[listName];
@@ -2802,23 +2807,21 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
       const grpItems = groups[grp];
       if (!grpItems.length) continue;
 
-      const sl = document.createElement('div');
-      sl.className = 'journal-status-label';
-      sl.textContent = STATUS_LABELS[grp];
-      lb.appendChild(sl);
-
       for (const item of grpItems) {
+        const ss = STATUS_STYLE[grp] || STATUS_STYLE.current;
         const ee = document.createElement('div');
         ee.className = 'journal-entry-full';
-        ee.style.cssText = 'position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;';
+        const bgStyle = ss.bg ? `background:${ss.bg};border-radius:5px;margin:1px 0.4rem;padding:0.15rem 0.4rem 0.15rem 0.75rem;` : '';
+        ee.style.cssText = `position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:0.3rem;${bgStyle}`;
         ee.title = 'Double-click to edit';
 
         const textWrap = document.createElement('div');
         textWrap.style.cssText = 'flex:1;min-width:0;';
         const fullText = item.text || '';
         const displayText = fullText.length > 60 ? fullText.slice(0, 59) + '…' : fullText;
-        let inner = `<div class="journal-entry-text-full" title="${escHtml(fullText)}">${escHtml(displayText)}</div>`;
-        if (item.dose) inner += `<div class="journal-entry-dose">${escHtml(item.dose)}</div>`;
+        const textColorStyle = ss.color ? `color:${ss.color};` : '';
+        let inner = `<div class="journal-entry-text-full" title="${escHtml(fullText)}" style="${textColorStyle}${ss.extra}">${escHtml(displayText)}</div>`;
+        if (item.dose) inner += `<div class="journal-entry-dose" style="${textColorStyle}opacity:0.85;">${escHtml(item.dose)}</div>`;
 
         // Cat chips — only shown in All view
         if (showCatChips) {
@@ -2830,7 +2833,7 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
             inner += `<div style="margin-top:0.15rem;">${chipHtml}</div>`;
           }
         }
-        if (item.startDate) inner += `<div class="journal-entry-date-full">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
+        if (item.startDate) inner += `<div class="journal-entry-date-full" style="${textColorStyle}opacity:0.8;">${escHtml(item.startDate)}${item.endDate?' → '+escHtml(item.endDate):''}</div>`;
         textWrap.innerHTML = inner;
 
         const actions = document.createElement('span');
@@ -3041,6 +3044,29 @@ function openJournalEdit(item) {
         showToast('Journal entry added', 'journal');
       } else {
         if (!item.id) { showAlert('Cannot edit — no Firestore ID', 'warning'); return; }
+
+        // Detect cats that were removed — offer to create past entries for them
+        const previousCats = jCats(item);
+        const removedCats = previousCats.filter(c => !selectedCats.includes(c));
+        if (removedCats.length && data.status !== 'past') {
+          // Create a past entry for each removed cat to preserve history
+          const fsBatch = writeBatch(db);
+          for (const removedCat of removedCats) {
+            fsBatch.set(doc(collection(db, 'journal')), {
+              cats: [removedCat],
+              list: listVal,
+              text,
+              dose: doseEl.value.trim() || null,
+              status: 'past',
+              startDate: item.startDate || today,
+              endDate: today,
+              addedDate: today, updatedDate: today, updates: []
+            });
+          }
+          await fsBatch.commit();
+          showToast(`History preserved for ${removedCats.join(', ')} ✓`, 'journal');
+        }
+
         await setDoc(doc(db, 'journal', item.id), { ...data, updatedDate: today }, { merge: true });
         showToast('Journal entry updated', 'journal');
       }
