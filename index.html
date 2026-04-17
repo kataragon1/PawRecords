@@ -425,7 +425,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #flowsheet-modal-title{font-family:'Instrument Serif',serif;font-size:1.1rem;color:var(--ink);flex:1;}
 .flowsheet-modal-cat-select{font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;}
 #flowsheet-modal-close{background:var(--surface);border:1px solid var(--border);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;}
-#flowsheet-modal-body{overflow:auto;padding:0.75rem;flex:1;min-height:0;}
+#flowsheet-modal-body{overflow:auto;padding:0;flex:1;min-height:0;}
 #flowsheet-modal-body::-webkit-scrollbar{width:6px;height:6px;}
 #flowsheet-modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 .lab-expand-btn{width:100%;background:none;border:none;border-top:1px solid var(--border);padding:0.45rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);cursor:pointer;text-align:center;letter-spacing:0.04em;}
@@ -521,9 +521,8 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
   <div id="sidebar">
     <div id="sidebar-resize-handle" style="position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:100;background:transparent;transition:background 0.15s;" title="Drag to resize"></div>
     <div class="sidebar-top">
-      <span class="sidebar-wordmark">🐾 Paw Records</span>
+      <span class="sidebar-wordmark"><span onclick="openPetProfilesModal()" title="Pet profiles & birthdates" style="cursor:pointer;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.65'" onmouseout="this.style.opacity='1'">🐾</span> Paw Records</span>
       <span id="sidebar-pet-ages" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:center;"></span>
-      <button onclick="openPetProfilesModal()" title="Pet profiles & birthdates" style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--ink-muted);padding:0.1rem 0.3rem;border-radius:4px;transition:color 0.15s;line-height:1;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--ink-muted)'">🐱</button>
       <span class="sidebar-user" id="sidebar-user-email"></span>
     </div>
     <div class="sidebar-tabs">
@@ -779,6 +778,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <span id="flowsheet-search-count" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);white-space:nowrap;min-width:32px;"></span>
         <button id="flowsheet-search-prev" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↑</button>
         <button id="flowsheet-search-next" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↓</button>
+        <button id="flowsheet-search-mode" title="Toggle search/filter mode" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--ink-muted);font-family:'JetBrains Mono',monospace;font-size:0.55rem;padding:0.1rem 0.3rem;line-height:1.4;margin-left:2px;transition:all 0.15s;">Search</button>
       </div>
       <button id="flowsheet-modal-close">✕</button>
     </div>
@@ -1292,6 +1292,26 @@ async function updatePetList() {
     const pets = [...new Set(snap.docs.map(d => d.data().cat).filter(Boolean))].sort();
     if (pets.length) {
       APP_PETS = pets;
+
+      // Auto-detect birthdates for cats that don't have one yet
+      let profilesUpdated = false;
+      for (const cat of pets) {
+        if (_petProfiles[cat]?.birthdate) continue; // already have it
+        // Look for a birthdate in visit records for this cat
+        const catVisits = snap.docs.filter(d => d.data().cat === cat).map(d => d.data());
+        for (const v of catVisits) {
+          const bd = v.birthdate || v.patientBirthdate || v.dob;
+          if (bd && /^\d{4}-\d{2}-\d{2}$/.test(bd)) {
+            if (!_petProfiles[cat]) _petProfiles[cat] = {};
+            _petProfiles[cat].birthdate = bd;
+            profilesUpdated = true;
+            console.log(`Auto-detected birthdate for ${cat}: ${bd}`);
+            break;
+          }
+        }
+      }
+      if (profilesUpdated) await savePetProfiles();
+
       if (window._renderNoteChips) window._renderNoteChips();
       renderCatFocusPills();
       renderPetAges();
@@ -1357,42 +1377,112 @@ function openPetProfilesModal() {
   modal.id = 'pet-profiles-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:400;display:flex;align-items:center;justify-content:center;padding:2rem;';
   const cats = APP_PETS.length ? APP_PETS : [];
-  const rows = cats.map(cat => {
+
+  const DEFAULT_CAT_COLORS = { };
+  const DEFAULT_PALETTE = ['#f9a8d4','#bfdbfe','#bbf7d0','#fde68a','#e9d5ff','#fed7aa'];
+  const DEFAULT_EMOJI = '🐱';
+  const EMOJI_OPTIONS = ['🐱','🐶','🐰','🐹','🐦','🐠','🦜','🐍'];
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:white;border-radius:12px;width:100%;max-width:420px;box-shadow:0 8px 40px rgba(42,37,32,0.18);overflow:hidden;';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;';
+  header.innerHTML = `<span style="font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);">Pet Profiles</span>`;
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);font-size:0.8rem;';
+  closeBtn.onclick = () => modal.remove();
+  header.appendChild(closeBtn);
+  box.appendChild(header);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:1rem 1.25rem;';
+  body.innerHTML = `<p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-muted);margin-bottom:0.85rem;line-height:1.6;">Set birthdates and colors for each cat.</p>`;
+
+  const inputs = {};
+  cats.forEach((cat, idx) => {
     const bd = _petProfiles[cat]?.birthdate || '';
-    return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--surface2);">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink);flex:1;">${escHtml(cat)}</span>
-      <input type="date" data-cat="${escHtml(cat)}" value="${escHtml(bd)}"
-        style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;">
-    </div>`;
-  }).join('');
-  modal.innerHTML = `<div style="background:white;border-radius:12px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(42,37,32,0.18);overflow:hidden;">
-    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <span style="font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);">Pet Profiles</span>
-      <button id="pet-profiles-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);font-size:0.8rem;">✕</button>
-    </div>
-    <div style="padding:1rem 1.25rem;">
-      <p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-muted);margin-bottom:0.85rem;line-height:1.6;">Birthdates are used to correctly interpret weights — kittens under 1 year may have sub-5.5 weights that are lbs, not kg.</p>
-      ${rows || '<p style="font-family:\'JetBrains Mono\',monospace;font-size:0.68rem;color:var(--ink-muted);">No pets found — process some records first.</p>'}
-    </div>
-    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;">
-      <button class="btn-icon" id="pet-profiles-cancel">Cancel</button>
-      <button class="btn-icon free-icon" id="pet-profiles-save"><span class="free-dot"></span> Save</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#pet-profiles-close').onclick = () => modal.remove();
-  modal.querySelector('#pet-profiles-cancel').onclick = () => modal.remove();
-  modal.querySelector('#pet-profiles-save').onclick = async () => {
-    modal.querySelectorAll('input[data-cat]').forEach(input => {
-      const cat = input.dataset.cat;
-      if (!_petProfiles[cat]) _petProfiles[cat] = {};
-      _petProfiles[cat].birthdate = input.value || null;
+    const color = _petProfiles[cat]?.color || DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length];
+    const emoji = _petProfiles[cat]?.emoji || DEFAULT_EMOJI;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--surface2);';
+
+    // Emoji selector
+    const emojiSel = document.createElement('select');
+    emojiSel.style.cssText = 'font-size:0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.2rem;cursor:pointer;outline:none;';
+    EMOJI_OPTIONS.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e; opt.textContent = e;
+      if (e === emoji) opt.selected = true;
+      emojiSel.appendChild(opt);
     });
+
+    // Color swatch + picker
+    const colorWrap = document.createElement('div');
+    colorWrap.style.cssText = 'position:relative;flex-shrink:0;';
+    const swatch = document.createElement('div');
+    swatch.style.cssText = `width:22px;height:22px;border-radius:50%;background:${color};border:2px solid rgba(0,0,0,0.1);cursor:pointer;transition:transform 0.15s;`;
+    swatch.title = 'Pick color';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = color;
+    colorInput.style.cssText = 'position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;';
+    colorInput.addEventListener('input', () => { swatch.style.background = colorInput.value; });
+    colorWrap.appendChild(swatch);
+    colorWrap.appendChild(colorInput);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--ink);flex:1;';
+    nameSpan.textContent = cat;
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = bd;
+    dateInput.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;';
+
+    inputs[cat] = { date: dateInput, color: colorInput, emoji: emojiSel };
+    row.appendChild(emojiSel);
+    row.appendChild(colorWrap);
+    row.appendChild(nameSpan);
+    row.appendChild(dateInput);
+    body.appendChild(row);
+  });
+
+  if (!cats.length) body.innerHTML += `<p style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink-muted);">No pets found — process some records first.</p>`;
+  box.appendChild(body);
+
+  const footer = document.createElement('div');
+  footer.style.cssText = 'padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-icon';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => modal.remove();
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-icon free-icon';
+  saveBtn.innerHTML = '<span class="free-dot"></span> Save';
+  saveBtn.onclick = async () => {
+    for (const [cat, els] of Object.entries(inputs)) {
+      if (!_petProfiles[cat]) _petProfiles[cat] = {};
+      _petProfiles[cat].birthdate = els.date.value || null;
+      _petProfiles[cat].color = els.color.value;
+      _petProfiles[cat].emoji = els.emoji.value;
+    }
     await savePetProfiles();
     modal.remove();
     renderPetAges();
+    renderCatFocusPills();
+    // Reload journal so chips pick up new colors
+    _journalDocsCache = null;
+    loadJournalSidebar();
     showToast('Pet profiles saved ✓', 'journal');
   };
+  footer.appendChild(cancelBtn);
+  footer.appendChild(saveBtn);
+  box.appendChild(footer);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 window.openPetProfilesModal = openPetProfilesModal;
@@ -1419,10 +1509,14 @@ function renderCatFocusPills() {
     const pill = document.createElement('span');
     pill.textContent = cat;
     pill.title = active ? `Remove ${cat} from context` : `Focus on ${cat}`;
-    pillStyle(pill, active && !allActive);
+    pill.classList.add('cat-pill');
+    if (active) {
+      const bg = catColor(cat);
+      const color = catColorDark(cat);
+      pill.style.cssText = `background:${bg};color:${color};border-color:${bg};font-weight:600;`;
+    }
     pill.addEventListener('click', () => {
       if (!_chatFocusCats) {
-        // All → focus just this one
         _chatFocusCats = new Set([cat]);
       } else if (_chatFocusCats.has(cat)) {
         _chatFocusCats.delete(cat);
@@ -1592,7 +1686,7 @@ function renderRecordsTree(tree) {
     // Cat heading (collapsible)
     const heading = document.createElement('div');
     heading.className = 'cat-heading';
-    heading.innerHTML = `<span class="cat-emoji">🐱</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
+    heading.innerHTML = `<span class="cat-emoji">${catEmoji(cat)}</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
 
     // Cabinet container
     const cabinet = document.createElement('div');
@@ -2140,7 +2234,7 @@ function renderLabsSidebar() {
   sel.style.cssText = 'font-family:JetBrains Mono,monospace;font-size:0.68rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;cursor:pointer;width:100%;';
   cats.sort().forEach(cat => {
     const opt = document.createElement('option');
-    opt.value = cat; opt.textContent = '🐱 ' + cat;
+    opt.value = cat; opt.textContent = catEmoji(cat) + ' ' + cat;
     if (cat === flowsheetCat) opt.selected = true;
     sel.appendChild(opt);
   });
@@ -2326,11 +2420,14 @@ function invalidateFlowsheetCache() {} // no-op, cache removed
 let _flowsheetSearchMatches = [];
 let _flowsheetSearchIdx = 0;
 
+let _flowsheetFilterMode = false; // false = search/highlight, true = filter/hide
+
 function initFlowsheetSearch(body) {
   const input = $('flowsheet-search');
   const count = $('flowsheet-search-count');
   const prevBtn = $('flowsheet-search-prev');
   const nextBtn = $('flowsheet-search-next');
+  const modeBtn = $('flowsheet-search-mode');
 
   // Remove old listeners by replacing elements
   const newInput = input.cloneNode(true);
@@ -2339,6 +2436,24 @@ function initFlowsheetSearch(body) {
   prevBtn.parentNode.replaceChild(newPrev, prevBtn);
   const newNext = nextBtn.cloneNode(true);
   nextBtn.parentNode.replaceChild(newNext, nextBtn);
+
+  // Sync mode button visual state
+  const syncModeBtn = () => {
+    modeBtn.textContent = _flowsheetFilterMode ? 'Filter' : 'Search';
+    modeBtn.style.color = _flowsheetFilterMode ? 'var(--accent)' : 'var(--ink-muted)';
+    modeBtn.style.borderColor = _flowsheetFilterMode ? 'var(--accent)' : 'var(--border)';
+    newInput.placeholder = _flowsheetFilterMode ? 'Filter test…' : 'Search test…';
+    // Show prev/next only in search mode
+    newPrev.style.display = _flowsheetFilterMode ? 'none' : '';
+    newNext.style.display = _flowsheetFilterMode ? 'none' : '';
+  };
+  syncModeBtn();
+
+  modeBtn.onclick = () => {
+    _flowsheetFilterMode = !_flowsheetFilterMode;
+    syncModeBtn();
+    runFlowsheetSearch(body, newInput.value, 0);
+  };
 
   newInput.addEventListener('input', () => runFlowsheetSearch(body, newInput.value, 0));
   newInput.addEventListener('keydown', e => {
@@ -2354,25 +2469,68 @@ function runFlowsheetSearch(body, query, startIdx) {
   const count = $('flowsheet-search-count');
   _flowsheetSearchMatches = [];
 
-  // Clear previous highlights
+  // Clear previous highlights and restore all hidden rows
   body.querySelectorAll('td[data-search-match]').forEach(td => {
     td.removeAttribute('data-search-match');
     td.style.outline = '';
   });
-
-  if (!query.trim()) { count.textContent = ''; return; }
-
-  const q = query.toLowerCase();
-  body.querySelectorAll('tbody tr').forEach(row => {
-    const nameCell = row.querySelector('td:first-child');
-    if (nameCell && nameCell.textContent.toLowerCase().includes(q)) {
-      _flowsheetSearchMatches.push(row);
-    }
+  body.querySelectorAll('tr[data-search-hidden]').forEach(row => {
+    row.removeAttribute('data-search-hidden');
+    row.style.display = '';
   });
 
-  _flowsheetSearchIdx = startIdx;
-  count.textContent = _flowsheetSearchMatches.length ? `1/${_flowsheetSearchMatches.length}` : 'none';
-  if (_flowsheetSearchMatches.length) scrollToFlowsheetMatch(body);
+  if (!query.trim()) {
+    count.textContent = '';
+    return;
+  }
+
+  const q = query.toLowerCase();
+
+  if (_flowsheetFilterMode) {
+    // Filter mode — hide non-matching rows, keep group headers visible if any match
+    const matchingGroups = new Set();
+    body.querySelectorAll('tbody tr').forEach(row => {
+      const nameCell = row.querySelector('td:last-child');
+      const isGroupRow = row.querySelector('td[colspan]');
+      if (isGroupRow) return; // handle group rows after
+      if (nameCell && nameCell.textContent.toLowerCase().includes(q)) {
+        _flowsheetSearchMatches.push(row);
+        // Find which group this row belongs to — previous sibling group row
+        let prev = row.previousElementSibling;
+        while (prev) {
+          if (prev.querySelector('td[colspan]')) { matchingGroups.add(prev); break; }
+          prev = prev.previousElementSibling;
+        }
+      } else {
+        row.setAttribute('data-search-hidden', '1');
+        row.style.display = 'none';
+      }
+    });
+    // Hide group header rows with no visible children
+    body.querySelectorAll('tbody tr').forEach(row => {
+      const isGroupRow = row.querySelector('td[colspan]');
+      if (isGroupRow && !matchingGroups.has(row)) {
+        row.setAttribute('data-search-hidden', '1');
+        row.style.display = 'none';
+      }
+    });
+    count.textContent = _flowsheetSearchMatches.length ? `${_flowsheetSearchMatches.length} match${_flowsheetSearchMatches.length !== 1 ? 'es' : ''}` : 'none';
+    if (_flowsheetSearchMatches.length) {
+      _flowsheetSearchIdx = 0;
+      _flowsheetSearchMatches[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  } else {
+    // Search mode — highlight matches, scroll to first
+    body.querySelectorAll('tbody tr').forEach(row => {
+      const nameCell = row.querySelector('td:last-child');
+      if (nameCell && nameCell.textContent.toLowerCase().includes(q)) {
+        _flowsheetSearchMatches.push(row);
+      }
+    });
+    _flowsheetSearchIdx = startIdx;
+    count.textContent = _flowsheetSearchMatches.length ? `1/${_flowsheetSearchMatches.length}` : 'none';
+    if (_flowsheetSearchMatches.length) scrollToFlowsheetMatch(body);
+  }
 }
 
 function navigateFlowsheetSearch(body, dir) {
@@ -2383,7 +2541,6 @@ function navigateFlowsheetSearch(body, dir) {
 }
 
 function scrollToFlowsheetMatch(body) {
-  // Clear previous outline
   body.querySelectorAll('td[data-search-match]').forEach(td => {
     td.removeAttribute('data-search-match');
     td.style.outline = '';
@@ -2404,14 +2561,15 @@ function openFlowsheetModal(cat, focusTest) {
   sel.innerHTML = '';
   Object.keys(labDataCache).sort().forEach(c => {
     const opt = document.createElement('option');
-    opt.value = c; opt.textContent = '🐱 ' + c;
+    opt.value = c; opt.textContent = catEmoji(c) + ' ' + c;
     if (c === flowsheetCat) opt.selected = true;
     sel.appendChild(opt);
   });
   $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
   const body = $('flowsheet-modal-body');
   body.innerHTML = '';
-  buildFlowsheetTable(flowsheetCat, body);
+  _flowsheetFilterMode = false; // reset to search mode on each open
+  const { wrap, dates } = buildFlowsheetTable(flowsheetCat, body);
   $('flowsheet-modal').classList.add('open');
 
   // Reset search
@@ -2422,10 +2580,38 @@ function openFlowsheetModal(cat, focusTest) {
   initFlowsheetSearch(body);
 
   if (focusTest) {
-    searchInput.value = focusTest;
-    requestAnimationFrame(() => runFlowsheetSearch(body, focusTest, 0));
+    // Find the most recent date this test has a value, scroll that column into view
+    requestAnimationFrame(() => {
+      runFlowsheetSearch(body, focusTest, 0);
+      // Scroll horizontally to show most recent result for this test
+      // Find the last non-empty column for this test
+      const rows = body.querySelectorAll('tr');
+      for (const row of rows) {
+        const cells = [...row.querySelectorAll('td')];
+        // Last cell is the test name (now on right), data cells are before it
+        const nameCell = cells[cells.length - 1];
+        if (nameCell && nameCell.textContent.toLowerCase().includes(focusTest.toLowerCase())) {
+          // Find rightmost non-empty data cell (most recent result)
+          let focusCell = null;
+          for (let i = cells.length - 2; i >= 0; i--) {
+            if (cells[i].textContent && cells[i].textContent !== '—') {
+              focusCell = cells[i];
+              break;
+            }
+          }
+          if (focusCell) {
+            focusCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+          }
+          break;
+        }
+      }
+    });
   } else {
-    setTimeout(() => searchInput.focus(), 80);
+    // No focus test — scroll to rightmost (most recent) columns
+    requestAnimationFrame(() => {
+      body.scrollLeft = body.scrollWidth;
+      searchInput.focus();
+    });
   }
 }
 
@@ -2464,7 +2650,8 @@ function buildFlowsheetTable(cat, container) {
   });
 
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'overflow:auto;height:100%;';
+  wrap.style.cssText = 'position:relative;min-width:100%;';
+  wrap.id = 'flowsheet-wrap-' + cat.replace(/\s+/g,'_');
   const table = document.createElement('table');
   table.style.cssText = 'border-collapse:separate;border-spacing:0;font-family:JetBrains Mono,monospace;font-size:0.65rem;white-space:nowrap;min-width:100%;';
 
@@ -2473,15 +2660,16 @@ function buildFlowsheetTable(cat, container) {
   const hrow = document.createElement('tr');
   const thTest = document.createElement('th');
   thTest.textContent = 'Test';
-  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;left:0;top:0;z-index:4;';
-  hrow.appendChild(thTest);
+  thTest.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:left;border:1px solid var(--border);border-left:none;font-weight:500;position:sticky;right:0;top:0;z-index:4;';
   for (const date of dates) {
     const th = document.createElement('th');
-    th.textContent = date.slice(0,7);
+    const d = new Date(date + 'T12:00:00');
+    th.textContent = (d.getMonth()+1).toString().padStart(2,'0') + '/' + d.getDate().toString().padStart(2,'0') + '/' + d.getFullYear().toString().slice(2);
     th.title = date;
-    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;top:0;z-index:2;';
+    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;top:0;z-index:2;min-width:72px;';
     hrow.appendChild(th);
   }
+  hrow.appendChild(thTest);
   thead.appendChild(hrow);
   table.appendChild(thead);
 
@@ -2514,7 +2702,7 @@ function buildFlowsheetTable(cat, container) {
     const sepTd = document.createElement('td');
     sepTd.colSpan = dates.length + 1;
     sepTd.textContent = groupDisplayName[group] || group;
-    sepTd.style.cssText = 'background:var(--surface2);color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;';
+    sepTd.style.cssText = 'background:var(--surface2);color:var(--ink-muted);font-family:JetBrains Mono,monospace;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.25rem 0.6rem;border:1px solid var(--border);border-top:none;';
     sepRow.appendChild(sepTd);
     tbody.appendChild(sepRow);
 
@@ -2534,8 +2722,7 @@ function buildFlowsheetTable(cat, container) {
       });
       const tdName = document.createElement('td');
       tdName.textContent = test;
-      tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;left:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;';
-      row.appendChild(tdName);
+      tdName.style.cssText = 'text-align:left;color:var(--ink-dim);background:var(--surface);position:sticky;right:0;z-index:1;font-weight:500;padding:0.3rem 0.6rem;border:1px solid var(--border);border-left:none;border-top:none;';
       for (const date of dates) {
         const td = document.createElement('td');
         td.style.cssText = 'padding:0.3rem 0.6rem;border:1px solid var(--border);border-right:none;border-top:none;text-align:center;color:var(--ink);cursor:pointer;';
@@ -2570,12 +2757,14 @@ function buildFlowsheetTable(cat, container) {
         }
         row.appendChild(td);
       }
+      row.appendChild(tdName);
       tbody.appendChild(row);
     }
   }
   table.appendChild(tbody);
   wrap.appendChild(table);
   container.appendChild(wrap);
+  return { wrap, dates }; // return so caller can scroll to focus column
 }
 
 // ── JOURNAL SIDEBAR ──
@@ -2827,9 +3016,12 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
         if (showCatChips) {
           const cats = jCats(item);
           if (cats.length) {
-            const chipHtml = cats.map(c =>
-              `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:var(--surface2);color:var(--accent);border-radius:3px;padding:0 3px;margin-right:2px;">${escHtml(c)}</span>`
-            ).join('');
+            const chipBg = grp === 'past' ? 'white' : 'var(--surface2)';
+          const chipHtml = cats.map(c => {
+              const bg = grp === 'past' ? 'white' : catColor(c);
+              const color = catColorDark(c);
+              return `<span style="font-family:'JetBrains Mono',monospace;font-size:0.5rem;background:${bg};color:${color};border-radius:3px;padding:0 3px;margin-right:2px;font-weight:600;">${escHtml(c)}</span>`;
+            }).join('');
             inner += `<div style="margin-top:0.15rem;">${chipHtml}</div>`;
           }
         }
@@ -3023,7 +3215,13 @@ function openJournalEdit(item) {
     const listVal = listSel.value === '+ New list…'
       ? (customListInput.value.trim() || null)
       : listSel.value;
-    if (!listVal) { showToast('List name is required', 'warning'); return; }
+    if (!listVal) { showToast('List name is required — please select or type a list', 'warning'); return; }
+
+    // Debug: verify item.id exists before attempting edit
+    if (!isNew && !item.id) {
+      showAlert('Cannot save — this entry is missing its Firestore ID. Try reloading the journal.', 'warning');
+      return;
+    }
 
     const data = {
       cats: selectedCats,
@@ -5787,7 +5985,7 @@ async function writeFileStatus(fileId, filename, status, extra = {}) {
 
 // ── CLAUDE EXTRACTION PASSES ──
 
-function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. Never truncate or omit clinical data.`; }
+function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. If the record mentions the patient's date of birth or birth year, include it as "birthdate" in YYYY-MM-DD format (use YYYY-01-01 if only year is known) on the visit object. Never truncate or omit clinical data.`; }
 
 async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
@@ -6867,6 +7065,25 @@ function jCats(j) {
   if (Array.isArray(j.cats) && j.cats.length) return j.cats;
   if (j.cat) return [j.cat];
   return [];
+}
+
+// Cat color — returns the profile color for a cat, with fallback palette
+const _CAT_COLOR_FALLBACK = ['#f9a8d4','#bfdbfe','#bbf7d0','#fde68a','#e9d5ff','#fed7aa'];
+function catColor(catName) {
+  if (_petProfiles[catName]?.color) return _petProfiles[catName].color;
+  const idx = APP_PETS.indexOf(catName);
+  return _CAT_COLOR_FALLBACK[idx >= 0 ? idx % _CAT_COLOR_FALLBACK.length : 0];
+}
+function catEmoji(catName) {
+  return _petProfiles[catName]?.emoji || '🐾';
+}
+// Darken a hex color for text contrast on light backgrounds
+function catColorDark(catName) {
+  const hex = catColor(catName).replace('#','');
+  const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+  // Simple: reduce brightness by 45%
+  const d = (v) => Math.max(0, Math.round(v * 0.55)).toString(16).padStart(2,'0');
+  return '#' + d(r) + d(g) + d(b);
 }
 
 // Normalize list names — Claude sometimes outputs variants
@@ -9116,7 +9333,7 @@ async function openTrendsModal() {
   sel.innerHTML = '';
   const cats = APP_PETS.length ? APP_PETS : Object.keys(labDataCache);
   cats.forEach(c => {
-    const o = document.createElement('option'); o.value = c; o.textContent = '🐱 ' + c;
+    const o = document.createElement('option'); o.value = c; o.textContent = catEmoji(c) + ' ' + c;
     sel.appendChild(o);
   });
 
@@ -9415,6 +9632,14 @@ function formatSize(bytes) {
   if (bytes < 1048576) return Math.round(bytes / 1024) + 'k';
   return (bytes / 1048576).toFixed(1) + 'mb';
 }
+
+// Warn before closing if there are unsaved pending journal items
+window.addEventListener('beforeunload', e => {
+  if (pendingJournalItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = `You have ${pendingJournalItems.length} unsaved journal item${pendingJournalItems.length !== 1 ? 's' : ''}. Click "Save Session" before closing to keep them.`;
+  }
+});
 
 // Initialize API key status
 updateStatusBar();
