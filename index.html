@@ -1069,21 +1069,28 @@ function showAlert(text, type = 'warning') {
   bar.appendChild(a);
 }
 
-function showToast(text, type = 'info', undoFn = null, duration = 4000) {
+function showToast(text, type = 'info', undoFn = null, duration = null) {
+  if (duration === null) {
+    duration = type === 'warning' ? null : 4000; // warnings stay until clicked
+  }
   const c = $('toast-container');
   const t = document.createElement('div');
   t.className = 'toast';
+  t.style.cursor = 'pointer';
+  t.title = 'Click to dismiss';
   const dotColor = type === 'journal' ? 'green' : type === 'warning' ? 'amber' : 'green';
-  t.innerHTML = `<div class="toast-dot ${dotColor}"></div><div class="toast-text">${text}</div>`;
+  t.innerHTML = `<div class="toast-dot ${dotColor}"></div><div class="toast-text">${text}</div><div style="margin-left:0.5rem;font-size:0.6rem;color:var(--ink-muted);flex-shrink:0;">✕</div>`;
   if (undoFn) {
     const ub = document.createElement('button');
     ub.className = 'toast-undo';
     ub.textContent = 'Undo';
-    ub.onclick = () => { undoFn(); t.remove(); };
+    ub.onclick = (e) => { e.stopPropagation(); undoFn(); t.remove(); };
     t.appendChild(ub);
   }
+  const dismiss = () => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); };
+  t.addEventListener('click', dismiss);
   c.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, duration);
+  if (duration !== null) setTimeout(dismiss, duration);
 }
 
 // ── API KEY MODAL ──
@@ -4194,12 +4201,23 @@ async function processFile(file) {
       where('status', '==', 'complete')
     ));
     if (!dupSnap.empty && !dupSnap.docs.some(d => d.id === file.id)) {
-      const dupName = dupSnap.docs[0].data().filename || 'another file';
-      showToast(`${file.name.slice(0,30)}: exact duplicate of "${dupName.slice(0,25)}" — skipped`, 'warning');
-      await writeFileStatus(file.id, file.name, 'complete', {
-        fileHash, extractionPasses: ['exact_duplicate'], duplicateOf: dupSnap.docs[0].id
-      });
-      return;
+      const dupDoc = dupSnap.docs[0];
+      const dupFileId = dupDoc.data().driveFileId || dupDoc.id;
+      // Verify the duplicate actually has visit or lab records before skipping
+      const [vSnap, lSnap] = await Promise.all([
+        getDocs(query(collection(db, 'visits'), where('driveFileIds', 'array-contains', dupFileId))),
+        getDocs(query(collection(db, 'labs'), where('driveFileId', '==', dupFileId)))
+      ]);
+      if (vSnap.size > 0 || lSnap.size > 0) {
+        const dupName = dupDoc.data().filename || 'another file';
+        showToast(`${file.name.slice(0,30)}: exact duplicate of "${dupName.slice(0,25)}" — skipped`, 'warning');
+        await writeFileStatus(file.id, file.name, 'complete', {
+          fileHash, extractionPasses: ['exact_duplicate'], duplicateOf: dupDoc.id
+        });
+        return;
+      }
+      // Duplicate exists but has no records — previous import failed, proceed
+      console.log(`Duplicate hash found (${dupDoc.data().filename}) but has no records — processing anyway`);
     }
   } catch(e) { console.warn('Hash check failed (non-critical):', e.message); }
 
