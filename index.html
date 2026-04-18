@@ -4208,7 +4208,7 @@ async function processFile(file) {
       where('fileHash', '==', fileHash),
       where('status', '==', 'complete')
     ));
-    if (!dupSnap.empty && !dupSnap.docs.some(d => d.id === file.id)) {
+    if (!dupSnap.empty && !dupSnap.docs.some(d => (d.data().driveFileId || d.id) === file.id)) {
       const dupDoc = dupSnap.docs[0];
       const dupFileId = dupDoc.data().driveFileId || dupDoc.id;
       // Verify the duplicate actually has visit or lab records before skipping
