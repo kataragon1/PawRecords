@@ -94,7 +94,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .cabinet-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 7px 0 0;padding:3px 9px 4px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.04em;white-space:nowrap;cursor:pointer;transition:background 0.1s;flex-shrink:0;}
 .cabinet-tab:hover{background:#ddd5c2;}
 .cabinet-tab.active{background:#f7f4ee;border-bottom:1px solid #f7f4ee;position:relative;z-index:2;}
-.cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.65rem;color:#5a4e42;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.85;transition:opacity 0.1s;}
+.cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.85rem;color:#5a4e42;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.85;transition:opacity 0.1s;}
 .cabinet-arrow:hover{opacity:1;color:#2a2520;}
 .cabinet-arrow:disabled{opacity:0.25;cursor:default;}
 .cabinet-body{border:1px solid #c8bfae;border-radius:0 4px 4px 4px;background:#f7f4ee;min-height:32px;}
@@ -4214,12 +4214,13 @@ async function processFile(file) {
     if (!dupSnap.empty && !dupSnap.docs.some(d => (d.data().driveFileId || d.id) === file.id)) {
       const dupDoc = dupSnap.docs[0];
       const dupFileId = dupDoc.data().driveFileId || dupDoc.id;
-      // Verify the duplicate actually has visit or lab records before skipping
+      // Verify the duplicate actually has records — any visits or labs count
       const [vSnap, lSnap] = await Promise.all([
         getDocs(query(collection(db, 'visits'), where('driveFileIds', 'array-contains', dupFileId))),
         getDocs(query(collection(db, 'labs'), where('driveFileId', '==', dupFileId)))
       ]);
-      if (vSnap.size > 0 || lSnap.size > 0) {
+      const hasRecords = vSnap.size > 0 || lSnap.size > 0;
+      if (hasRecords) {
         const dupName = dupDoc.data().filename || 'another file';
         showAlert(`${file.name.slice(0,40)}: duplicate of "${dupName.slice(0,30)}" (${vSnap.size} visits, ${lSnap.size} labs) — skipped`);
         await writeFileStatus(file.id, file.name, 'complete', {
@@ -4800,7 +4801,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
   const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped'];
   const actionableFlags = allFlags.filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
   const hasData = allVisits.length > 0 || allLabs.length > 0;
-  const finalStatus = !hasData ? 'empty'
+  const finalStatus = (!hasData && allFlags.length === 0) ? 'empty'
     : actionableFlags.length > 0 ? 'flagged'
     : 'complete';
   await writeFileStatus(file.id, file.name, finalStatus, {

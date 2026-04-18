@@ -118,6 +118,7 @@ tr:hover td{background:var(--surface);}
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
       <button class="btn" id="run-btn">Run Audit</button>
       <button class="btn secondary" id="find-empty-btn">Find Empty Files</button>
+      <button class="btn secondary" id="invoice-only-btn">Invoice-Only Dates</button>
       <button class="btn secondary" id="clean-ghosts-btn">Clean Up Ghosts</button>
       <button class="btn secondary" id="signout-btn">Sign out</button>
     </div>
@@ -322,6 +323,63 @@ Return ONLY valid JSON — the merged visit record with all fields. No markdown,
   const data = await res.json();
   const raw = data.content.map(b=>b.text||'').join('').trim();
   return JSON.parse(raw.replace(/```json|```/g,'').trim());
+}
+
+// ── INVOICE-ONLY DATES ──
+$('invoice-only-btn').addEventListener('click', findInvoiceOnlyDates);
+
+async function findInvoiceOnlyDates() {
+  const btn = $('invoice-only-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  document.getElementById('invoice-only-panel')?.remove();
+
+  try {
+    const snap = await getDocs(collection(db, 'visits'));
+    const visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Group by cat+date
+    const byKey = {};
+    for (const v of visits) {
+      if (!v.cat || !v.date) continue;
+      const key = `${v.cat}||${v.date}`;
+      if (!byKey[key]) byKey[key] = { cat: v.cat, date: v.date, visits: [] };
+      byKey[key].visits.push(v);
+    }
+
+    // Find dates where ALL visits are invoices
+    const invoiceOnly = Object.values(byKey)
+      .filter(g => g.visits.every(v => v.docType === 'Invoice'))
+      .sort((a, b) => a.cat.localeCompare(b.cat) || b.date.localeCompare(a.date));
+
+    const panel = document.createElement('div');
+    panel.id = 'invoice-only-panel';
+    panel.style.cssText = 'background:white;border:1px solid var(--border);border-radius:10px;padding:1.25rem;margin:1rem 0;';
+
+    if (!invoiceOnly.length) {
+      panel.innerHTML = '<p style="font-family:JetBrains Mono,monospace;font-size:0.72rem;color:var(--green);">✓ No invoice-only dates found.</p>';
+    } else {
+      let html = `<div style="font-family:JetBrains Mono,monospace;font-size:0.75rem;font-weight:700;margin-bottom:0.75rem;">${invoiceOnly.length} date(s) with invoice but no clinical visit:</div>`;
+      let currentCat = '';
+      for (const g of invoiceOnly) {
+        if (g.cat !== currentCat) {
+          if (currentCat) html += '</div>';
+          html += `<div style="margin-bottom:0.75rem;"><div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);margin-bottom:0.3rem;">${escapeHtml(g.cat)}</div>`;
+          currentCat = g.cat;
+        }
+        const sources = [...new Set(g.visits.flatMap(v => v.sourceFiles || []))].join(', ');
+        html += `<div style="font-family:JetBrains Mono,monospace;font-size:0.65rem;padding:0.15rem 0;color:var(--ink-dim);">• ${g.date}${sources ? ' <span style="color:var(--ink-muted);">— ' + escapeHtml(sources.slice(0,60)) + '</span>' : ''}</div>`;
+      }
+      if (currentCat) html += '</div>';
+      panel.innerHTML = html;
+    }
+    document.querySelector('.header-row').after(panel);
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Invoice-Only Dates';
+  }
 }
 
 // ── CLEAN UP GHOSTS ──
