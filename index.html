@@ -523,7 +523,6 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div id="sidebar-resize-handle" style="position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:100;background:transparent;transition:background 0.15s;" title="Drag to resize"></div>
     <div class="sidebar-top">
       <span class="sidebar-wordmark"><span onclick="openPetProfilesModal()" title="Pet profiles & birthdates" style="cursor:pointer;transition:opacity 0.15s;" onmouseover="this.style.opacity='0.65'" onmouseout="this.style.opacity='1'">🐾</span> Paw Records</span>
-      <span id="sidebar-pet-ages" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:center;"></span>
       <span class="sidebar-user" id="sidebar-user-email"></span>
     </div>
     <div class="sidebar-tabs">
@@ -1348,28 +1347,29 @@ async function loadPetProfiles() {
     const d = await getDoc(doc(db, 'app_config', 'pet_profiles'));
     if (d.exists()) _petProfiles = d.data().profiles || {};
     renderPetAges();
+    renderCatFocusPills();
+    // Re-render journal so cat chips pick up correct colors
+    if (_journalDocsCache) renderJournalSidebar(_journalDocsCache);
   } catch(e) { console.warn('Pet profiles load failed:', e.message); }
 }
 
 function renderPetAges() {
-  const el = document.getElementById('sidebar-pet-ages');
-  if (!el || !APP_PETS.length) return;
+  if (!APP_PETS.length) return;
   const today = new Date();
-  const parts = APP_PETS.map(cat => {
+  APP_PETS.forEach(cat => {
     const bd = _petProfiles[cat]?.birthdate;
-    if (!bd) return null;
+    const ageEl = document.querySelector(`.cat-age-label[data-cat="${cat}"]`);
+    if (!ageEl) return;
+    if (!bd) { ageEl.textContent = ''; return; }
     try {
       const birth = new Date(bd + 'T12:00:00');
       const ageMs = today - birth;
-      if (ageMs < 0) return null;
+      if (ageMs < 0) { ageEl.textContent = ''; return; }
       const years = Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
       const months = Math.floor((ageMs % (365.25 * 24 * 3600 * 1000)) / (30.44 * 24 * 3600 * 1000));
-      const ageStr = years >= 1 ? `${years}yo` : `${months}mo`;
-      return `${cat} ${ageStr}`;
-    } catch { return null; }
-  }).filter(Boolean);
-  el.textContent = parts.join(' · ');
-  el.title = parts.join(', ');
+      ageEl.textContent = years >= 1 ? `${years}yo` : `${months}mo`;
+    } catch { ageEl.textContent = ''; }
+  });
 }
 
 async function savePetProfiles() {
@@ -1702,7 +1702,7 @@ function renderRecordsTree(tree) {
     // Cat heading (collapsible)
     const heading = document.createElement('div');
     heading.className = 'cat-heading';
-    heading.innerHTML = `<span class="cat-emoji">${catEmoji(cat)}</span><span>${cat}</span><span class="cat-arrow">▶</span>`;
+    heading.innerHTML = `<span class="cat-emoji">${catEmoji(cat)}</span><span>${cat}</span><span class="cat-age-label" data-cat="${cat}" style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);margin-left:0.3rem;"></span><span class="cat-arrow">▶</span>`;
 
     // Cabinet container
     const cabinet = document.createElement('div');
@@ -2021,7 +2021,7 @@ function openVisitEdit(v) {
     } else if (type === 'select') {
       el = document.createElement('select');
       el.style.cssText = 'width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:0.4rem;outline:none;color:var(--ink);background:var(--bg);';
-      (APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte']).forEach(p => {
+      APP_PETS.forEach(p => {
         const o = document.createElement('option');
         o.value = p; o.textContent = p;
         if (p === value) o.selected = true;
@@ -4955,10 +4955,10 @@ Parse dates in any format (MM/DD/YY, MM/DD/YYYY). Strip clinic names from date c
 
 Return JSON only, no explanation, no markdown:
 {
-  "cats": ["Latte"],
+  "cats": ["Felix"],
   "dates": ["2020-02-27"],
   "visits": [{
-    "cat": "Latte",
+    "cat": "Felix",
     "date": "2020-02-27",
     "clinic": "Town & Country",
     "chiefComplaint": "lab report",
@@ -4969,7 +4969,7 @@ Return JSON only, no explanation, no markdown:
     "procedures": []
   }],
   "labs": [{
-    "cat": "Latte",
+    "cat": "Felix",
     "test": "BUN",
     "value": 14,
     "unit": "mg/dL",
@@ -6363,10 +6363,10 @@ Return JSON only, no markdown:
 {
   "skip": false,
   "isAmendment": false,
-  "cats": ["Mocha"],
+  "cats": ["Bella"],
   "dates": ["2025-05-13"],
   "visits": [{
-    "cat": "Mocha",
+    "cat": "Bella",
     "date": "2025-05-13",
     "clinic": "Morrisville",
     "doctor": "Dr. Beth Hraban",
@@ -6385,7 +6385,7 @@ Return JSON only, no markdown:
     "flags": []
   }],
   "labs": [{
-    "cat": "Mocha",
+    "cat": "Bella",
     "test": "Phosphorus",
     "value": 2.8,
     "unit": "mg/dL",
@@ -7113,7 +7113,7 @@ function appendMsg(role, text) {
 // - Save writes all pending items to Firestore in one batch
 
 // ── SESSION STATE ──
-let mentionTracker = {};   // { "Mocha_fish oil": { count } } — resets each session
+let mentionTracker = {};   // { "Bella_fish oil": { count } } — resets each session
 let sessionActiveCat = null; // last explicitly named cat in conversation
 
 const MENTION_THRESHOLD = 4; // mentions before auto-promoting to "potential"
@@ -7133,7 +7133,8 @@ const _CAT_COLOR_FALLBACK = ['#f9a8d4','#bfdbfe','#bbf7d0','#fde68a','#e9d5ff','
 function catColor(catName) {
   if (_petProfiles[catName]?.color) return _petProfiles[catName].color;
   const idx = APP_PETS.indexOf(catName);
-  return _CAT_COLOR_FALLBACK[idx >= 0 ? idx % _CAT_COLOR_FALLBACK.length : 0];
+  if (idx < 0) return '#e4e0d8'; // gray until profiles load
+  return _CAT_COLOR_FALLBACK[idx % _CAT_COLOR_FALLBACK.length];
 }
 function catEmoji(catName) {
   return _petProfiles[catName]?.emoji || '🐾';
@@ -7445,7 +7446,7 @@ function makeNoteEl(note) {
   const renderCatChips = () => {
     catsRow.innerHTML = '';
     const currentCats = note.cats || [];
-    const allCats = APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte'];
+    const allCats = APP_PETS.length ? APP_PETS : [];
     allCats.forEach(cat => {
       const active = currentCats.includes(cat);
       const chip = document.createElement('span');
@@ -7585,11 +7586,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cat chips for note input
   const chipsEl = $('notes-cat-chips');
   if (chipsEl) {
-    const allCats = APP_PETS.length ? APP_PETS : ['Mocha', 'Evie', 'Latte'];
+    const allCats = APP_PETS.length ? APP_PETS : [];
     // Re-render chips when APP_PETS loads — also called from updatePetList
     const renderChips = () => {
       chipsEl.innerHTML = '';
-      (APP_PETS.length ? APP_PETS : ['Mocha','Evie','Latte']).forEach(cat => {
+      APP_PETS.forEach(cat => {
         const chip = document.createElement('button');
         chip.className = 'notes-cat-chip';
         chip.textContent = cat;
@@ -7735,7 +7736,7 @@ Return ONLY valid JSON — no markdown fences, no preamble:
 {
   "journalUpdates": [
     {
-      "cats": ["Mocha", "Evie"],
+      "cats": ["Bella", "Luna"],
       "list": "Medications|Supplements|Diet|Foods|<custom>",
       "text": "terse factual entry",
       "dose": "dose/frequency or null",
@@ -7749,7 +7750,7 @@ Return ONLY valid JSON — no markdown fences, no preamble:
     {
       "action": "add|remove",
       "text": "terse fragment",
-      "cats": ["Mocha"],
+      "cats": ["Bella"],
       "pinned": false,
       "removeText": "exact text to remove if action=remove"
     }
@@ -8197,7 +8198,7 @@ MEDICATIONS: tag supplement:true for vitamins/supplements/nutraceuticals. Dedupl
 SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing, feeding plans, kcal. "Reminders", "Services Due", "Due Date" sections listing future preventive care are NOT visits — skip entirely.
 
 Return JSON only, no markdown:
-{"skip":false,"isAmendment":false,"cats":["Mocha"],"dates":["2025-05-13"],"visits":[{"cat":"Mocha","date":"2025-05-13","clinic":"Morrisville","doctor":"Dr. Beth Hraban","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
+{"skip":false,"isAmendment":false,"cats":["Bella"],"dates":["2025-05-13"],"visits":[{"cat":"Bella","date":"2025-05-13","clinic":"City Vet","doctor":"Dr. Smith","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
 
 INVOICES: Extract meds dispensed, vaccines given, procedures with dates. Store as docType:"Invoice". Set chiefComplaint to a brief clinical description of why they were likely there (ignore fees/syringes/admin items).
 Only skip if truly empty of all clinical content → {"skip":true}
@@ -9663,7 +9664,7 @@ async function callClaude(history, context, userMessage) {
 
 JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, supplements), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions.
 <journal>
-[{"cats":["Evie"],"list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"},{"cats":["Mocha","Evie","Latte"],"list":"Supplements","text":"Psyllium husk","dose":"2.5g","status":"current"}]
+[{"cats":["Luna"],"list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"},{"cats":["Bella","Luna","Felix"],"list":"Supplements","text":"Psyllium husk","dose":"2.5g","status":"current"}]
 </journal>
 The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all of them. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.` : '';
 
