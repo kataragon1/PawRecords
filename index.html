@@ -3440,6 +3440,7 @@ $('upload-files-btn').addEventListener('click', () => {
 $('refresh-drive-btn').addEventListener('click', () => {
   if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
   window._driveLoaded = false;
+  _fileStatusCache = null; // force re-query of Firestore statuses
   loadDriveFiles();
 });
 $('upload-file-input').addEventListener('change', async (e) => {
@@ -3503,18 +3504,24 @@ async function loadDriveFiles() {
       );
 
       if (pawRes.status === 401) {
+        clearInterval(ticker); clearTimeout(timeout);
         driveAccessToken = null;
         try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
         $('drive-dot').className = 'status-dot amber';
         $('drive-status').textContent = 'Drive token expired';
+        filesList.innerHTML = '';
         showDriveConnectPrompt('Drive access token expired. Click to reconnect.');
         return;
       }
       if (pawRes.status === 403) {
+        clearInterval(ticker); clearTimeout(timeout);
+        filesList.innerHTML = '';
         showDriveConnectPrompt('Drive API access denied (403). Make sure the Google Drive API is enabled in your Google Cloud project.');
         return;
       }
       if (!pawRes.ok) {
+        clearInterval(ticker); clearTimeout(timeout);
+        filesList.innerHTML = '';
         showDriveConnectPrompt(`Drive API error ${pawRes.status} — sign out and back in to retry.`);
         return;
       }
@@ -3523,6 +3530,8 @@ async function loadDriveFiles() {
       const pawFolder = pawData.files?.[0];
 
       if (!pawFolder) {
+        clearInterval(ticker); clearTimeout(timeout);
+        filesList.innerHTML = '';
         showFolderNotFoundPrompt();
         return;
       }
@@ -3553,12 +3562,15 @@ async function loadDriveFiles() {
       try { localStorage.removeItem('pr_uploads_folder_id'); } catch(e) {}
       driveAccessToken = null;
       try { sessionStorage.removeItem('pr_drive_token'); } catch(e) {}
+      filesList.innerHTML = '';
       showDriveConnectPrompt('Drive access token expired. Click to reconnect.');
       return;
     }
 
     const filesData = await filesRes.json();
     const driveFiles = filesData.files || [];
+    // Store current Drive file IDs so audit page can identify ghost Firestore records
+    try { sessionStorage.setItem('pr_drive_file_ids', JSON.stringify(driveFiles.map(f => f.id))); } catch(e) {}
     const statusMap = await loadFileStatuses(driveFiles.map(f => f.id));
     clearInterval(ticker); clearTimeout(timeout);
     renderFilesList(driveFiles, statusMap);
@@ -6068,6 +6080,7 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     }
   }
   const raw = data.content.map(b => b.text || '').join('').trim();
+  console.log('Extraction raw response (first 500):', raw.slice(0, 500));
   try {
     const cleaned = raw
       .replace(/^```json\n?|^```\n?|```$/gm, '')
@@ -6080,7 +6093,8 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
       .replace(/"refHigh"\s*:\s*<\s*([\d.]+)/g, (_, n) => `"refHigh": null`);
     return JSON.parse(cleaned);
   } catch(e) {
-    console.warn('JSON parse failed:', e.message, '\nRaw start:', raw.slice(0, 300));
+    console.warn('JSON parse failed:', e.message);
+    console.warn('Raw response (full):', raw);
     return null;
   }
 }

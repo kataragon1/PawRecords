@@ -118,6 +118,7 @@ tr:hover td{background:var(--surface);}
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
       <button class="btn" id="run-btn">Run Audit</button>
       <button class="btn secondary" id="find-empty-btn">Find Empty Files</button>
+      <button class="btn secondary" id="clean-ghosts-btn">Clean Up Ghosts</button>
       <button class="btn secondary" id="signout-btn">Sign out</button>
     </div>
   </div>
@@ -323,7 +324,56 @@ Return ONLY valid JSON — the merged visit record with all fields. No markdown,
   return JSON.parse(raw.replace(/```json|```/g,'').trim());
 }
 
-// ── FIND EMPTY FILES ──
+// ── CLEAN UP GHOSTS ──
+$('clean-ghosts-btn').addEventListener('click', cleanGhosts);
+
+async function cleanGhosts() {
+  const btn = $('clean-ghosts-btn');
+
+  // Get Drive file IDs stored by main app
+  let driveIds;
+  try {
+    const stored = sessionStorage.getItem('pr_drive_file_ids');
+    driveIds = stored ? new Set(JSON.parse(stored)) : null;
+  } catch(e) { driveIds = null; }
+
+  if (!driveIds || driveIds.size === 0) {
+    alert('No Drive file list found.\n\nOpen the main Paw Records app, go to the Files tab, and let it load completely — then come back and try again.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  document.getElementById('empty-files-panel')?.remove();
+
+  try {
+    const filesSnap = await getDocs(collection(db, 'files'));
+    const ghosts = filesSnap.docs.filter(d => {
+      const fileId = d.data().driveFileId || d.id;
+      return !driveIds.has(fileId);
+    });
+
+    if (!ghosts.length) {
+      alert('No ghost records found — all Firestore file records have matching Drive files.');
+      return;
+    }
+
+    const list = ghosts.map(d => `  • ${d.data().filename || d.id}`).join('\n');
+    const confirm_ = confirm(`Found ${ghosts.length} Firestore file record(s) with no matching Drive file:\n\n${list}\n\nDelete these ghost records?`);
+
+    if (confirm_) {
+      const b = writeBatch(db);
+      ghosts.forEach(d => b.delete(doc(db, 'files', d.id)));
+      await b.commit();
+      alert(`${ghosts.length} ghost record(s) deleted.`);
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Clean Up Ghosts';
+  }
+}
 $('find-empty-btn').addEventListener('click', findEmptyFiles);
 
 async function findEmptyFiles() {
