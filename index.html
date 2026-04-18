@@ -1076,10 +1076,14 @@ function showToast(text, type = 'info', undoFn = null, duration = null) {
   const c = $('toast-container');
   const t = document.createElement('div');
   t.className = 'toast';
-  t.style.cursor = 'pointer';
-  t.title = 'Click to dismiss';
+  t.style.cursor = type === 'warning' ? 'pointer' : 'default';
+  if (type === 'warning') {
+    t.style.cssText += 'border-color:var(--amber);background:#fffbf0;';
+    t.title = 'Click to dismiss';
+  }
   const dotColor = type === 'journal' ? 'green' : type === 'warning' ? 'amber' : 'green';
-  t.innerHTML = `<div class="toast-dot ${dotColor}"></div><div class="toast-text">${text}</div><div style="margin-left:0.5rem;font-size:0.6rem;color:var(--ink-muted);flex-shrink:0;">✕</div>`;
+  const suffix = type === 'warning' ? `<span style="margin-left:0.5rem;font-size:0.6rem;color:var(--amber);flex-shrink:0;font-weight:600;">✕</span>` : '';
+  t.innerHTML = `<div class="toast-dot ${dotColor}"></div><div class="toast-text">${text}</div>${suffix}`;
   if (undoFn) {
     const ub = document.createElement('button');
     ub.className = 'toast-undo';
@@ -1088,8 +1092,12 @@ function showToast(text, type = 'info', undoFn = null, duration = null) {
     t.appendChild(ub);
   }
   const dismiss = () => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); };
-  t.addEventListener('click', dismiss);
-  c.appendChild(t);
+  if (type === 'warning') {
+    t.addEventListener('click', dismiss);
+    c.prepend(t); // warnings go to top of stack
+  } else {
+    c.appendChild(t);
+  }
   if (duration !== null) setTimeout(dismiss, duration);
 }
 
@@ -4210,7 +4218,7 @@ async function processFile(file) {
       ]);
       if (vSnap.size > 0 || lSnap.size > 0) {
         const dupName = dupDoc.data().filename || 'another file';
-        showToast(`${file.name.slice(0,30)}: exact duplicate of "${dupName.slice(0,25)}" — skipped`, 'warning');
+        showAlert(`${file.name.slice(0,40)}: duplicate of "${dupName.slice(0,30)}" (${vSnap.size} visits, ${lSnap.size} labs) — skipped`);
         await writeFileStatus(file.id, file.name, 'complete', {
           fileHash, extractionPasses: ['exact_duplicate'], duplicateOf: dupDoc.id
         });
