@@ -349,7 +349,7 @@ mark.sh{background:#fde68a;border-radius:2px;padding:0 1px;}
 mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #pause-overlay{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.58);z-index:500;align-items:center;justify-content:center;padding:2rem;}
 #pause-overlay.open{display:flex;}
-.pause-box{background:white;border-radius:14px;padding:2rem;max-width:400px;width:100%;text-align:center;box-shadow:0 8px 40px rgba(42,37,32,0.2);}
+.pause-box{background:white;border-radius:14px;padding:2rem;max-width:420px;width:100%;max-height:90vh;overflow-y:auto;text-align:center;box-shadow:0 8px 40px rgba(42,37,32,0.2);}
 .pause-icon{font-size:2rem;margin-bottom:0.75rem;}
 .pause-title{font-family:'Instrument Serif',serif;font-size:1.3rem;margin-bottom:0.5rem;color:var(--ink);}
 .pause-desc{font-size:0.83rem;color:var(--ink-muted);line-height:1.6;margin-bottom:1.25rem;}
@@ -501,7 +501,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </button>
     <div class="signin-error" id="signin-error"></div>
     <p class="signin-note">Access is restricted to authorized accounts only.</p>
-    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);margin-top:1rem;opacity:0.5;"><span class="app-version">…</span></p>
+    <p style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);margin-top:1rem;opacity:0.75;"><span class="app-version">…</span></p>
   </div>
 </div>
 
@@ -511,7 +511,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div class="loading-wordmark"><span class="wordmark-paw">🐾</span>Paw Records</div>
     <div class="loading-dots"><span></span><span></span><span></span></div>
     <div id="loading-label">Signing in…</div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);opacity:0.4;margin-top:0.75rem;"><span class="app-version"></span></div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);opacity:0.75;margin-top:0.75rem;"><span class="app-version"></span></div>
   </div>
 </div>
 
@@ -584,6 +584,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <div class="files-toolbar" id="files-toolbar">
         <button class="filter-btn active" data-filter="all">All</button>
         <button class="filter-btn" data-filter="unprocessed">Unprocessed / Failed</button>
+        <button class="filter-btn" data-filter="empty">Empty</button>
         <button class="filter-btn" data-filter="flagged">Needs review</button>
         <button class="filter-btn" data-filter="done">Done</button>
       </div>
@@ -1253,6 +1254,8 @@ onAuthStateChanged(auth, async user => {
 // ── LOAD INITIAL DATA ──
 async function loadInitialData() {
   try {
+    setLoading('Loading profiles…');
+    await loadPetProfiles();
     setLoading('Loading records…');
     await loadRecordsSidebar();
     setLoading('Loading labs…');
@@ -1267,7 +1270,6 @@ async function loadInitialData() {
     await loadLabCorrections();
     await loadLabGroups();
     await loadClinicAbbrev(); // pre-load all visits+labs into memory for search
-    await loadPetProfiles();
     // Dynamic pet list for welcome message
     await updatePetList();
     // Check for recent abnormal lab values
@@ -3010,8 +3012,16 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
     const groups = { current:[], plan:[], maybe:[], past:[] };
     for (const item of items) (groups[item.status] || groups.current).push(item);
 
+    // Sort within each group: all-cats entries first, then by sorted cat names
+    const allCatNames = [...new Set(items.flatMap(i => jCats(i)))].sort();
+    const catSortKey = (item) => {
+      const cats = jCats(item).sort();
+      if (cats.length === allCatNames.length && cats.every((c,i) => c === allCatNames[i])) return '0_all';
+      return '1_' + cats.join(',');
+    };
+
     for (const grp of STATUS_ORDER) {
-      const grpItems = groups[grp];
+      const grpItems = groups[grp].slice().sort((a, b) => catSortKey(a).localeCompare(catSortKey(b)));
       if (!grpItems.length) continue;
 
       for (const item of grpItems) {
@@ -3252,8 +3262,9 @@ function openJournalEdit(item) {
     };
 
     try {
-      _journalDocsCache = null; invalidateChatContext();
+      invalidateChatContext();
       if (isNew) {
+        _journalDocsCache = null; // force full reload for new entries
         await setDoc(doc(collection(db, 'journal')), {
           ...data, addedDate: today, updatedDate: today, updates: []
         });
@@ -3280,10 +3291,16 @@ function openJournalEdit(item) {
             });
           }
           await fsBatch.commit();
+          _journalDocsCache = null; // new docs added, need full reload
           showToast(`History preserved for ${removedCats.join(', ')} ✓`, 'journal');
         }
 
         await setDoc(doc(db, 'journal', item.id), { ...data, updatedDate: today }, { merge: true });
+        // Update the local cache entry directly so re-render is immediate
+        if (_journalDocsCache) {
+          const idx = _journalDocsCache.findIndex(j => j.id === item.id);
+          if (idx >= 0) _journalDocsCache[idx] = { ..._journalDocsCache[idx], ...data, updatedDate: today };
+        }
         showToast('Journal entry updated', 'journal');
       }
       $('record-popup').classList.remove('open');
@@ -3394,7 +3411,8 @@ function filterFiles(filter) {
     let show = false;
     if (filter === 'all') show = true;
     else if (filter === 'done') show = (status === 'complete' || status === 'flagged');
-    else if (filter === 'unprocessed') show = (status === 'unprocessed' || status === 'failed' || status === 'empty');
+    else if (filter === 'empty') show = (status === 'empty');
+    else if (filter === 'unprocessed') show = (status === 'unprocessed' || status === 'failed');
     else show = (status === filter);
     el.style.display = show ? 'flex' : 'none';
   });
@@ -3873,7 +3891,7 @@ function renderFilesList(driveFiles, statusMap) {
       <input type="checkbox" class="file-item-checkbox" data-file-id="${file.id}">
       <div class="file-item-top">
         <span class="file-ext-badge">${escHtml(ext)}</span>
-        <span class="file-name" title="${escHtml(file.name)}">${escHtml(file.name)}</span>
+        <a class="file-name" title="${escHtml(file.name)}" href="https://drive.google.com/file/d/${file.id}/view" target="_blank" onclick="event.stopPropagation()" style="text-decoration:none;color:inherit;cursor:pointer;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color=''">${escHtml(file.name)}</a>
         <span class="file-status-badge ${status}" id="badge-${file.id}" ${status === 'flagged' ? `style="cursor:pointer;" title="Click to view flags" onclick="event.stopPropagation();openFlagsModal('${file.id}')"` : ''}>${status}</span>
       </div>
       <div class="file-item-meta">
@@ -4542,9 +4560,9 @@ async function processFile(file) {
     // Add quality flags to allFlags (non-blocking)
     allFlags.push(...qualityFlags);
 
-    // Prompt for critical issues
-    if (issues.length) {
-      const corrections = await promptClarification(file.name, issues);
+    // Prompt for critical issues — only if there's actual data to save
+    if (issues.length && (allVisits.length > 0 || allLabs.length > 0)) {
+      const corrections = await promptClarification(file.name, issues, file.id);
       if (corrections === null) {
         await writeFileStatus(file.id, file.name, 'unprocessed');
         updateFileBadge(file.id, 'unprocessed');
@@ -6771,7 +6789,7 @@ function textSimilarity(a, b) {
 // ── CLARIFICATION PROMPT ──
 // Shows a modal asking the user to resolve critical unknowns before data is written.
 // Returns { cat, date } corrections, or null if user chose to skip the file.
-function promptClarification(filename, issues) {
+function promptClarification(filename, issues, fileId = null) {
   return new Promise(resolve => {
     const box = document.querySelector('.pause-box');
     const origContent = box.innerHTML;
@@ -6782,6 +6800,9 @@ function promptClarification(filename, issues) {
       <div class="pause-desc" style="margin-bottom:0.75rem;">
         Claude couldn't confidently identify some details in <strong>${escHtml(filename.slice(0,40))}</strong>.
         Please clarify before importing.
+      </div>
+      <div id="clarify-preview" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:0.75rem;display:flex;align-items:center;justify-content:center;min-height:80px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);">Loading preview…</span>
       </div>`;
 
     for (const issue of issues) {
@@ -6822,6 +6843,38 @@ function promptClarification(filename, issues) {
     </div>`;
 
     box.innerHTML = html;
+
+    // Render first page preview if we have a fileId
+    if (fileId) {
+      (async () => {
+        try {
+          const previewEl = document.getElementById('clarify-preview');
+          if (!previewEl) return;
+          const blob = await fetchDriveFileBlob(fileId);
+          const ext = filename.split('.').pop().toLowerCase();
+          if (ext === 'pdf' && window.pdfjsLib) {
+            const arrayBuf = await blob.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 1 });
+            const scale = Math.min(320 / viewport.width, 200 / viewport.height);
+            const scaled = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = scaled.width;
+            canvas.height = scaled.height;
+            canvas.style.cssText = 'max-width:100%;border-radius:6px;';
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaled }).promise;
+            previewEl.innerHTML = '';
+            previewEl.appendChild(canvas);
+          } else {
+            previewEl.innerHTML = `<span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);">Preview not available — <a href="https://drive.google.com/file/d/${fileId}/view" target="_blank" style="color:var(--accent);">open in Drive ↗</a></span>`;
+          }
+        } catch(e) {
+          const previewEl = document.getElementById('clarify-preview');
+          if (previewEl) previewEl.innerHTML = `<span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);">Preview failed — <a href="https://drive.google.com/file/d/${fileId}/view" target="_blank" style="color:var(--accent);">open in Drive ↗</a></span>`;
+        }
+      })();
+    }
 
     // Wire mutual-clear between cat dropdown and new-cat text field
     const _catSel = document.getElementById('clarify-cat');
@@ -8199,7 +8252,7 @@ MEDICATIONS: tag supplement:true for vitamins/supplements/nutraceuticals. Dedupl
 SKIP: costs, billing, boilerplate, appointment reminders, legal text, product marketing, feeding plans, kcal. "Reminders", "Services Due", "Due Date" sections listing future preventive care are NOT visits — skip entirely.
 
 Return JSON only, no markdown:
-{"skip":false,"isAmendment":false,"cats":["Bella"],"dates":["2025-05-13"],"visits":[{"cat":"Bella","date":"2025-05-13","clinic":"City Vet","doctor":"Dr. Smith","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Mocha","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
+{"skip":false,"isAmendment":false,"cats":["Bella"],"dates":["2025-05-13"],"visits":[{"cat":"Bella","date":"2025-05-13","clinic":"City Vet","doctor":"Dr. Smith","chiefComplaint":"weight loss, alopecia","synopsis":"2-4 sentence factual summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164},"narrative":"HISTORY\n...\n\nPHYSICAL EXAM\n...\n\nASSESSMENT\n...\n\nPLAN\n...","confidence":0.9,"flags":[]}],"labs":[{"cat":"Bella","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry"}],"pcr":[],"flags":[]}
 
 INVOICES: Extract meds dispensed, vaccines given, procedures with dates. Store as docType:"Invoice". Set chiefComplaint to a brief clinical description of why they were likely there (ignore fees/syringes/admin items).
 Only skip if truly empty of all clinical content → {"skip":true}
