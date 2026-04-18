@@ -331,13 +331,14 @@ async function findEmptyFiles() {
   btn.disabled = true;
   btn.textContent = 'Scanning…';
 
-  try {
-    // Load all complete/flagged files
-    const filesSnap = await getDocs(query(collection(db, 'files'),
-      where('status', 'in', ['complete', 'flagged'])));
-    if (filesSnap.empty) { alert('No completed files found.'); return; }
+  // Remove any previous results panel
+  document.getElementById('empty-files-panel')?.remove();
 
-    // Load all visits and labs, group by driveFileId
+  try {
+    // Load ALL files regardless of status
+    const filesSnap = await getDocs(collection(db, 'files'));
+    if (filesSnap.empty) { alert('No files found in Firestore.'); return; }
+
     const [visitsSnap, labsSnap] = await Promise.all([
       getDocs(collection(db, 'visits')),
       getDocs(collection(db, 'labs'))
@@ -349,32 +350,72 @@ async function findEmptyFiles() {
     }));
     const fileHasLab = new Set(labsSnap.docs.map(d => d.data().driveFileId).filter(Boolean));
 
-    const emptyFiles = filesSnap.docs.filter(d => {
-      const id = d.data().driveFileId || d.id;
-      return !fileHasVisit.has(id) && !fileHasLab.has(id);
+    // All files with no associated records, grouped by status
+    const emptyByStatus = {};
+    filesSnap.docs.forEach(d => {
+      const data = d.data();
+      const id = data.driveFileId || d.id;
+      const status = data.status || 'unprocessed';
+      if (!fileHasVisit.has(id) && !fileHasLab.has(id)) {
+        if (!emptyByStatus[status]) emptyByStatus[status] = [];
+        emptyByStatus[status].push({ docId: d.id, fileId: id, filename: data.filename || id, status });
+      }
     });
 
-    if (!emptyFiles.length) {
-      alert('All completed files have associated records — no empty files found.');
-      return;
-    }
+    const allEmpty = Object.values(emptyByStatus).flat();
 
-    // Show results and offer to reset
-    const list = emptyFiles.map(d => `  • ${d.data().filename || d.id}`).join('\n');
-    const reset = confirm(`Found ${emptyFiles.length} completed file(s) with no associated records:\n\n${list}\n\nReset these to "unprocessed" so they can be re-imported?`);
+    // Build results panel
+    const panel = document.createElement('div');
+    panel.id = 'empty-files-panel';
+    panel.style.cssText = 'background:white;border:1px solid var(--border);border-radius:10px;padding:1.25rem;margin:1rem 0;';
 
-    if (reset) {
-      for (const d of emptyFiles) {
-        await setDoc(doc(db, 'files', d.id), { status: 'unprocessed', updatedAt: new Date().toISOString() }, { merge: true });
+    if (!allEmpty.length) {
+      panel.innerHTML = '<p style="font-family:JetBrains Mono,monospace;font-size:0.72rem;color:var(--green);">✓ All files have associated records — nothing empty.</p>';
+    } else {
+      const statusOrder = ['complete', 'flagged', 'failed', 'processing', 'unprocessed', 'empty'];
+      let html = `<div style="font-family:JetBrains Mono,monospace;font-size:0.75rem;font-weight:700;margin-bottom:0.75rem;">Found ${allEmpty.length} file(s) with no records:</div>`;
+
+      for (const status of statusOrder) {
+        const group = emptyByStatus[status];
+        if (!group?.length) continue;
+        html += `<div style="margin-bottom:0.75rem;">
+          <div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);margin-bottom:0.3rem;">${status} (${group.length})</div>
+          ${group.map(f => `<div style="font-family:JetBrains Mono,monospace;font-size:0.65rem;padding:0.15rem 0;color:var(--ink-dim);">• ${escapeHtml(f.filename)}</div>`).join('')}
+        </div>`;
       }
-      alert(`${emptyFiles.length} file(s) reset to unprocessed. Re-import them in Paw Records.`);
+
+      // Only offer to reset non-unprocessed ones
+      const resettable = allEmpty.filter(f => f.status !== 'unprocessed');
+      if (resettable.length) {
+        html += `<button id="do-reset-btn" style="margin-top:0.5rem;padding:0.4rem 0.8rem;font-family:JetBrains Mono,monospace;font-size:0.65rem;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;">Reset ${resettable.length} to unprocessed</button>`;
+      }
+      panel.innerHTML = html;
+
+      if (resettable.length) {
+        panel.querySelector('#do-reset-btn').onclick = async () => {
+          panel.querySelector('#do-reset-btn').disabled = true;
+          panel.querySelector('#do-reset-btn').textContent = 'Resetting…';
+          for (const f of resettable) {
+            await setDoc(doc(db, 'files', f.docId), { status: 'unprocessed', updatedAt: new Date().toISOString() }, { merge: true });
+          }
+          panel.querySelector('#do-reset-btn').textContent = `✓ ${resettable.length} file(s) reset`;
+        };
+      }
     }
+
+    // Insert after the button row
+    document.querySelector('.header').after(panel);
+
   } catch(e) {
     alert('Error: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Find Empty Files';
   }
+}
+
+function escapeHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── MAIN AUDIT ──
