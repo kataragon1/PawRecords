@@ -1350,6 +1350,7 @@ async function loadPetProfiles() {
     renderCatFocusPills();
     // Re-render journal so cat chips pick up correct colors
     if (_journalDocsCache) renderJournalSidebar(_journalDocsCache);
+    else if (_activeTab === 'journal') loadJournalSidebar();
   } catch(e) { console.warn('Pet profiles load failed:', e.message); }
 }
 
@@ -1395,7 +1396,7 @@ function openPetProfilesModal() {
   const cats = APP_PETS.length ? APP_PETS : [];
 
   const DEFAULT_CAT_COLORS = { };
-  const DEFAULT_PALETTE = ['#f9a8d4','#bfdbfe','#bbf7d0','#fde68a','#e9d5ff','#fed7aa'];
+  const DEFAULT_COLOR = '#e4e0d8';
   const DEFAULT_EMOJI = '🐱';
   const EMOJI_OPTIONS = ['🐱','🐶','🐰','🐹','🐦','🐠','🦜','🐍'];
 
@@ -1419,7 +1420,7 @@ function openPetProfilesModal() {
   const inputs = {};
   cats.forEach((cat, idx) => {
     const bd = _petProfiles[cat]?.birthdate || '';
-    const color = _petProfiles[cat]?.color || DEFAULT_PALETTE[idx % DEFAULT_PALETTE.length];
+    const color = _petProfiles[cat]?.color || DEFAULT_COLOR;
     const emoji = _petProfiles[cat]?.emoji || DEFAULT_EMOJI;
 
     const row = document.createElement('div');
@@ -3625,6 +3626,8 @@ function showDriveConnectPrompt(message) {
   if (dot) dot.className = 'status-dot amber';
   const statusEl = $('drive-status');
   if (statusEl) statusEl.textContent = 'Drive disconnected';
+  // Show alert bar visible on any tab
+  showAlert(`Drive disconnected — ${message}`);
   // Reset load timer so reconnect attempt runs immediately
   window._driveLastLoaded = 0;
 }
@@ -7129,12 +7132,9 @@ function jCats(j) {
 }
 
 // Cat color — returns the profile color for a cat, with fallback palette
-const _CAT_COLOR_FALLBACK = ['#f9a8d4','#bfdbfe','#bbf7d0','#fde68a','#e9d5ff','#fed7aa'];
+const _CAT_COLOR_FALLBACK = '#e4e0d8'; // gray — user sets their own color in pet profiles
 function catColor(catName) {
-  if (_petProfiles[catName]?.color) return _petProfiles[catName].color;
-  const idx = APP_PETS.indexOf(catName);
-  if (idx < 0) return '#e4e0d8'; // gray until profiles load
-  return _CAT_COLOR_FALLBACK[idx % _CAT_COLOR_FALLBACK.length];
+  return _petProfiles[catName]?.color || _CAT_COLOR_FALLBACK;
 }
 function catEmoji(catName) {
   return _petProfiles[catName]?.emoji || '🐾';
