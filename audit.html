@@ -380,7 +380,7 @@ async function findEmptyFiles() {
         if (!group?.length) continue;
         html += `<div style="margin-bottom:0.75rem;">
           <div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--ink-muted);margin-bottom:0.3rem;">${status} (${group.length})</div>
-          ${group.map(f => `<div style="font-family:JetBrains Mono,monospace;font-size:0.65rem;padding:0.15rem 0;color:var(--ink-dim);">• ${escapeHtml(f.filename)}</div>`).join('')}
+          ${group.map(f => `<div style="font-family:JetBrains Mono,monospace;font-size:0.65rem;padding:0.15rem 0;color:var(--ink-dim);">• ${escapeHtml(f.filename)} <span style="color:var(--ink-muted);font-size:0.58rem;">[${escapeHtml(f.fileId)}]</span></div>`).join('')}
         </div>`;
       }
 
