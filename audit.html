@@ -117,6 +117,7 @@ tr:hover td{background:var(--surface);}
     </div>
     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
       <button class="btn" id="run-btn">Run Audit</button>
+      <button class="btn secondary" id="find-empty-btn">Find Empty Files</button>
       <button class="btn secondary" id="signout-btn">Sign out</button>
     </div>
   </div>
@@ -320,6 +321,60 @@ Return ONLY valid JSON — the merged visit record with all fields. No markdown,
   const data = await res.json();
   const raw = data.content.map(b=>b.text||'').join('').trim();
   return JSON.parse(raw.replace(/```json|```/g,'').trim());
+}
+
+// ── FIND EMPTY FILES ──
+$('find-empty-btn').addEventListener('click', findEmptyFiles);
+
+async function findEmptyFiles() {
+  const btn = $('find-empty-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+
+  try {
+    // Load all complete/flagged files
+    const filesSnap = await getDocs(query(collection(db, 'files'),
+      where('status', 'in', ['complete', 'flagged'])));
+    if (filesSnap.empty) { alert('No completed files found.'); return; }
+
+    // Load all visits and labs, group by driveFileId
+    const [visitsSnap, labsSnap] = await Promise.all([
+      getDocs(collection(db, 'visits')),
+      getDocs(collection(db, 'labs'))
+    ]);
+
+    const fileHasVisit = new Set(visitsSnap.docs.flatMap(d => {
+      const data = d.data();
+      return [...(data.driveFileIds || []), data.sourceFileId].filter(Boolean);
+    }));
+    const fileHasLab = new Set(labsSnap.docs.map(d => d.data().driveFileId).filter(Boolean));
+
+    const emptyFiles = filesSnap.docs.filter(d => {
+      const id = d.data().driveFileId || d.id;
+      return !fileHasVisit.has(id) && !fileHasLab.has(id);
+    });
+
+    if (!emptyFiles.length) {
+      alert('All completed files have associated records — no empty files found.');
+      return;
+    }
+
+    // Show results and offer to reset
+    const list = emptyFiles.map(d => `  • ${d.data().filename || d.id}`).join('\n');
+    const reset = confirm(`Found ${emptyFiles.length} completed file(s) with no associated records:\n\n${list}\n\nReset these to "unprocessed" so they can be re-imported?`);
+
+    if (reset) {
+      for (const d of emptyFiles) {
+        await setDoc(doc(db, 'files', d.id), { status: 'unprocessed', updatedAt: new Date().toISOString() }, { merge: true });
+      }
+      alert(`${emptyFiles.length} file(s) reset to unprocessed. Re-import them in Paw Records.`);
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Find Empty Files';
+  }
 }
 
 // ── MAIN AUDIT ──

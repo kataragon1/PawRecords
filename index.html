@@ -94,9 +94,9 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .cabinet-tab{background:#e8e0d0;border:1px solid #c8bfae;border-bottom:none;border-radius:4px 7px 0 0;padding:3px 9px 4px;font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:#5a5045;letter-spacing:0.04em;white-space:nowrap;cursor:pointer;transition:background 0.1s;flex-shrink:0;}
 .cabinet-tab:hover{background:#ddd5c2;}
 .cabinet-tab.active{background:#f7f4ee;border-bottom:1px solid #f7f4ee;position:relative;z-index:2;}
-.cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.65rem;color:#8a7d6e;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.7;transition:opacity 0.1s;}
-.cabinet-arrow:hover{opacity:1;}
-.cabinet-arrow:disabled{opacity:0.2;cursor:default;}
+.cabinet-arrow{background:none;border:none;cursor:pointer;font-size:0.65rem;color:#5a4e42;padding:2px 4px;flex-shrink:0;align-self:flex-end;padding-bottom:4px;opacity:0.85;transition:opacity 0.1s;}
+.cabinet-arrow:hover{opacity:1;color:#2a2520;}
+.cabinet-arrow:disabled{opacity:0.25;cursor:default;}
 .cabinet-body{border:1px solid #c8bfae;border-radius:0 4px 4px 4px;background:#f7f4ee;min-height:32px;}
 .visit-date-group{margin-bottom:0.1rem;}
 .visit-date-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--ink-dim);font-weight:600;transition:background 0.12s;}
@@ -160,6 +160,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .file-status-badge.complete{background:var(--green-bg);color:var(--green);}
 .file-status-badge.flagged{background:var(--red-bg);color:var(--red);}
 .file-status-badge.failed{background:var(--red-bg);color:var(--red);}
+.file-status-badge.empty{background:var(--surface2);color:var(--ink-muted);border:1px solid var(--border);}
 .file-item-meta{display:flex;align-items:center;gap:0.5rem;font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--ink-muted);}
 .file-cats{color:var(--accent);}
 .files-loading{padding:1.5rem;font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink-muted);text-align:center;}
@@ -570,7 +571,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div class="sidebar-panel" id="panel-notes">
       <div id="notes-add-row" style="padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:0.35rem;flex-shrink:0;">
         <div style="display:flex;gap:0.35rem;align-items:center;">
-          <input id="notes-input" placeholder="Add a note…" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;transition:border-color 0.2s;">
+          <textarea id="notes-input" placeholder="Add a note… (Shift+Enter for new line)" rows="1" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:0.68rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;transition:border-color 0.2s;resize:none;overflow:hidden;line-height:1.45;"></textarea>
           <button id="notes-pin-toggle" title="Pin this note" style="background:none;border:1px solid var(--border);border-radius:6px;padding:0.25rem 0.4rem;font-size:0.75rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;line-height:1;">📌</button>
           <button id="notes-add-btn" class="btn-icon free-icon" style="padding:0.25rem 0.5rem;font-size:0.62rem;"><span class="free-dot"></span> Add</button>
         </div>
@@ -1758,11 +1759,13 @@ function renderRecordsTree(tree) {
       tabsScroll.innerHTML = '';
       const visible = tabEls.slice(tabOffset, tabOffset + TABS_VISIBLE);
       visible.forEach(t => tabsScroll.appendChild(t.el));
-      leftBtn.disabled = tabOffset >= tabEls.length - TABS_VISIBLE;
-      rightBtn.disabled = tabOffset <= 0;
+      // tabEls[0]=newest. tabOffset=0 shows newest on left.
+      leftBtn.disabled = tabOffset <= 0;                             // already at newest
+      rightBtn.disabled = tabOffset >= tabEls.length - TABS_VISIBLE; // already at oldest
     };
 
-    years.forEach((year, i) => {
+    // Build tabs newest-first so left=newest, right=older
+    years.forEach((year) => {
       const count = yearMap[year].reduce((sum, d) => sum + dates[d].length, 0);
       const tabEl = document.createElement('div');
       tabEl.className = 'cabinet-tab' + (year === activeYear ? ' active' : '');
@@ -1771,15 +1774,15 @@ function renderRecordsTree(tree) {
       tabEls.push({ year, el: tabEl });
     });
 
-    // Newest years on right — offset starts so most recent (index 0) is rightmost visible
-    tabOffset = Math.max(0, tabEls.length - TABS_VISIBLE);
+    // Start at offset 0 — shows newest years on the left
+    tabOffset = 0;
 
     leftBtn.addEventListener('click', () => {
-      tabOffset = Math.min(tabEls.length - 1, tabOffset + 1);
+      tabOffset = Math.max(0, tabOffset - 1); // scroll left = newer years
       renderTabs();
     });
     rightBtn.addEventListener('click', () => {
-      tabOffset = Math.max(0, tabOffset - 1);
+      tabOffset = Math.min(tabEls.length - TABS_VISIBLE, tabOffset + 1); // scroll right = older
       renderTabs();
     });
 
@@ -2443,7 +2446,6 @@ function initFlowsheetSearch(body) {
     modeBtn.style.color = _flowsheetFilterMode ? 'var(--accent)' : 'var(--ink-muted)';
     modeBtn.style.borderColor = _flowsheetFilterMode ? 'var(--accent)' : 'var(--border)';
     newInput.placeholder = _flowsheetFilterMode ? 'Filter test…' : 'Search test…';
-    // Show prev/next only in search mode
     newPrev.style.display = _flowsheetFilterMode ? 'none' : '';
     newNext.style.display = _flowsheetFilterMode ? 'none' : '';
   };
@@ -3376,7 +3378,7 @@ function filterFiles(filter) {
     let show = false;
     if (filter === 'all') show = true;
     else if (filter === 'done') show = (status === 'complete' || status === 'flagged');
-    else if (filter === 'unprocessed') show = (status === 'unprocessed' || status === 'failed');
+    else if (filter === 'unprocessed') show = (status === 'unprocessed' || status === 'failed' || status === 'empty');
     else show = (status === filter);
     el.style.display = show ? 'flex' : 'none';
   });
@@ -3821,7 +3823,7 @@ function renderFilesList(driveFiles, statusMap) {
   }, 0);
 
   const total = sorted.length;
-  const unprocessed = sorted.filter(f => !statusMap[f.id] || statusMap[f.id] === 'unprocessed').length;
+  const unprocessed = sorted.filter(f => !statusMap[f.id] || statusMap[f.id] === 'unprocessed' || statusMap[f.id] === 'empty').length;
 
   for (const file of sorted) {
     const status = statusMap[file.id] || 'unprocessed';
@@ -3934,7 +3936,7 @@ function updateProcessButtons() {
     selBtn.style.display = 'none';
     allBtn.style.display = 'inline-flex';
     const unprocessed = [...document.querySelectorAll('.file-item')].filter(el =>
-      el.dataset.status === 'unprocessed' || el.dataset.status === 'failed').length;
+      el.dataset.status === 'unprocessed' || el.dataset.status === 'failed' || el.dataset.status === 'empty').length;
     hint.textContent = unprocessed ? `${unprocessed} unprocessed` : 'all files processed';
     allBtn.disabled = !unprocessed;
   }
@@ -3953,7 +3955,7 @@ $('process-selected-btn').addEventListener('click', () => {
 
 $('process-all-btn').addEventListener('click', () => {
   const items = [...document.querySelectorAll('.file-item')]
-    .filter(el => el.dataset.status === 'unprocessed' || el.dataset.status === 'failed')
+    .filter(el => el.dataset.status === 'unprocessed' || el.dataset.status === 'failed' || el.dataset.status === 'empty')
     .map(el => ({
       id: el.dataset.fileId, name: el.dataset.fileName, mimeType: el.dataset.mimeType, size: 0
     }));
@@ -4756,7 +4758,10 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
   // Low-confidence annotations and informational notes don't need the file marked flagged.
   const ACTIONABLE_FLAG_TYPES = ['no_date', 'no_cats', 'unknown_type', 'chunk_skipped'];
   const actionableFlags = allFlags.filter(f => ACTIONABLE_FLAG_TYPES.includes(f.type));
-  const finalStatus = actionableFlags.length > 0 ? 'flagged' : 'complete';
+  const hasData = allVisits.length > 0 || allLabs.length > 0;
+  const finalStatus = !hasData ? 'empty'
+    : actionableFlags.length > 0 ? 'flagged'
+    : 'complete';
   await writeFileStatus(file.id, file.name, finalStatus, {
     cats: [...allCats],
     datesCovered: [...allDates].sort(),
@@ -5985,7 +5990,7 @@ async function writeFileStatus(fileId, filename, status, extra = {}) {
 
 // ── CLAUDE EXTRACTION PASSES ──
 
-function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. If the record mentions the patient's date of birth or birth year, include it as "birthdate" in YYYY-MM-DD format (use YYYY-01-01 if only year is known) on the visit object. Never truncate or omit clinical data.`; }
+function getSystemExtraction() { return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. If the record mentions the patient's date of birth or birth year, include it as "birthdate" in YYYY-MM-DD format (use YYYY-01-01 if only year is known) on the visit object. Never truncate or omit clinical data. IMPORTANT: For lab values, always output valid JSON — never use bare < or > characters in values. For results reported as "< 0.1" or "> 100", encode as the string "<0.1" or ">100". For qualitative results like "ADEQUATE" or "NORMAL", use the string as the value. Reference ranges with < or > should be set to null rather than including the operator.`; }
 
 async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
@@ -6027,7 +6032,14 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     }
     if (!res2.ok) { const e2 = await res2.json().catch(()=>({})); throw new Error(e2?.error?.message||`API ${res2.status}`); }
     const d2 = await res2.json();
-    try { return JSON.parse(d2.content.map(b=>b.text||'').join('').trim().replace(/^```json\n?|^```\n?|```$/gm,'').trim()); } catch { return null; }
+    try { 
+      const d2raw = d2.content.map(b=>b.text||'').join('').trim()
+        .replace(/^```json\n?|^```\n?|```$/gm,'').trim()
+        .replace(/"value"\s*:\s*<\s*([\d.]+)/g, (_, n) => `"value": "<${n}"`)
+        .replace(/"refLow"\s*:\s*<\s*([\d.]+)/g, () => `"refLow": null`)
+        .replace(/"refHigh"\s*:\s*<\s*([\d.]+)/g, () => `"refHigh": null`);
+      return JSON.parse(d2raw); 
+    } catch { return null; }
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -6057,9 +6069,18 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
   }
   const raw = data.content.map(b => b.text || '').join('').trim();
   try {
-    return JSON.parse(raw.replace(/^```json\n?|^```\n?|```$/gm, '').trim());
-  } catch {
-    console.warn('JSON parse failed, raw:', raw.slice(0,200));
+    const cleaned = raw
+      .replace(/^```json\n?|^```\n?|```$/gm, '')
+      .trim()
+      // Sanitize < and > prefixed numeric values that break JSON
+      // e.g. "value": < 0.1  →  "value": 0.05  (store as near-zero)
+      // e.g. "value": "<0.1"  stays as string — handled by display layer
+      .replace(/"value"\s*:\s*<\s*([\d.]+)/g, (_, n) => `"value": "<${n}"`)
+      .replace(/"refLow"\s*:\s*<\s*([\d.]+)/g, (_, n) => `"refLow": null`)
+      .replace(/"refHigh"\s*:\s*<\s*([\d.]+)/g, (_, n) => `"refHigh": null`);
+    return JSON.parse(cleaned);
+  } catch(e) {
+    console.warn('JSON parse failed:', e.message, '\nRaw start:', raw.slice(0, 300));
     return null;
   }
 }
@@ -7358,14 +7379,22 @@ function makeNoteEl(note) {
   // Text — inline editable
   const textEl = document.createElement('div');
   textEl.className = 'note-text';
-  textEl.textContent = note.text;
+  textEl.style.whiteSpace = 'pre-wrap';
+  textEl.textContent = note.text; // preserves \n in DOM via pre-wrap
   textEl.contentEditable = 'true';
   textEl.spellcheck = false;
   textEl.style.outline = 'none';
-  textEl.addEventListener('blur', () => saveNoteText(note, textEl.textContent.trim()));
+  textEl.addEventListener('paste', e => {
+    // Strip formatting on paste
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text);
+  });
+  textEl.addEventListener('blur', () => saveNoteText(note, textEl.innerText.trim()));
   textEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); textEl.blur(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); textEl.blur(); }
     if (e.key === 'Escape') { textEl.textContent = note.text; textEl.blur(); }
+    // Shift+Enter inserts newline naturally in contentEditable
   });
   textWrap.appendChild(textEl);
 
@@ -7548,18 +7577,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const addBtn = $('notes-add-btn');
   const input = $('notes-input');
   if (addBtn && input) {
+    // Auto-resize textarea as content grows
+    const autoResize = () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    };
+    input.addEventListener('input', autoResize);
+
+    // Strip formatting on paste — plain text only
+    input.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      const start = input.selectionStart, end = input.selectionEnd;
+      const val = input.value;
+      input.value = val.slice(0, start) + text + val.slice(end);
+      input.selectionStart = input.selectionEnd = start + text.length;
+      autoResize();
+    });
+
     const doAdd = async () => {
       const text = input.value.trim();
       if (!text) return;
       await addNote(text, _notesCatSelection, _notesPinState);
       input.value = '';
+      input.style.height = 'auto';
       _notesCatSelection.clear();
       _notesPinState = false;
       if (pinToggle) { pinToggle.classList.remove('active'); pinToggle.title = 'Pin this note'; }
       document.querySelectorAll('.notes-cat-chip').forEach(c => c.classList.remove('active'));
     };
     addBtn.onclick = doAdd;
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doAdd(); }
+      // Shift+Enter inserts newline naturally (default textarea behavior)
+    });
   }
 });
 
@@ -9623,7 +9674,10 @@ function formatDate(d) {
 }
 function formatDateShort(d) {
   if (!d) return '';
-  try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  try {
+    const dt = new Date(d + 'T12:00:00');
+    return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear().toString().slice(2)}`;
+  }
   catch { return d; }
 }
 function formatSize(bytes) {
