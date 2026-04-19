@@ -4427,6 +4427,9 @@ async function processFile(file) {
     }
 
     console.log(`${file.name}: extracted visits=${result.visits?.length||0} labs=${result.labs?.length||0} pcr=${result.pcr?.length||0} flags=${result.flags?.length||0}`);
+    if (!result.labs?.length && (chunk.text||'').toLowerCase().match(/\b(rbc|hematocrit|hematology|creatinine|albumin|platelets|lymphocytes|chemistry)\b/)) {
+      console.warn(`${file.name}: labs expected but none extracted — chunk text (first 3000 chars):`, (chunk.text||'').slice(0,3000));
+    }
 
     (result.cats || []).forEach(c => allCats.add(c));
     (result.dates || []).forEach(d => allDates.add(d));
@@ -4933,7 +4936,26 @@ async function extractPdfText(blob) {
     for (let i = 1; i <= maxPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items.map(item => item.str).join(' ');
+      // Preserve column structure using y/x coordinates so lab tables survive extraction.
+      // Group items into lines by y-position (within 3pt tolerance), then sort by x within each line.
+      const lines = [];
+      for (const item of content.items) {
+        if (!item.str.trim()) continue;
+        const x = item.transform[4];
+        const y = item.transform[5];
+        const existing = lines.find(l => Math.abs(l.y - y) < 3);
+        if (existing) {
+          existing.items.push({ x, str: item.str });
+        } else {
+          lines.push({ y, items: [{ x, str: item.str }] });
+        }
+      }
+      // Sort lines top-to-bottom (descending y in PDF coords), items left-to-right
+      lines.sort((a, b) => b.y - a.y);
+      const pageText = lines.map(line => {
+        line.items.sort((a, b) => a.x - b.x);
+        return line.items.map(it => it.str).join('  ');
+      }).join('\n');
       text += pageText + '\n';
     }
     return stripBoilerplate(text.trim());
@@ -6080,8 +6102,17 @@ function attachJournalCtxMenu(el, item, cat, listName) {
 
 async function confirmDeleteJournalEntry(item) {
   if (!confirm(`Delete journal entry?\n"${item.text}"`)) return;
-  _journalDocsCache = null; invalidateChatContext(); await deleteDoc(doc(db, 'journal', item.id));
-  await loadJournalSidebar();
+  await deleteDoc(doc(db, 'journal', item.id));
+  invalidateChatContext();
+  // Bypass debounce — refresh sidebar immediately
+  _journalDocsCache = null;
+  _journalCache = null; _journalCacheTime = 0;
+  if (_journalSidebarDebounce) { clearTimeout(_journalSidebarDebounce); _journalSidebarDebounce = null; }
+  try {
+    const snap = await getDocs(query(collection(db, 'journal'), orderBy('addedDate', 'desc')));
+    _journalDocsCache = snap.docs.map(d => { const data = { id: d.id, ...d.data() }; data.list = normalizeListName(data.list); return data; });
+    renderJournalSidebar(_journalDocsCache);
+  } catch(err) { console.error('Journal reload error:', err); }
   showToast('Journal entry deleted ✓', 'journal');
 }
 
@@ -6163,8 +6194,9 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
     updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
   }
   // Check if response was truncated
+  const raw = data.content.map(b => b.text || '').join('').trim();
   if (data.stop_reason === 'max_tokens') {
-    console.warn(`Response truncated at ${maxTokens} tokens — retrying with higher limit`);
+    console.warn(`Response truncated at ${maxTokens} tokens (output: ${raw.length} chars) — retrying with higher limit`);
     if (maxTokens < 16000) {
       return callExtractionClaude(messages, Math.min(maxTokens * 2, 16000));
     }
@@ -6179,8 +6211,7 @@ async function callExtractionClaude(messages, maxTokens = 2000) {
       return { skip: false, visits: [], labs: [], pcr: [], flags: [{ type: 'chunk_skipped', description: 'Response truncated and could not be parsed — chunk data lost.' }] };
     }
   }
-  const raw = data.content.map(b => b.text || '').join('').trim();
-  console.log('Extraction raw response (first 500):', raw.slice(0, 500));
+  console.log('Extraction raw response (first 2000):', raw.slice(0, 2000));
   try {
     const cleaned = raw
       .replace(/^```json\n?|^```\n?|```$/gm, '')
@@ -6363,9 +6394,10 @@ If qualifier says H/L/* but value appears within reference range, TRUST THE QUAL
 Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
 PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
 
-LAB GROUPING — labGroup must equal the panel header exactly as printed on the lab report.
-Use the section heading from the document: "Chemistry", "CBC", "Urinalysis", "GI Panel",
-"Spec cPL", "T4", "Cobalamin/Folate", "FELV/FIV", etc. — whatever the lab called it.
+LAB GROUPING — labGroup must equal the panel header from the lab report, cleaned as follows:
+- Strip trailing reference numbers and parenthetical suffixes: "Hematology(1)" → "Hematology", "Chemistry(2)" → "Chemistry"
+- Map "Hematology" → "CBC" (they are the same panel)
+- Use the cleaned section heading: "Chemistry", "CBC", "Urinalysis", "GI Panel", "Spec cPL", "T4", "Cobalamin/Folate", "FELV/FIV", etc.
 Do NOT invent category names. Do NOT use "Endocrinology" unless the report says that.
 If tests are listed without a panel header, use the closest section heading above them.
 BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP instead.
@@ -8291,9 +8323,9 @@ H or HIGH qualifier → abnormal:"HIGH", L or LOW → abnormal:"LOW", blank → 
 For values expressed as "<N" keep the string as the value.
 
 IMPORTANT — LAB GROUPING:
-Set labGroup to the panel header exactly as printed on the lab report — "Chemistry", "CBC",
-"Urinalysis", "GI Panel", "Spec cPL", "T4", "FELV/FIV", etc. Use the section heading from
-the document. Do NOT invent categories or use "Endocrinology" unless the report says that.
+Set labGroup to the panel header, cleaned: strip trailing "(N)" suffixes ("Hematology(1)" → "Hematology"),
+and map "Hematology" → "CBC". Use section headings: "Chemistry", "CBC", "Urinalysis", "GI Panel",
+"Spec cPL", "T4", "FELV/FIV", etc. Do NOT invent categories or use "Endocrinology" unless the report says that.
 BLOOD PRESSURE: Do NOT put in labs. Store in vitals.BP instead.
 
 EXTRACT everything: visits with synopsis, chief complaint, medications (name/dose/freq/route/continuing/supplement flag),
