@@ -638,6 +638,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <span class="header-context" id="header-context"></span>
       </div>
       <div class="app-header-right">
+        <span id="cache-timer" style="display:none;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);padding:0.2rem 0.4rem;border:1px solid var(--border);border-radius:4px;" title="Prompt cache expires — first message after expiry costs more">⚡ <span id="cache-timer-val">5:00</span></span>
         <button class="btn-icon free-icon" id="chat-search-btn" title="Search conversation (Ctrl+F)">🔍</button>
         <button class="btn-icon free-icon" id="flags-btn" style="display:none">
           <span class="free-dot"></span> <span id="flags-count">0</span> Needs review
@@ -686,6 +687,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <!-- Cat focus pills -->
     <div id="cat-focus-bar" style="display:none;padding:0.3rem 1.25rem 0;align-items:center;gap:0.4rem;flex-wrap:wrap;border-top:1px solid var(--surface2);background:white;">
       <span style="font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--ink-muted);letter-spacing:0.06em;text-transform:uppercase;margin-right:0.2rem;flex-shrink:0;">Context:</span>
+      <button id="context-depth-btn" style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:0.55rem;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;color:var(--ink-muted);transition:all 0.15s;" title="Toggle between recent (6mo) and full history context">📅 Recent</button>
     </div>
 
     <!-- Chat input -->
@@ -1034,6 +1036,7 @@ let driveAccessToken = (() => { try { return sessionStorage.getItem('pr_drive_to
 let sessionCost = 0;
 let convHistory = [];
 let _chatFocusCats = null; // null = all cats; Set = focused subset
+let _chatFullContext = false; // false = recent (6mo); true = full history
 let pendingJournalItems = []; // queued during session, saved in batch
 let APP_PETS = []; // populated from visits collection on load — never hardcoded
 // mentionTracker and sessionActiveCat declared in journal section below
@@ -1510,9 +1513,13 @@ window.openPetProfilesModal = openPetProfilesModal;
 function renderCatFocusPills() {
   const bar = document.getElementById('cat-focus-bar');
   if (!bar || !APP_PETS.length) return;
-  const label = bar.querySelector('span:first-child');
   bar.innerHTML = '';
-  if (label) bar.appendChild(label);
+
+  // Context label
+  const label = document.createElement('span');
+  label.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.55rem;color:var(--ink-muted);letter-spacing:0.06em;text-transform:uppercase;margin-right:0.2rem;flex-shrink:0;';
+  label.textContent = 'Context:';
+  bar.appendChild(label);
 
   const allActive = !_chatFocusCats;
 
@@ -1520,7 +1527,7 @@ function renderCatFocusPills() {
   allPill.textContent = 'All cats';
   allPill.title = 'Include all cats in context';
   pillStyle(allPill, allActive);
-  allPill.addEventListener('click', () => { _chatFocusCats = null; renderCatFocusPills(); });
+  allPill.addEventListener('click', () => { _chatFocusCats = null; invalidateChatContext(); renderCatFocusPills(); });
   bar.appendChild(allPill);
 
   for (const cat of APP_PETS) {
@@ -1544,10 +1551,39 @@ function renderCatFocusPills() {
         _chatFocusCats.add(cat);
         if (_chatFocusCats.size === APP_PETS.length) _chatFocusCats = null;
       }
+      invalidateChatContext();
       renderCatFocusPills();
     });
     bar.appendChild(pill);
   }
+
+  // Context depth toggle — pushed to right
+  const depthBtn = document.createElement('button');
+  depthBtn.id = 'context-depth-btn';
+  depthBtn.style.cssText = 'margin-left:auto;font-family:\'JetBrains Mono\',monospace;font-size:0.55rem;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;transition:all 0.15s;flex-shrink:0;';
+  const updateDepthBtn = () => {
+    if (_chatFullContext) {
+      depthBtn.textContent = '📚 Full history';
+      depthBtn.style.background = 'var(--accent)';
+      depthBtn.style.color = 'white';
+      depthBtn.style.borderColor = 'var(--accent)';
+      depthBtn.title = 'Showing full history — click for recent only (6mo)';
+    } else {
+      depthBtn.textContent = '📅 Recent';
+      depthBtn.style.background = 'var(--surface)';
+      depthBtn.style.color = 'var(--ink-muted)';
+      depthBtn.style.borderColor = 'var(--border)';
+      depthBtn.title = 'Showing recent context (6mo) — click for full history';
+    }
+  };
+  updateDepthBtn();
+  depthBtn.addEventListener('click', () => {
+    _chatFullContext = !_chatFullContext;
+    invalidateChatContext();
+    updateDepthBtn();
+  });
+  bar.appendChild(depthBtn);
+
   bar.style.display = 'flex';
 }
 
@@ -4893,18 +4929,34 @@ async function extractPdfText(blob) {
     const arrayBuffer = await blob.arrayBuffer();
     const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
     let text = '';
-    const maxPages = pdf.numPages; // process all pages — chunking handles size limits
+    const maxPages = pdf.numPages;
     for (let i = 1; i <= maxPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
       const pageText = content.items.map(item => item.str).join(' ');
       text += pageText + '\n';
     }
-    return text.trim();
+    return stripBoilerplate(text.trim());
   } catch (err) {
     console.warn('PDF.js extraction failed:', err);
     return '';
   }
+}
+
+// Strip common veterinary document boilerplate to reduce extraction tokens
+function stripBoilerplate(text) {
+  if (!text) return text;
+  return text
+    // Remove repeated blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    // Remove common footer/header patterns
+    .replace(/^.*(thank you for choosing|thank you for visiting|this document is confidential|for questions.*please call|please call.*to schedule|if you have.*questions.*contact|portal\..*\.com|www\..*\.com|fax:?\s*\d[\d\s\-()]+|powered by|generated by|printed (on|for)|page \d+ of \d+|confidential.*do not distribute).*$/gim, '')
+    // Remove appointment reminder blocks
+    .replace(/your next appointment.*?\n/gi, '')
+    .replace(/reminder:.*?\n/gi, '')
+    // Remove excessive whitespace left by removals
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 async function pdfPageToBase64(blob) {
@@ -8902,17 +8954,45 @@ function saveCostSettings() {
 }
 
 // Override updateSessionCost to use configurable thresholds and track all-time
-function updateSessionCost(inputTokens, outputTokens) {
+let _cacheTimerInterval = null;
+let _cacheExpiresAt = null;
+
+function startCacheTimer() {
+  _cacheExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+  const timerEl = $('cache-timer');
+  const valEl = $('cache-timer-val');
+  if (!timerEl || !valEl) return;
+  timerEl.style.display = 'inline-flex';
+  timerEl.style.color = 'var(--ink-muted)';
+  timerEl.style.borderColor = 'var(--border)';
+
+  if (_cacheTimerInterval) clearInterval(_cacheTimerInterval);
+  _cacheTimerInterval = setInterval(() => {
+    const remaining = Math.max(0, _cacheExpiresAt - Date.now());
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    valEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (remaining <= 60000) {
+      timerEl.style.color = 'var(--amber)';
+      timerEl.style.borderColor = 'var(--amber)';
+    }
+    if (remaining === 0) {
+      clearInterval(_cacheTimerInterval);
+      timerEl.style.display = 'none';
+    }
+  }, 1000);
+}
   // Actual Anthropic pricing for claude-sonnet-4:
   // Input: $3/M, Output: $15/M
-  // Haiku: Input: $0.25/M, Output: $1.25/M (tracked separately via same fn)
-  // We receive total tokens — assume ~80% input, ~20% output as typical split
-  // when called with just one arg (legacy); when called with split use exact pricing
+  // Cache write: $3.75/M (25% more than input, one-time cost)
+  // Cache read: $0.30/M (90% cheaper than input)
   let cost;
   if (outputTokens !== undefined) {
-    cost = (inputTokens / 1000000) * 3.0 + (outputTokens / 1000000) * 15.0;
+    cost = (inputTokens / 1000000) * 3.0
+         + (outputTokens / 1000000) * 15.0
+         + (cacheReadTokens / 1000000) * 0.30
+         + (cacheWriteTokens / 1000000) * 3.75;
   } else {
-    // Single arg — use weighted blend: 80% input rate + 20% output rate = $6/M effective
     cost = (inputTokens / 1000000) * 6.0;
   }
   sessionCost += cost;
@@ -9143,8 +9223,9 @@ async function buildChatContext(userMessage) {
       if (!visits.length) continue;
       context += `\n\n## ${cat} — Visits\n`;
 
-      // Most recent 3: full synopsis
-      for (const v of visits.slice(0, 3)) {
+      // Most recent 3 (or all in full mode): full synopsis
+      const recentVisits = _chatFullContext ? visits : visits.slice(0, 3);
+      for (const v of recentVisits) {
         const location = v.source === 'home' ? '🏠 Home' : (v.clinic || '');
         context += `\n### ${v.date}${location ? ' · ' + location : ''}${v.doctor ? ' · ' + v.doctor : ''}${v.homeStatus ? ' [' + v.homeStatus + ']' : ''}\n`;
         if (v.chiefComplaint) context += `Chief complaint: ${v.chiefComplaint}\n`;
@@ -9155,8 +9236,9 @@ async function buildChatContext(userMessage) {
         }
       }
 
-      // Older visits: one-liner each — cap at 20 to control context size
-      if (visits.length > 3) {
+      // Older visits: one-liner each — cap at 20 in recent mode, all in full mode
+      const olderStart = _chatFullContext ? visits.length : 3; // no older visits in full mode — all shown above
+      if (!_chatFullContext && visits.length > 3) {
         context += `\nOlder visits:\n`;
         for (const v of visits.slice(3, 23)) {
           const synopsis = v.synopsis ? v.synopsis.split('.')[0] : (v.chiefComplaint || 'visit');
@@ -9176,7 +9258,7 @@ async function buildChatContext(userMessage) {
 
     for (const cat of targetCats) {
       const labs = _allLabsCache
-        .filter(l => l.cat === cat && (l.resultDate || l.visitDate || '') >= cutoff)
+        .filter(l => l.cat === cat && (_chatFullContext || (l.resultDate || l.visitDate || '') >= cutoff))
         .sort((a,b) => (b.resultDate||'') > (a.resultDate||'') ? 1 : -1);
 
       if (!labs.length) continue;
@@ -9722,12 +9804,30 @@ JOURNAL HINTS: If this conversation mentions anything that should be tracked in 
 </journal>
 The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all of them. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.` : '';
 
-  const system = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
+  const staticInstruction = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 You have access to their complete medical records, lab results, and care journal below.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
-If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.`;
 
-${context || '(No records loaded yet — records will appear after files are processed)'}${journalInstruction}`;
+  const contextBlock = context || '(No records loaded yet — records will appear after files are processed)';
+
+  // Use prompt caching — system is an array of blocks with cache_control on the large context block
+  // Static instructions + dynamic context are separate blocks so context can be cached independently
+  const systemBlocks = [
+    {
+      type: 'text',
+      text: staticInstruction
+    },
+    {
+      type: 'text',
+      text: contextBlock + journalInstruction,
+      cache_control: { type: 'ephemeral' } // cache the records context — saves ~85% on repeat messages
+    }
+  ];
+
+  // Use Haiku for simple questions, Sonnet for complex analysis
+  const isComplex = /\b(analyz|compar|trend|interpret|explain|why|correlat|diagnos|recommend|assess|evaluat|review|summariz|what.*cause|could.*be|should.*i|pattern|histor|over.*time|all.*visit|full.*record)\b/i.test(userMessage || '');
+  const model = isComplex ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
 
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -9737,13 +9837,25 @@ ${context || '(No records loaded yet — records will appear after files are pro
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system, messages: history })
+      body: JSON.stringify({ model, max_tokens: 1024, system: systemBlocks, messages: history })
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
+      if (data.usage) {
+        updateSessionCost(
+          data.usage.input_tokens||0,
+          data.usage.output_tokens||0,
+          data.usage.cache_read_input_tokens||0,
+          data.usage.cache_creation_input_tokens||0
+        );
+        if (data.usage.cache_read_input_tokens) {
+          console.log(`Cache hit: ${data.usage.cache_read_input_tokens} tokens read from cache (~90% discount)`);
+        }
+      }
+      startCacheTimer(); // reset 5-min countdown after each message
       return data.content.map(b => b.text || '').join('').trim();
     }
     const err = await res.json().catch(() => ({}));
