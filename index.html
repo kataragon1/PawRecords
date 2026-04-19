@@ -8982,6 +8982,8 @@ function startCacheTimer() {
     }
   }, 1000);
 }
+
+function updateSessionCost(inputTokens, outputTokens, cacheReadTokens = 0, cacheWriteTokens = 0) {
   // Actual Anthropic pricing for claude-sonnet-4:
   // Input: $3/M, Output: $15/M
   // Cache write: $3.75/M (25% more than input, one-time cost)
