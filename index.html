@@ -2298,12 +2298,21 @@ function renderLabsSidebar() {
   sel.addEventListener('change', () => { flowsheetCat = sel.value; renderLabsSidebar(); });
   controls.appendChild(sel);
 
+  const flowsheetRow = document.createElement('div');
+  flowsheetRow.style.cssText = 'display:flex;align-items:center;gap:0.4rem;margin-top:0.35rem;';
+  const fsLink = document.createElement('button');
+  fsLink.style.cssText = 'background:none;border:none;cursor:pointer;font-family:JetBrains Mono,monospace;font-size:0.58rem;color:var(--accent);padding:0;letter-spacing:0.02em;text-decoration:underline;flex:1;text-align:left;';
+  fsLink.textContent = '↗ View Full Flowsheet';
+  fsLink.addEventListener('click', () => openFlowsheetModal(flowsheetCat, null));
+  flowsheetRow.appendChild(fsLink);
   const mgBtn = document.createElement('button');
   mgBtn.className = 'btn-icon';
-  mgBtn.style.cssText = 'margin-top:0.4rem;width:100%;font-size:0.6rem;padding:0.2rem 0.5rem;justify-content:center;';
-  mgBtn.textContent = '⚙ Manage Groups & Duplicates';
+  mgBtn.style.cssText = 'font-size:0.58rem;padding:0.15rem 0.4rem;flex-shrink:0;';
+  mgBtn.title = 'Manage Groups & Duplicates';
+  mgBtn.textContent = '⚙';
   mgBtn.addEventListener('click', openLabGroupManager);
-  controls.appendChild(mgBtn);
+  flowsheetRow.appendChild(mgBtn);
+  controls.appendChild(flowsheetRow);
 
   container.appendChild(controls);
 
@@ -2957,7 +2966,7 @@ function renderJournalSidebar(docs) {
     : docs.filter(j => jCats(j).includes(_journalActiveCat));
 
   // Clear existing rendered sections
-  container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
+  container.querySelectorAll('.journal-cat-section, .journal-list-section').forEach(el => el.remove());
 
   if (!visibleDocs.length) return;
 
@@ -9271,7 +9280,6 @@ async function buildChatContext(userMessage) {
       }
 
       // Older visits: one-liner each — cap at 20 in recent mode, all in full mode
-      const olderStart = _chatFullContext ? visits.length : 3; // no older visits in full mode — all shown above
       if (!_chatFullContext && visits.length > 3) {
         context += `\nOlder visits:\n`;
         for (const v of visits.slice(3, 23)) {
