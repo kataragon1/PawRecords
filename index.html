@@ -2960,6 +2960,32 @@ function renderJournalSidebar(docs) {
   tabBar.appendChild(makeTab('All', 'all'));
   for (const cat of allCatsInJournal) tabBar.appendChild(makeTab(cat, cat));
 
+  // Legend info button
+  const infoBtn = document.createElement('span');
+  infoBtn.textContent = 'ⓘ';
+  infoBtn.title = 'Status legend';
+  infoBtn.style.cssText = 'margin-left:auto;padding:0.4rem 0.5rem;font-size:0.65rem;color:var(--ink-muted);cursor:pointer;flex-shrink:0;';
+  infoBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const existing = document.getElementById('journal-legend-popup');
+    if (existing) { existing.remove(); return; }
+    const pop = document.createElement('div');
+    pop.id = 'journal-legend-popup';
+    pop.style.cssText = 'position:absolute;top:2.2rem;right:0.5rem;z-index:50;background:white;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;box-shadow:0 4px 16px rgba(0,0,0,0.12);font-family:JetBrains Mono,monospace;font-size:0.62rem;display:flex;flex-direction:column;gap:0.35rem;min-width:160px;';
+    pop.innerHTML = [
+      '<div style="font-weight:700;color:var(--ink);margin-bottom:0.1rem;letter-spacing:0.04em;">STATUS LEGEND</div>',
+      '<div style="color:var(--ink);">● current — active now</div>',
+      '<div style="background:var(--blue-bg);color:var(--blue);border-radius:3px;padding:1px 5px;">● plan — considering / upcoming</div>',
+      '<div style="background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:1px 5px;">● maybe — uncertain / potential</div>',
+      '<div style="background:var(--surface2);color:var(--ink-muted);border-radius:3px;padding:1px 5px;text-decoration:line-through;opacity:0.8;">● past — discontinued / resolved</div>',
+    ].join('');
+    const closeOnOutside = (ev) => { if (!pop.contains(ev.target) && ev.target !== infoBtn) { pop.remove(); document.removeEventListener('click', closeOnOutside); } };
+    setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+    tabBar.style.position = 'relative';
+    tabBar.appendChild(pop);
+  });
+  tabBar.appendChild(infoBtn);
+
   // Filter docs for active tab
   const visibleDocs = _journalActiveCat === 'all'
     ? docs
@@ -9838,13 +9864,14 @@ function _messageHasJournalIntent(userMessage) {
 async function callClaude(history, context, userMessage) {
   const includeJournalHint = _messageHasJournalIntent(userMessage || '');
 
-  const journalInstruction = includeJournalHint ? `
+  // Always include journal instruction — Claude only emits the block when genuinely relevant
+  const journalInstruction = `
 
-JOURNAL HINTS: If this conversation mentions anything that should be tracked in the care journal (new medications, diet changes, supplements), append a <journal> block at the very end of your response — after all your normal text — in this exact format. Only include it when there is genuinely something new to track. Never include it for general questions.
+JOURNAL HINTS: If this conversation mentions anything new or changed that should be tracked in the care journal (medications, diet, supplements, symptoms, status changes), append a <journal> block at the very end of your response — after all your normal text. Only include it when there is genuinely something new to track. Never include it for purely informational questions with no actionable updates.
 <journal>
 [{"cats":["Luna"],"list":"Medications","text":"Mirtazapine 1.875mg","dose":"every 3 days","status":"current"},{"cats":["Bella","Luna","Felix"],"list":"Supplements","text":"Psyllium husk","dose":"2.5g","status":"current"}]
 </journal>
-The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all of them. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.` : '';
+The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.`;
 
   const staticInstruction = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 You have access to their complete medical records, lab results, and care journal below.
@@ -9867,9 +9894,10 @@ If asked about supplements or nutrition, discuss thoroughly with context from th
     }
   ];
 
-  // Use Haiku for simple questions, Sonnet for complex analysis
-  const isComplex = /\b(analyz|compar|trend|interpret|explain|why|correlat|diagnos|recommend|assess|evaluat|review|summariz|what.*cause|could.*be|should.*i|pattern|histor|over.*time|all.*visit|full.*record)\b/i.test(userMessage || '');
-  const model = isComplex ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
+  // Use Haiku only for very simple factual lookups; Sonnet for everything else
+  // Journal hint tracking requires Sonnet — Haiku doesn't reliably emit the <journal> block format
+  const isSimpleLookup = /^(what (is|was|are|were) (latte|evie|mocha)\'?s? (weight|age|breed|birthday|last.*visit|current.*med|dose|vet)\??|how (old|much|many)|when (was|did|is)|what did .{0,30} weigh)$/i.test((userMessage||'').trim());
+  const model = isSimpleLookup ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-20250514';
 
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
