@@ -694,6 +694,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     <div class="chat-input-wrap">
       <div class="input-row">
         <textarea id="user-input" rows="1" placeholder="Ask anything about your pets…"></textarea>
+        <button id="model-toggle-btn" title="Haiku: fast &amp; cheap&#10;Click for Sonnet: deeper reasoning" style="background:none;border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.4rem;font-family:'JetBrains Mono',monospace;font-size:0.52rem;color:var(--ink-muted);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.15s;">H</button>
         <button id="send-btn" disabled title="Send (costs tokens)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -1583,6 +1584,35 @@ function renderCatFocusPills() {
     updateDepthBtn();
   });
   bar.appendChild(depthBtn);
+
+  // Export context button
+  const exportBtn = document.createElement('button');
+  exportBtn.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.55rem;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;background:var(--surface);color:var(--ink-muted);flex-shrink:0;';
+  exportBtn.textContent = '⎘ Export';
+  exportBtn.title = 'Export records as text to paste into Claude.ai';
+  exportBtn.addEventListener('click', async () => {
+    exportBtn.textContent = '…';
+    exportBtn.disabled = true;
+    try {
+      const prev = _chatFullContext;
+      _chatFullContext = true;
+      invalidateChatContext();
+      const ctx = await buildChatContext('full history export');
+      _chatFullContext = prev;
+      invalidateChatContext();
+      const cats = _chatFocusCats ? [..._chatFocusCats].join(', ') : APP_PETS.join(', ');
+      const header = `# Paw Records — ${cats}\nExported ${new Date().toLocaleDateString()}\n\nThis is a summary of veterinary records for my cat(s). Please use this as context for my questions.\n`;
+      const full = header + '\n' + ctx;
+      await navigator.clipboard.writeText(full);
+      exportBtn.textContent = '✓ Copied';
+      setTimeout(() => { exportBtn.textContent = '⎘ Export'; exportBtn.disabled = false; }, 2000);
+    } catch(e) {
+      exportBtn.textContent = '⎘ Export';
+      exportBtn.disabled = false;
+      showToast('Export failed: ' + e.message, 'warning');
+    }
+  });
+  bar.appendChild(exportBtn);
 
   bar.style.display = 'flex';
 }
@@ -2971,18 +3001,19 @@ function renderJournalSidebar(docs) {
     if (existing) { existing.remove(); return; }
     const pop = document.createElement('div');
     pop.id = 'journal-legend-popup';
-    pop.style.cssText = 'position:absolute;top:2.2rem;right:0.5rem;z-index:50;background:white;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;box-shadow:0 4px 16px rgba(0,0,0,0.12);font-family:JetBrains Mono,monospace;font-size:0.62rem;display:flex;flex-direction:column;gap:0.35rem;min-width:160px;';
+    // Position relative to the button, attached to body so it escapes overflow:hidden/auto containers
+    const rect = infoBtn.getBoundingClientRect();
+    pop.style.cssText = `position:fixed;top:${rect.bottom + 4}px;right:${window.innerWidth - rect.right}px;z-index:1000;background:white;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;box-shadow:0 4px 16px rgba(0,0,0,0.15);font-family:JetBrains Mono,monospace;font-size:0.62rem;display:flex;flex-direction:column;gap:0.35rem;min-width:170px;`;
     pop.innerHTML = [
       '<div style="font-weight:700;color:var(--ink);margin-bottom:0.1rem;letter-spacing:0.04em;">STATUS LEGEND</div>',
-      '<div style="color:var(--ink);">● current — active now</div>',
+      '<div style="color:var(--ink);padding:1px 0;">● current — active now</div>',
       '<div style="background:var(--blue-bg);color:var(--blue);border-radius:3px;padding:1px 5px;">● plan — considering / upcoming</div>',
       '<div style="background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:1px 5px;">● maybe — uncertain / potential</div>',
       '<div style="background:var(--surface2);color:var(--ink-muted);border-radius:3px;padding:1px 5px;text-decoration:line-through;opacity:0.8;">● past — discontinued / resolved</div>',
     ].join('');
     const closeOnOutside = (ev) => { if (!pop.contains(ev.target) && ev.target !== infoBtn) { pop.remove(); document.removeEventListener('click', closeOnOutside); } };
     setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
-    tabBar.style.position = 'relative';
-    tabBar.appendChild(pop);
+    document.body.appendChild(pop);
   });
   tabBar.appendChild(infoBtn);
 
@@ -3290,11 +3321,16 @@ function openJournalEdit(item) {
   datesRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;';
   const startWrap = document.createElement('div');
   startWrap.appendChild(mkLabel('Start Date'));
-  const startEl = mkInput('text', item.startDate || '', 'YYYY-MM-DD');
+  const startEl = mkInput('date', item.startDate || '', '');
   startWrap.appendChild(startEl);
   const endWrap = document.createElement('div');
   endWrap.appendChild(mkLabel('End Date'));
-  const endEl = mkInput('text', item.endDate || '', 'YYYY-MM-DD');
+  const endEl = mkInput('date', item.endDate || '', '');
+  // Auto-flip status to past when end date is set
+  endEl.addEventListener('change', () => {
+    if (endEl.value && statusSel.value === 'current') statusSel.value = 'past';
+    if (!endEl.value && statusSel.value === 'past') statusSel.value = 'current';
+  });
   endWrap.appendChild(endEl);
   datesRow.appendChild(startWrap);
   datesRow.appendChild(endWrap);
@@ -3322,14 +3358,18 @@ function openJournalEdit(item) {
       return;
     }
 
+    // Auto-flip to past if end date is set and not in the future
+    const endDateVal = endEl.value.trim() || null;
+    let resolvedStatus = statusSel.value || 'current';
+    if (endDateVal && endDateVal <= today && resolvedStatus === 'current') resolvedStatus = 'past';
     const data = {
       cats: selectedCats,
       list: listVal,
       text,
       dose: doseEl.value.trim() || null,
-      status: statusSel.value || 'current',
+      status: resolvedStatus,
       startDate: startEl.value.trim() || today,
-      endDate: endEl.value.trim() || null,
+      endDate: endDateVal,
     };
 
     try {
@@ -7172,6 +7212,17 @@ $('user-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 $('send-btn').addEventListener('click', sendMessage);
+window._useSonnet = false;
+$('model-toggle-btn').addEventListener('click', () => {
+  window._useSonnet = !window._useSonnet;
+  const btn = $('model-toggle-btn');
+  btn.textContent = window._useSonnet ? 'S' : 'H';
+  btn.style.color = window._useSonnet ? 'var(--accent)' : 'var(--ink-muted)';
+  btn.style.borderColor = window._useSonnet ? 'var(--accent)' : 'var(--border)';
+  btn.title = window._useSonnet
+    ? 'Sonnet: deeper reasoning (more $)\nClick for Haiku'
+    : 'Haiku: fast & cheap\nClick for Sonnet: deeper reasoning';
+});
 $('user-input').addEventListener('input', function() {
   this.style.height = 'auto';
   this.style.height = Math.min(this.scrollHeight, 120) + 'px';
@@ -7487,17 +7538,36 @@ function addPendingItem(item) {
   const t = item.text.trim();
   if (t.length < 3) return;
   if (/^(another|something|item|entry|medication|supplement|this|that|the|a|an|and|or|to|in|of|for)$/i.test(t)) return;
-  // Avoid duplicates — key on cats+text only, ignore status differences
   const itemCatsKey = jCats(item).sort().join(',');
   const key = `${itemCatsKey}_${t.toLowerCase()}`;
+  // Avoid duplicates against other pending items
   if (pendingJournalItems.some(p => {
     const pKey = `${jCats(p).sort().join(',')}_${(p.text||'').toLowerCase().trim()}`;
     return pKey === key;
   })) return;
+  // Avoid re-adding items already saved in the journal (current status only)
+  if (_journalDocsCache) {
+    const cats = jCats(item);
+    const alreadySaved = _journalDocsCache.some(j => {
+      const jc = jCats(j);
+      const textMatch = (j.text||'').toLowerCase().trim() === t.toLowerCase();
+      const catMatch = cats.length === 0 || cats.some(c => jc.includes(c));
+      return textMatch && catMatch && j.status !== 'past';
+    });
+    if (alreadySaved) return;
+  }
   item.id = Math.random().toString(36).slice(2,9);
   pendingJournalItems.push(item);
   if (_addPendingDebounce) clearTimeout(_addPendingDebounce);
-  _addPendingDebounce = setTimeout(() => { _addPendingDebounce = null; loadJournalSidebar(); }, 300);
+  // Force re-render even if journal cache hasn't changed — pending items changed
+  _addPendingDebounce = setTimeout(() => {
+    _addPendingDebounce = null;
+    if (_journalDocsCache) {
+      renderJournalSidebar(_journalDocsCache); // fast path — no Firestore needed
+    } else {
+      loadJournalSidebar();
+    }
+  }, 300);
 }
 
 function updateJournalBadge() {
@@ -8201,6 +8271,14 @@ async function runSaveSession(resumeData) {
         continue;
       }
     }
+    // Don't re-save if already in journal with same text + cat (could be a re-mention)
+    const alreadyExists = existingJournal.some(j => {
+      const jc = jCats(j);
+      return (j.text||'').toLowerCase().trim() === (item.text||'').toLowerCase().trim()
+        && itemCatsArr.some(c => jc.includes(c))
+        && j.status !== 'past';
+    });
+    if (alreadyExists) continue;
     fsBatch.set(doc(collection(db, 'journal')), {
       cats: itemCatsArr, list: item.list || 'General', text: item.text,
       dose: item.dose || null, status: item.status || 'current',
@@ -9894,10 +9972,8 @@ If asked about supplements or nutrition, discuss thoroughly with context from th
     }
   ];
 
-  // Use Haiku only for very simple factual lookups; Sonnet for everything else
-  // Journal hint tracking requires Sonnet — Haiku doesn't reliably emit the <journal> block format
-  const isSimpleLookup = /^(what (is|was|are|were) (latte|evie|mocha)\'?s? (weight|age|breed|birthday|last.*visit|current.*med|dose|vet)\??|how (old|much|many)|when (was|did|is)|what did .{0,30} weigh)$/i.test((userMessage||'').trim());
-  const model = isSimpleLookup ? 'claude-haiku-4-5-20251001' : 'claude-sonnet-4-20250514';
+  // Model: Haiku by default (cheap), Sonnet when user explicitly requests deeper reasoning
+  const model = window._useSonnet ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
 
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
