@@ -193,6 +193,10 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 /* Chat */
 .chat-body{flex:1;overflow-y:auto;padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem;scroll-behavior:smooth;}
 .chat-body::-webkit-scrollbar{width:4px;}
+.chat-scroll-btn{position:absolute;left:50%;transform:translateX(-50%);z-index:20;display:none;align-items:center;gap:0.3rem;background:rgba(255,255,255,0.92);border:1px solid var(--border);border-radius:20px;padding:0.25rem 0.75rem;font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:opacity 0.2s;white-space:nowrap;backdrop-filter:blur(4px);}
+.chat-scroll-btn:hover{color:var(--ink);border-color:var(--accent);}
+#scroll-top-btn{top:0.5rem;}
+#scroll-bot-btn{bottom:0.5rem;}
 .chat-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 .chat-welcome{max-width:500px;margin:auto;text-align:center;padding:2rem 0;}
 .chat-welcome h2{font-family:'Instrument Serif',serif;font-size:1.9rem;font-weight:400;margin-bottom:0.5rem;line-height:1.2;}
@@ -672,7 +676,9 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
     </div>
 
     <!-- Chat body -->
-    <div class="chat-body" id="chat-body">
+    <div class="chat-body" id="chat-body" style="position:relative;">
+      <button class="chat-scroll-btn" id="scroll-top-btn">↑ top</button>
+      <button class="chat-scroll-btn" id="scroll-bot-btn">↓ latest</button>
       <div class="chat-welcome" id="chat-welcome">
         <h2>All your pets,<br><em>one place.</em></h2>
         <p id="welcome-subtitle">Ask about medications, lab trends, visit history, or anything on your mind. Your records are loaded and ready.</p>
@@ -7212,6 +7218,22 @@ $('user-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 $('send-btn').addEventListener('click', sendMessage);
+
+// Scroll nav buttons
+{
+  const cb = $('chat-body');
+  const topBtn = $('scroll-top-btn');
+  const botBtn = $('scroll-bot-btn');
+  const updateScrollBtns = () => {
+    const fromTop = cb.scrollTop;
+    const fromBot = cb.scrollHeight - cb.scrollTop - cb.clientHeight;
+    topBtn.style.display = fromTop > 200 ? 'flex' : 'none';
+    botBtn.style.display = fromBot > 200 ? 'flex' : 'none';
+  };
+  cb.addEventListener('scroll', updateScrollBtns, { passive: true });
+  topBtn.addEventListener('click', () => cb.scrollTo({ top: 0, behavior: 'smooth' }));
+  botBtn.addEventListener('click', () => cb.scrollTo({ top: cb.scrollHeight, behavior: 'smooth' }));
+}
 window._useSonnet = false;
 $('model-toggle-btn').addEventListener('click', () => {
   window._useSonnet = !window._useSonnet;
