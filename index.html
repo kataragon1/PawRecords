@@ -1380,7 +1380,7 @@ function renderPetAges() {
       if (ageMs < 0) { ageEl.textContent = ''; return; }
       const years = Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
       const months = Math.floor((ageMs % (365.25 * 24 * 3600 * 1000)) / (30.44 * 24 * 3600 * 1000));
-      ageEl.textContent = years >= 1 ? `${years}yo` : `${months}mo`;
+      ageEl.textContent = years >= 1 ? (months > 0 ? `${years}y ${months}m` : `${years}y`) : `${months}m`;
     } catch { ageEl.textContent = ''; }
   });
 }
@@ -1608,7 +1608,40 @@ function renderCatFocusPills() {
       invalidateChatContext();
       const cats = _chatFocusCats ? [..._chatFocusCats].join(', ') : APP_PETS.join(', ');
       const header = `# Paw Records — ${cats}\nExported ${new Date().toLocaleDateString()}\n\nThis is a summary of veterinary records for my cat(s). Please use this as context for my questions.\n`;
-      const full = header + '\n' + ctx;
+
+      // Append journal entries (all statuses)
+      let journalSection = '';
+      try {
+        const targetCats = _chatFocusCats ? [..._chatFocusCats] : APP_PETS;
+        let jDocs = _journalDocsCache;
+        if (!jDocs) {
+          const snap = await getDocs(collection(db, 'journal'));
+          jDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+        const relevant = jDocs.filter(j => jCats(j).some(c => targetCats.includes(c)));
+        if (relevant.length) {
+          journalSection = '\n\n## Care Journal\n';
+          // Group by status
+          const byStatus = { current: [], plan: [], maybe: [], past: [] };
+          for (const j of relevant) {
+            const s = j.status || 'current';
+            if (byStatus[s]) byStatus[s].push(j);
+            else byStatus.current.push(j);
+          }
+          for (const [status, items] of Object.entries(byStatus)) {
+            if (!items.length) continue;
+            journalSection += `\n### ${status.charAt(0).toUpperCase() + status.slice(1)}\n`;
+            for (const j of items) {
+              const cats2 = jCats(j).join(', ') || '?';
+              const dose = j.dose ? ` (${j.dose})` : '';
+              const dates = j.startDate ? ` [since ${j.startDate}${j.endDate ? ' – ' + j.endDate : ''}]` : '';
+              journalSection += `- [${cats2}] ${j.list}: ${j.text}${dose}${dates}\n`;
+            }
+          }
+        }
+      } catch(je) { console.warn('Journal export failed:', je); }
+
+      const full = header + '\n' + ctx + journalSection;
       await navigator.clipboard.writeText(full);
       exportBtn.textContent = '✓ Copied';
       setTimeout(() => { exportBtn.textContent = '⎘ Export'; exportBtn.disabled = false; }, 2000);
@@ -2766,8 +2799,13 @@ function buildFlowsheetTable(cat, container) {
     const th = document.createElement('th');
     const d = new Date(date + 'T12:00:00');
     th.textContent = (d.getMonth()+1).toString().padStart(2,'0') + '/' + d.getDate().toString().padStart(2,'0') + '/' + d.getFullYear().toString().slice(2);
-    th.title = date;
-    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;top:0;z-index:2;min-width:72px;';
+    th.title = date + ' (right-click to delete all labs on this date)';
+    th.style.cssText = 'background:var(--surface);color:var(--ink-dim);padding:0.35rem 0.6rem;text-align:center;border:1px solid var(--border);border-right:none;font-weight:500;position:sticky;top:0;z-index:2;min-width:72px;cursor:context-menu;';
+    th.addEventListener('contextmenu', e => {
+      showCtxMenu(e, `${cat} · ${th.textContent}`, [
+        { label: '🗑 Delete all labs on this date', danger: true, action: () => confirmDeleteLabsByDate(date, cat) }
+      ]);
+    });
     hrow.appendChild(th);
   }
   hrow.appendChild(thTest);
@@ -4886,13 +4924,26 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
       if (!cat) continue;
       const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
 
-      if (isAmendment && _allLabsCache) {
-        const alreadyExists = _allLabsCache.some(l =>
+      // Always dedup — same cat+test+date regardless of whether this is an amendment
+      // Handles: bulk export + individual visit, same file imported twice, etc.
+      if (_allLabsCache) {
+        const existing = _allLabsCache.find(l =>
           l.cat === cat &&
           l.test === lab.test &&
           (l.resultDate === resolvedDate || l.visitDate === resolvedDate)
         );
-        if (alreadyExists) continue;
+        if (existing) {
+          // Only overwrite if new value is more specific:
+          // numeric replaces string (e.g. 175 replaces 'ADEQUATE')
+          // manual source never overwrites a machine result
+          const newIsNumeric = typeof lab.value === 'number';
+          const existingIsString = typeof existing.value === 'string';
+          const newIsManual = lab.source === 'manual';
+          const existingIsManual = existing.source === 'manual';
+          if (!(newIsNumeric && existingIsString) || newIsManual || existingIsManual === false) {
+            continue; // skip — existing is at least as good
+          }
+        }
       }
 
       fsBatch.set(doc(collection(db, 'labs')), sanitizeForFirestore({
@@ -4900,6 +4951,7 @@ async function writeExtractionToFirestore(file, allVisits, allLabs, allFlags, al
         refLow: lab.refLow ?? null, refHigh: lab.refHigh ?? null, abnormal: lab.abnormal || null,
         resultDate: resolvedDate, visitDate: resolvedDate,
         labName: lab.labName || null, labGroup: lab.labGroup || null,
+        source: lab.source || null,
         sourceFile: file.name, driveFileId: file.id,
         createdAt: new Date().toISOString()
       }));
@@ -5128,7 +5180,8 @@ For each date row with any lab values:
 2. Parse ALL lab values from that row into individual lab entries — split compound values like "14/1.2" into separate tests using column headers as context (e.g. "BUN/Ct/SDMA" column → BUN=14, Creatinine=1.2)
 3. Clinic name comes from the date cell if present (e.g. "2/27/20 (Town & Country Vet)")
 
-Parse dates in any format (MM/DD/YY, MM/DD/YYYY). Strip clinic names from date cells.
+Parse dates in any format (MM/DD/YY, MM/DD/YYYY, YYYY-MM-DD). Strip clinic names from date cells.
+CRITICAL — two-digit years: use the surrounding document context (invoice dates, visit dates, record headers) to determine the correct century. A two-digit year of 23 means 2023, 24 means 2024, etc. Never assign a future year. If a date appears to be a duplicate of another date in the same document with a different year, flag it — do not silently import both.
 
 Return JSON only, no explanation, no markdown:
 {
@@ -6459,6 +6512,11 @@ All content in a document (clinical note, physical exam, assessments, AND all di
 CBC, chemistry, urinalysis, endocrinology, blood pressure) shares the single Record Date from the
 document header. Use that date for every visit and every lab result unless a DIFFERENT date is
 explicitly stated for a specific result. Never leave resultDate or visitDate null.
+TWO-DIGIT YEARS: When dates use MM/DD/YY format, determine the correct 4-digit year from document
+context (invoice headers, "Record Date" fields, surrounding dates). A two-digit year of 23 = 2023,
+24 = 2024, etc. Never assign a year in the future. If the same lab values appear on two close dates
+that differ only by year (e.g. 01/23/23 and 01/23/24), this is a duplicate — use the year that
+matches other dates in the same document and flag the ambiguity.
 
 CRITICAL — CAT IDENTIFICATION:
 Cat name may not appear until page 2 or 3. "Patient" may be used instead of name. If name is
@@ -6475,13 +6533,62 @@ If qualifier says H/L/* but value appears within reference range, TRUST THE QUAL
 Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
 PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
 
-LAB GROUPING — labGroup must equal the panel header from the lab report, cleaned as follows:
-- Strip trailing reference numbers and parenthetical suffixes: "Hematology(1)" → "Hematology", "Chemistry(2)" → "Chemistry"
-- Map "Hematology" → "CBC" (they are the same panel)
-- Use the cleaned section heading: "Chemistry", "CBC", "Urinalysis", "GI Panel", "Spec cPL", "T4", "Cobalamin/Folate", "FELV/FIV", etc.
-Do NOT invent category names. Do NOT use "Endocrinology" unless the report says that.
-If tests are listed without a panel header, use the closest section heading above them.
+LAB GROUPING — use ONLY these canonical group names regardless of what the document calls the panel:
+  CBC — any complete blood count panel (also: Hematology, Automated CBC, IDEXX CBC, hemogram)
+  Chemistry — any chemistry/biochemistry panel (also: Chem 25, Chem 27, Total Health Profile, Comprehensive Panel, Biochemistry)
+  Urinalysis — urine analysis panel
+  GI Panel — TLI, PLI, cobalamin, folate from Texas A&M GI Lab (also: Maldigestion Panel, GI Profile)
+  Endocrinology — T4, TSH, Free T4, cortisol panels
+  Serology — FeLV, FIV, heartworm antibody, titers
+  PCR — any RealPCR or molecular panel
+  Fecal — parasite screens, fecal PCR, giardia antigen
+  Blood Gas — point-of-care blood gas panels (i-STAT, VetStat)
+  Coagulation — PT, PTT, coagulation panels
+Keep tests grouped EXACTLY as they appear in the document sections — do not regroup individual tests.
+The document label is not authoritative — infer the canonical group from which tests are present.
+If a panel spans multiple pages, all rows belong to the same group until a new section header appears.
 BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP instead.
+
+
+CANONICAL TEST NAMES — always output the canonical name regardless of how the lab printed it:
+CBC: RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, RDW, WBC, Neutrophils, % Neutrophils,
+  Lymphocytes, % Lymphocytes, Monocytes, % Monocytes, Eosinophils, % Eosinophils,
+  Basophils, % Basophils, Platelets, Reticulocytes, % Reticulocytes, Reticulocyte Hemoglobin,
+  MPV, Plateletcrit, Bands, NRBC
+Chemistry: Glucose, BUN, Creatinine, IDEXX SDMA, Phosphorus, Calcium, Sodium, Potassium,
+  Chloride, TCO2, Anion Gap, Na:K Ratio, Total Protein, Albumin, Globulin, Albumin:Globulin Ratio,
+  ALT, AST, ALP, GGT, Bilirubin - Total, Bilirubin - Conjugated, Bilirubin - Unconjugated,
+  Cholesterol, Triglycerides, Amylase, Lipase, Creatine Kinase, BUN:Creatinine Ratio,
+  Hemolysis Index, Lipemia Index, Icterus Index
+Urinalysis: Specific Gravity, pH, Urine Protein, Glucose, Ketones, Bilirubin, Blood / Hemoglobin,
+  Urobilinogen, Color, Clarity, WBC, RBC, Casts, Bacteria, Epithelial Cells, Crystals, Mucus,
+  IDEXX Cystatin B
+Endocrinology: Total T4, Free T4, TSH, Cortisol
+GI Panel: TLI, PLI, Cobalamin, Folate, Feline Pancreatic Lipase
+Common aliases to normalize: HCT→Hematocrit, HGB→Hemoglobin, PLT→Platelets,
+  ALT (SGPT)→ALT, AST (SGOT)→AST, Alk Phosphatase→ALP, Alkphos→ALP,
+  SDMA→IDEXX SDMA, BUN/Creatinine Ratio→BUN:Creatinine Ratio, A/G Ratio→Albumin:Globulin Ratio,
+  Na/K Ratio→Na:K Ratio, TCO2 (Bicarbonate)→TCO2, Total Bilirubin→Bilirubin - Total,
+  Absolute Neutrophils→Neutrophils, Absolute Lymphocytes→Lymphocytes,
+  Absolute Monocytes→Monocytes, Absolute Eosinophils→Eosinophils, Absolute Basophils→Basophils,
+  PCV→Hematocrit, Packed Cell Volume→Hematocrit, Red Blood Cells→RBC, White Blood Cells→WBC,
+  Cobalamin (Vitamin B12)→Cobalamin, Vitamin B12→Cobalamin,
+  Pancreatic Lipase Immunoreactivity→PLI, Trypsin-Like Immunoreactivity→TLI,
+  Spec fPL→Feline Pancreatic Lipase, fPLI→Feline Pancreatic Lipase
+
+UNIT NORMALIZATION — always output canonical units:
+  IU/L → U/L, mEq/L → mmol/L, ug/dL → µg/dL, ng/L → ng/L, 10^3/uL → K/µL,
+  10^6/uL → M/µL, 10^9/l → K/µL, 10^12/l → M/µL, /uL → K/µL (divide by 1000),
+  g/dl → g/dL, mg/dl → mg/dL
+
+PLATELETS — special handling:
+  Machine count available: extract numeric value, unit K/µL, qualifier if present (HIGH/LOW/NORMAL)
+  Machine count unavailable (clumping): value = string qualifier ("ADEQUATE", "DECREASED", "INCREASED")
+  Manual/estimated count in narrative: extract as separate entry with source:"manual" — include
+    estimated numeric if given (e.g. "estimated 175K" → value 175, unit K/µL, source:"manual")
+  If BOTH machine result AND narrative reference exist for same date: extract both only if they
+    provide different information (e.g. machine=ADEQUATE, narrative=manual count of 175K).
+    If narrative just restates the machine result, extract only the machine result.
 
 MEDICATIONS:
 - Extract ALL medications that are prescribed, continuing, or recommended — not just dispensed ones
@@ -6582,8 +6689,11 @@ Return JSON only, no markdown:
     "resultDate": "2025-05-13",
     "visitDate": "2025-05-13",
     "labName": "Chemistry",
-    "labGroup": "Chemistry"
+    "labGroup": "Chemistry",
+    "source": null
   }],
+  // source: null = machine/table result (default), "manual" = estimated from blood smear or narrative
+  // abnormal: null = normal/unremarkable, "HIGH"/"LOW" = outside reference range, "ADEQUATE"/"DECREASED" = qualitative estimate
   "pcr": [],
   "flags": []
 }
@@ -8328,6 +8438,7 @@ async function runSaveSession(resumeData) {
   });
 
   pendingJournalItems = [];
+  convHistory = []; // Clear so next Save Session doesn't re-process this session's conversation
   mentionTracker = {};
   sessionActiveCat = null;
   updateJournalBadge();
