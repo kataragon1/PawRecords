@@ -650,6 +650,9 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <button class="btn-icon cost-icon" id="save-session-btn" style="display:none" title="Save session highlights and journal entries to Firestore">
           <span class="cost-dot"></span> Save Session
         </button>
+        <button class="btn-icon free-icon" id="pause-session-btn" style="display:none" title="Pause conversation — restore it in a new tab">
+          <span class="free-dot"></span> ⏸ Pause
+        </button>
         <button class="btn-icon danger" id="signout-btn">Sign Out</button>
       </div>
     </div>
@@ -1254,6 +1257,7 @@ onAuthStateChanged(auth, async user => {
     await loadInitialData();
     show('app');
     getPdfJs().catch(() => {}); // preload PDF.js in background
+    setTimeout(checkPausedSession, 1500); // check after UI settles
   } else {
     currentUser = null;
     show('signin');
@@ -3268,7 +3272,7 @@ function openJournalEdit(item) {
   const mkInput = (type, value, placeholder) => {
     const el = type === 'textarea' ? document.createElement('textarea') : document.createElement('input');
     if (type === 'textarea') { el.rows = 3; }
-    else { el.type = 'text'; }
+    else { el.type = type || 'text'; }
     el.value = value || '';
     if (placeholder) el.placeholder = placeholder;
     el.style.cssText = `width:100%;font-family:JetBrains Mono,monospace;font-size:0.72rem;border:1px solid var(--border);border-radius:6px;padding:${type==='textarea'?'0.5rem':'0.4rem 0.6rem'};${type==='textarea'?'resize:vertical;':''}outline:none;color:var(--ink);line-height:1.5;background:var(--bg);`;
@@ -7329,6 +7333,65 @@ $('user-input').addEventListener('keydown', e => {
 });
 $('send-btn').addEventListener('click', sendMessage);
 
+// ── PAUSE / RESTORE SESSION ──
+$('pause-session-btn').addEventListener('click', async () => {
+  if (!convHistory.length) return;
+  const btn = $('pause-session-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="free-dot"></span> Pausing…';
+  try {
+    await setDoc(doc(db, 'app_config', 'paused_session'), {
+      convHistory: JSON.stringify(convHistory),
+      pendingItems: JSON.stringify(pendingJournalItems),
+      pausedAt: new Date().toISOString(),
+      userId: currentUser?.uid
+    });
+    btn.innerHTML = '<span class="free-dot"></span> ✓ Paused';
+    showToast('Session paused — open the new version and click Restore Session', 'journal');
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="free-dot"></span> ⏸ Pause';
+    }, 3000);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="free-dot"></span> ⏸ Pause';
+    showToast('Pause failed: ' + e.message, 'warning');
+  }
+});
+
+// Check for paused session on load
+async function checkPausedSession() {
+  try {
+    const snap = await getDoc(doc(db, 'app_config', 'paused_session'));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (!data.convHistory || data.userId !== currentUser?.uid) return;
+    const pausedAt = new Date(data.pausedAt);
+    const ageHours = (Date.now() - pausedAt) / 3600000;
+    if (ageHours > 24) { await deleteDoc(doc(db, 'app_config', 'paused_session')); return; }
+    const mins = Math.round((Date.now() - pausedAt) / 60000);
+    const timeStr = mins < 60 ? `${mins}m ago` : `${Math.round(mins/60)}h ago`;
+    const msgCount = JSON.parse(data.convHistory).length;
+    const restore = confirm(`Paused session found (${timeStr}, ${msgCount} messages). Restore it?`);
+    if (!restore) { await deleteDoc(doc(db, 'app_config', 'paused_session')); return; }
+    convHistory = JSON.parse(data.convHistory);
+    pendingJournalItems = JSON.parse(data.pendingItems || '[]');
+    // Re-render conversation messages
+    const chatBody = $('chat-body');
+    $('chat-welcome')?.remove();
+    for (const msg of convHistory) {
+      appendMsg(msg.role, msg.content);
+    }
+    if (pendingJournalItems.length) { updateJournalBadge(); renderJournalSidebar(_journalDocsCache || []); }
+    if (convHistory.length >= 2) {
+      $('save-session-btn').style.display = 'inline-flex';
+      $('pause-session-btn').style.display = 'inline-flex';
+    }
+    await deleteDoc(doc(db, 'app_config', 'paused_session'));
+    showToast(`Session restored — ${msgCount} messages`, 'journal');
+  } catch(e) { console.warn('Pause restore failed:', e); }
+}
+
 // Scroll nav buttons
 {
   const cb = $('chat-body');
@@ -7404,12 +7467,17 @@ async function sendMessage() {
             }
           });
         }
-      } catch(e) { /* malformed journal block — ignore */ }
+      } catch(e) { console.warn('Journal block parse error:', e, journalMatch[1]?.slice(0,200)); }
+    } else if (response.includes('journal') || response.includes('Journal')) {
+      console.log('No <journal> block found in response (first 500):', response.slice(0,500));
     }
 
     appendMsg('assistant', response);
     convHistory.push({ role: 'assistant', content: response });
-    if (convHistory.length >= 2) $('save-session-btn').style.display = 'inline-flex';
+    if (convHistory.length >= 2) {
+    $('save-session-btn').style.display = 'inline-flex';
+    $('pause-session-btn').style.display = 'inline-flex';
+  }
   } catch (err) {
     typingEl.remove();
     const msg = err.message || '';
@@ -7677,14 +7745,17 @@ function addPendingItem(item) {
     const pKey = `${jCats(p).sort().join(',')}_${(p.text||'').toLowerCase().trim()}`;
     return pKey === key;
   })) return;
-  // Avoid re-adding items already saved in the journal (current status only)
+  // Avoid re-adding items already saved with identical text + dose + status
+  // Allow through if dose or status differs — could be a meaningful update
   if (_journalDocsCache) {
     const cats = jCats(item);
     const alreadySaved = _journalDocsCache.some(j => {
       const jc = jCats(j);
       const textMatch = (j.text||'').toLowerCase().trim() === t.toLowerCase();
       const catMatch = cats.length === 0 || cats.some(c => jc.includes(c));
-      return textMatch && catMatch && j.status !== 'past';
+      const statusMatch = (j.status || 'current') === (item.status || 'current');
+      const doseMatch = (j.dose || null) === (item.dose || null);
+      return textMatch && catMatch && statusMatch && doseMatch && j.status !== 'past';
     });
     if (alreadySaved) return;
   }
@@ -8439,6 +8510,7 @@ async function runSaveSession(resumeData) {
 
   pendingJournalItems = [];
   convHistory = []; // Clear so next Save Session doesn't re-process this session's conversation
+  $('pause-session-btn').style.display = 'none';
   mentionTracker = {};
   sessionActiveCat = null;
   updateJournalBadge();
@@ -8880,7 +8952,7 @@ const FLAG_CONFIG = {
     explain: 'Claude could not find a visit date in this document. All records from this file were stored with an unknown date.',
     actionLabel: 'Enter the correct date',
     inputType: 'date',
-    inputPlaceholder: 'YYYY-MM-DD',
+    inputPlaceholder: '',
     async apply(flag, value) {
       // Update all visits and labs from this file to use the corrected date
       const batch = writeBatch(db);
@@ -9443,15 +9515,17 @@ async function buildChatContext(userMessage) {
           if (!targetCats.includes(c)) continue;
           if (!perCat[c]) perCat[c] = {};
           if (!perCat[c][j.list]) perCat[c][j.list] = [];
-          perCat[c][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+          const sTag = (j.status && j.status !== 'current') ? ` [${j.status.toUpperCase()}]` : '';
+          perCat[c][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}${sTag}`);
         }
       }
-      context += '\n\n## Care Journal (current)\n';
+      context += '\n\n## Care Journal\n# Status: no tag=active now, [PLAN]=planned/considering, [MAYBE]=uncertain/potential\n';
       if (shared.length) {
         const sharedByList = {};
         for (const j of shared) {
           if (!sharedByList[j.list]) sharedByList[j.list] = [];
-          sharedByList[j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}`);
+          const sTag2 = (j.status && j.status !== 'current') ? ` [${j.status.toUpperCase()}]` : '';
+          sharedByList[j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}${sTag2}`);
         }
         context += `All cats / `;
         for (const [list, items] of Object.entries(sharedByList)) {
@@ -10087,7 +10161,14 @@ The block must be a valid JSON array. Use cats array — include multiple cats w
   const staticInstruction = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 You have access to their complete medical records, lab results, and care journal below.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
-If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.`;
+If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+
+CARE JOURNAL STATUS — this is critical for accuracy:
+Items with NO status tag are CURRENTLY ACTIVE — the cat is taking/eating/doing this right now.
+Items tagged [PLAN] are PLANNED or UNDER CONSIDERATION — not yet started, owner is thinking about it.
+Items tagged [MAYBE] are UNCERTAIN or POTENTIAL — discussed but not decided.
+Items tagged [PAST] are DISCONTINUED or RESOLVED — no longer active.
+Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Never omit the distinction when it matters clinically.`;
 
   const contextBlock = context || '(No records loaded yet — records will appear after files are processed)';
 
