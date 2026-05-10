@@ -832,7 +832,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       <span id="journal-review-count" style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);"></span>
       <div style="display:flex;gap:0.5rem;">
         <button class="btn-icon" id="journal-review-cancel">Cancel</button>
-        <button class="btn-icon free-icon" id="journal-review-commit"><span class="free-dot"></span> Commit all</button>
+        <button class="btn-icon free-icon" id="journal-review-commit"><span class="free-dot"></span> Commit checked</button>
       </div>
     </div>
   </div>
@@ -3058,6 +3058,7 @@ function renderJournalSidebar(docs) {
       '<div style="background:var(--blue-bg);color:var(--blue);border-radius:3px;padding:1px 5px;">● plan — considering / upcoming</div>',
       '<div style="background:var(--amber-bg);color:var(--amber);border-radius:3px;padding:1px 5px;">● maybe — uncertain / potential</div>',
       '<div style="background:var(--surface2);color:var(--ink-muted);border-radius:3px;padding:1px 5px;text-decoration:line-through;opacity:0.8;">● past — discontinued / resolved</div>',
+      '<div style="background:var(--surface2);color:var(--ink-muted);border-radius:3px;padding:1px 5px;text-decoration:line-through;opacity:0.5;">● rejected — considered &amp; decided against</div>',
     ].join('');
     const closeOnOutside = (ev) => { if (!pop.contains(ev.target) && ev.target !== infoBtn) { pop.remove(); document.removeEventListener('click', closeOnOutside); } };
     setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
@@ -3112,12 +3113,13 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
     ...allListNames.filter(l => !listOrder.includes(l)).sort()
   ];
 
-  const STATUS_ORDER = ['current', 'plan', 'maybe', 'past'];
+  const STATUS_ORDER = ['current', 'plan', 'maybe', 'past', 'rejected'];
   const STATUS_STYLE = {
-    current: { bg: '',                    color: '',                   extra: '' },
-    plan:    { bg: 'var(--blue-bg)',       color: 'var(--blue)',        extra: '' },
-    maybe:   { bg: 'var(--amber-bg)',      color: 'var(--amber)',       extra: '' },
-    past:    { bg: 'var(--surface2)',      color: 'var(--ink-muted)',   extra: 'text-decoration:line-through;opacity:0.75;' },
+    current:  { bg: '',                    color: '',                   extra: '' },
+    plan:     { bg: 'var(--blue-bg)',       color: 'var(--blue)',        extra: '' },
+    maybe:    { bg: 'var(--amber-bg)',      color: 'var(--amber)',       extra: '' },
+    past:     { bg: 'var(--surface2)',      color: 'var(--ink-muted)',   extra: 'text-decoration:line-through;opacity:0.75;' },
+    rejected: { bg: 'var(--surface2)',      color: 'var(--ink-muted)',   extra: 'text-decoration:line-through;opacity:0.5;' },
   };
 
   for (const listName of orderedLists) {
@@ -8152,13 +8154,13 @@ async function callClaudeRaw(messages, systemPrompt, maxTokens) {
 }
 
 function buildSaveSessionPrompt(journalContext, pendingContext, notesContext, conversationText, today) {
-  return `You are reviewing a veterinary care session to update the journal for cats: ${APP_PETS.join(', ')}.
-Accuracy is critical. Missing an item is as serious as an incorrect one. Extract EVERYTHING decided, current, planned, or stopped.
+  return `You are reviewing a veterinary care session to extract ONLY genuinely new journal entries for cats: ${APP_PETS.join(', ')}.
+Be conservative — it is better to miss a marginal item than to add noise.
 
-EXISTING JOURNAL:
+EXISTING JOURNAL (DO NOT RE-ADD ANY OF THESE):
 ${journalContext}
 
-ALREADY PENDING (client-detected — confirm or correct):
+ALREADY PENDING (already queued — do NOT re-add these either):
 ${pendingContext}
 
 CURRENT CONTEXT NOTES:
@@ -8168,15 +8170,19 @@ CONVERSATION:
 ${conversationText}
 
 Rules:
-- Extract every medication, supplement, and diet item that is decided or currently in effect
+- Only extract items that are NEW — not already in the existing journal or pending list above
+- Only extract items with a CLEAR OUTCOME: decided to start → status 'plan' or 'current'; decided to stop → status 'past'
+- DO NOT add items that were discussed but rejected, ruled out, or left completely undecided
+- DO NOT add items that were mentioned only as context or background — they must be actionable decisions
+- If something was considered AND rejected in the same conversation, add it with status 'rejected'
+- Status 'maybe' is only for items the owner explicitly said they are still thinking about
+- Status 'rejected' = consciously decided not to use — include the reason in the text if given
 - If an item applies to multiple cats with the same dose, use cats array with all of them
 - If doses differ per cat, create separate entries per cat
-- Rejected/discontinued items → status "past", not omitted
 - Include dose and frequency whenever mentioned
-- Do NOT duplicate items already in the existing journal
 - Track which cats each item belongs to — resolve all pronouns using context
 - Never suggest removing pinned notes
-- If uncertain about a cat assignment, use status "maybe" and note the ambiguity in the text
+- When in doubt, OMIT — the owner can add items manually
 
 Return ONLY valid JSON — no markdown fences, no preamble:
 {
@@ -8186,7 +8192,7 @@ Return ONLY valid JSON — no markdown fences, no preamble:
       "list": "Medications|Supplements|Diet|Foods|<custom>",
       "text": "terse factual entry",
       "dose": "dose/frequency or null",
-      "status": "current|past|plan|maybe",
+      "status": "current|past|plan|maybe|rejected",
       "startDate": "${today}",
       "endDate": "YYYY-MM-DD or null",
       "updateOf": "exact text of existing entry this replaces, or null"
@@ -8242,9 +8248,10 @@ function showJournalReview(items) {
       const n = working.filter(i => !i._dismissed).length;
       countEl.textContent = `${n} of ${working.length} entries`;
       $('journal-review-commit').disabled = n === 0;
+      $('journal-review-commit').innerHTML = `<span class="free-dot"></span> Commit ${n} checked`;
     };
 
-    const STATUS_OPTS = [['current','current'],['past','past'],['plan','planned'],['maybe','potential']];
+    const STATUS_OPTS = [['current','current'],['past','past'],['plan','planned'],['maybe','potential'],['rejected','rejected']];
 
     working.forEach((item, idx) => {
       const row = document.createElement('div');
@@ -9515,17 +9522,25 @@ async function buildChatContext(userMessage) {
           if (!targetCats.includes(c)) continue;
           if (!perCat[c]) perCat[c] = {};
           if (!perCat[c][j.list]) perCat[c][j.list] = [];
-          const sTag = (j.status && j.status !== 'current') ? ` [${j.status.toUpperCase()}]` : '';
-          perCat[c][j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}${sTag}`);
+          const sTag = j.status === 'plan' ? '[PLANNED/NOT STARTED] '
+            : j.status === 'maybe' ? '[UNCERTAIN/CONSIDERING] '
+            : j.status === 'past' ? '[DISCONTINUED] '
+            : j.status === 'rejected' ? '[REJECTED - DO NOT SUGGEST] '
+            : '';
+          perCat[c][j.list].push(`${sTag}${j.text}${j.dose?' ('+j.dose+')':''}`);
         }
       }
-      context += '\n\n## Care Journal\n# Status: no tag=active now, [PLAN]=planned/considering, [MAYBE]=uncertain/potential\n';
+      context += '\n\n## Care Journal\n# IMPORTANT: Items with no prefix = CURRENTLY ACTIVE (cat is on this now).\n# [PLANNED/NOT STARTED] = owner considering but NOT yet giving.\n# [UNCERTAIN/CONSIDERING] = discussed but undecided.\n# [DISCONTINUED] = was given, now stopped.\n# [REJECTED - DO NOT SUGGEST] = consciously decided against - never recommend these.\n# Never describe a PLANNED or UNCERTAIN item as something the cat currently takes.\n';
       if (shared.length) {
         const sharedByList = {};
         for (const j of shared) {
           if (!sharedByList[j.list]) sharedByList[j.list] = [];
-          const sTag2 = (j.status && j.status !== 'current') ? ` [${j.status.toUpperCase()}]` : '';
-          sharedByList[j.list].push(`${j.text}${j.dose?' ('+j.dose+')':''}${sTag2}`);
+          const sTag2 = j.status === 'plan' ? '[PLANNED/NOT STARTED] '
+            : j.status === 'maybe' ? '[UNCERTAIN/CONSIDERING] '
+            : j.status === 'past' ? '[DISCONTINUED] '
+            : j.status === 'rejected' ? '[REJECTED - DO NOT SUGGEST] '
+            : '';
+          sharedByList[j.list].push(`${sTag2}${j.text}${j.dose?' ('+j.dose+')':''}`);
         }
         context += `All cats / `;
         for (const [list, items] of Object.entries(sharedByList)) {
@@ -10168,6 +10183,7 @@ Items with NO status tag are CURRENTLY ACTIVE — the cat is taking/eating/doing
 Items tagged [PLAN] are PLANNED or UNDER CONSIDERATION — not yet started, owner is thinking about it.
 Items tagged [MAYBE] are UNCERTAIN or POTENTIAL — discussed but not decided.
 Items tagged [PAST] are DISCONTINUED or RESOLVED — no longer active.
+Items tagged [REJECTED - DO NOT SUGGEST] were consciously decided against — never suggest these again.
 Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Never omit the distinction when it matters clinically.`;
 
   const contextBlock = context || '(No records loaded yet — records will appear after files are processed)';
