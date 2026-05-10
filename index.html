@@ -2970,7 +2970,7 @@ function renderJournalSidebar(docs) {
       topRow.appendChild(listSpan);
       const statusSel = document.createElement('select');
       statusSel.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.5rem;border:1px solid var(--border);border-radius:3px;padding:0 3px;background:var(--surface);color:var(--ink);outline:none;cursor:pointer;';
-      [['current','current'],['past','past'],['plan','planned'],['maybe','potential']].forEach(([val, lbl]) => {
+      [['current','current'],['past','past'],['plan','planned'],['maybe','potential'],['rejected','rejected']].forEach(([val, lbl]) => {
         const opt = document.createElement('option');
         opt.value = val; opt.textContent = lbl;
         if ((item.status || 'current') === val) opt.selected = true;
@@ -3161,7 +3161,7 @@ function renderJournalSection(container, docs, listOrder, showCatChips) {
       listArrow.style.transform = open ? 'rotate(90deg)' : '';
     });
 
-    const groups = { current:[], plan:[], maybe:[], past:[] };
+    const groups = { current:[], plan:[], maybe:[], past:[], rejected:[] };
     for (const item of items) (groups[item.status] || groups.current).push(item);
 
     // Sort within each group: all-cats entries first, then by sorted cat names
@@ -10173,7 +10173,11 @@ JOURNAL HINTS: If this conversation mentions anything new or changed that should
 </journal>
 The block must be a valid JSON array. Use cats array — include multiple cats when an item applies to all. Lists: Medications, Supplements, Diet, Foods, or custom. Status: current/past/plan/maybe. Keep text under 60 chars. Do not show the journal block to the user — it is parsed silently.`;
 
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' });
   const staticInstruction = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
+Today is ${todayStr} at ${timeStr}. Use this when answering questions about timing, schedules, or how long ago something occurred.
 You have access to their complete medical records, lab results, and care journal below.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
 If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
