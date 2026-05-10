@@ -7796,6 +7796,59 @@ function updateJournalBadge() {
   });
 }
 
+// ── NOTE ARCHIVE REVIEW ──
+function showNoteArchiveReview(oldNotes) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:flex;align-items:center;justify-content:center;';
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:white;border-radius:12px;padding:1.5rem;max-width:520px;width:90%;max-height:80vh;display:flex;flex-direction:column;gap:1rem;box-shadow:0 8px 32px rgba(0,0,0,0.2);';
+  modal.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:700;color:var(--ink);">📝 Old Notes</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);line-height:1.5;">These notes haven't been updated in 60+ days. Delete the ones that are no longer relevant to reduce context size.</div>`;
+  const list = document.createElement('div');
+  list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.4rem;';
+  const checks = new Map();
+  for (const note of oldNotes) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:0.6rem;padding:0.4rem 0.5rem;border:1px solid var(--border);border-radius:6px;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.style.cssText = 'margin-top:2px;flex-shrink:0;cursor:pointer;';
+    checks.set(note.id, cb);
+    const txt = document.createElement('div');
+    txt.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.62rem;color:var(--ink);line-height:1.5;';
+    const cats = note.cats?.length ? `[${note.cats.join('/')}] ` : '';
+    const age = Math.round((Date.now() - new Date(note.addedDate)) / 86400000);
+    txt.innerHTML = `<span style="color:var(--ink-muted);font-size:0.55rem;">${cats}${age}d old</span><br>${escHtml(note.text)}`;
+    row.appendChild(cb); row.appendChild(txt);
+    list.appendChild(row);
+  }
+  modal.appendChild(list);
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;gap:0.5rem;justify-content:flex-end;';
+  const skip = document.createElement('button');
+  skip.className = 'btn-icon';
+  skip.textContent = 'Keep All';
+  skip.onclick = () => document.body.removeChild(overlay);
+  const del = document.createElement('button');
+  del.className = 'btn-icon free-icon';
+  del.innerHTML = '<span class="free-dot"></span> Delete Checked';
+  del.onclick = async () => {
+    const toDelete = oldNotes.filter(n => checks.get(n.id)?.checked);
+    if (!toDelete.length) { document.body.removeChild(overlay); return; }
+    const batch = writeBatch(db);
+    for (const n of toDelete) batch.delete(doc(db, 'notes', n.id));
+    await batch.commit();
+    _notesCache = _notesCache.filter(n => !toDelete.find(d => d.id === n.id));
+    renderNotesList();
+    document.body.removeChild(overlay);
+    showToast(`${toDelete.length} note${toDelete.length !== 1 ? 's' : ''} deleted`, 'journal');
+  };
+  foot.appendChild(skip); foot.appendChild(del);
+  modal.appendChild(foot);
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+  document.body.appendChild(overlay);
+}
+
 // ══════════════════════════════════════════════
 // NOTES — persistent context scratchpad
 // ══════════════════════════════════════════════
@@ -7843,7 +7896,9 @@ function renderNotes() {
     if (active.length >= 12) {
       const warn = document.createElement('div');
       warn.className = 'note-count-warning';
-      warn.textContent = `${active.length}/15 active notes`;
+      warn.title = 'All notes are sent to Claude on every message. Many notes = higher cost. Pin important ones, archive old ones.';
+      warn.textContent = `${active.length} active notes — consider archiving old ones to reduce context size`;
+      warn.style.cursor = 'help';
       list.appendChild(warn);
     }
 
@@ -8518,6 +8573,14 @@ async function runSaveSession(resumeData) {
   pendingJournalItems = [];
   convHistory = []; // Clear so next Save Session doesn't re-process this session's conversation
   $('pause-session-btn').style.display = 'none';
+
+  // Offer to archive old notes if there are many
+  const activeNotes = (_notesCache || []).filter(n => !n.pinned);
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+  const oldNotes = activeNotes.filter(n => n.addedDate && new Date(n.addedDate) < cutoff);
+  if (oldNotes.length >= 3) {
+    showNoteArchiveReview(oldNotes);
+  }
   mentionTracker = {};
   sessionActiveCat = null;
   updateJournalBadge();
