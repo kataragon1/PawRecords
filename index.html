@@ -332,10 +332,35 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .progress-stop-btn:hover{background:var(--red);color:white;}
 
 /* ── LAYER 3 ── */
-#record-popup{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.5);z-index:200;align-items:center;justify-content:center;padding:2rem;}
+#record-popup{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.55);z-index:200;align-items:center;justify-content:center;padding:1.5rem 2rem;}
 #record-popup.open{display:flex;}
-.record-popup-box{background:white;border-radius:13px;width:100%;max-width:700px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;}
-.record-popup-header{padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;flex-wrap:wrap;}
+.record-popup-box{background:#f5edd8;border-radius:4px 13px 13px 13px;width:100%;max-width:720px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(42,37,32,0.35),0 4px 12px rgba(42,37,32,0.15);overflow:hidden;position:relative;}
+.record-popup-box::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(180,160,120,0.08) 27px,rgba(180,160,120,0.08) 28px);pointer-events:none;border-radius:inherit;}
+.folder-tabs{display:flex;align-items:flex-end;gap:2px;padding:0 1rem;padding-top:0.5rem;flex-shrink:0;overflow-x:auto;scrollbar-width:none;}
+.folder-tabs::-webkit-scrollbar{display:none;}
+.folder-tab{font-family:'JetBrains Mono',monospace;font-size:0.55rem;letter-spacing:0.06em;text-transform:uppercase;padding:0.3rem 0.75rem;border-radius:5px 5px 0 0;border:1px solid rgba(180,155,110,0.4);border-bottom:none;background:#e8dcc4;color:#7a6a52;cursor:pointer;white-space:nowrap;transition:all 0.12s;position:relative;top:1px;}
+.folder-tab:hover{background:#ede3ce;color:#4a3c28;}
+.folder-tab.active{background:#f5edd8;color:#2a2520;font-weight:700;border-color:rgba(180,155,110,0.6);z-index:1;}
+.folder-header{padding:0.7rem 1.1rem 0.5rem;border-bottom:1px solid rgba(180,155,110,0.35);display:flex;align-items:flex-start;justify-content:space-between;gap:0.6rem;flex-shrink:0;background:#f5edd8;}
+.folder-title{font-family:'Instrument Serif',serif;font-size:1.05rem;color:#2a2520;line-height:1.3;flex:1;}
+.folder-meta{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:#7a6a52;margin-top:0.15rem;}
+.folder-content{flex:1;overflow-y:auto;padding:1.1rem 1.3rem;background:#f5edd8;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:#3a3028;line-height:1.75;}
+.folder-content::-webkit-scrollbar{width:4px;}
+.folder-content::-webkit-scrollbar-thumb{background:rgba(180,155,110,0.4);border-radius:2px;}
+.folder-section-label{font-family:'Instrument Serif',serif;font-size:0.9rem;color:#5c4030;border-bottom:1px solid rgba(180,155,110,0.3);padding-bottom:0.3rem;margin-bottom:0.75rem;margin-top:1.2rem;}
+.folder-section-label:first-child{margin-top:0;}
+.folder-vitals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:0.5rem;margin:0.5rem 0 1rem;}
+.folder-vital{background:rgba(255,255,255,0.5);border:1px solid rgba(180,155,110,0.3);border-radius:6px;padding:0.4rem 0.6rem;}
+.folder-vital-label{font-size:0.5rem;color:#7a6a52;text-transform:uppercase;letter-spacing:0.08em;}
+.folder-vital-val{font-size:0.78rem;color:#2a2520;font-weight:600;margin-top:0.1rem;}
+.folder-med-item{display:flex;align-items:baseline;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid rgba(180,155,110,0.15);}
+.folder-med-item:last-child{border-bottom:none;}
+.folder-med-name{color:#2a2520;font-weight:600;}
+.folder-med-detail{color:#7a6a52;font-size:0.62rem;}
+.folder-divider{border:none;border-top:1px solid rgba(180,155,110,0.25);margin:0.75rem 0;}
+.record-popup-footer{padding:0.5rem 1.1rem;border-top:1px solid rgba(180,155,110,0.35);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#ede3ce;}
+.record-popup-header{display:none;}
+
 .record-popup-title{font-family:'Instrument Serif',serif;font-size:1rem;color:var(--ink);flex:1;min-width:0;}
 .record-popup-search{display:flex;align-items:center;gap:0.3rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem;transition:border-color 0.2s;}
 .record-popup-search:focus-within{border-color:var(--accent);}
@@ -920,7 +945,9 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 
 <div id="record-popup">
   <div class="record-popup-box">
-    <div class="record-popup-header">
+    <!-- Folder UI built dynamically by openVisit() -->
+    <!-- Classic popup elements (used by edit/verify) — rebuilt as needed -->
+    <div class="record-popup-header" id="classic-popup-header" style="display:none;background:white;padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);align-items:center;gap:0.6rem;flex-shrink:0;flex-wrap:wrap;">
       <div class="record-popup-title" id="popup-title"></div>
       <div class="record-popup-search">
         <input id="popup-search-input" placeholder="Search…">
@@ -930,8 +957,8 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
       </div>
       <button class="modal-close" id="popup-close">✕</button>
     </div>
-    <div class="record-popup-body" id="popup-body"></div>
-    <div class="record-popup-footer">
+    <div class="record-popup-body" id="popup-body" style="display:none;background:white;"></div>
+    <div class="record-popup-footer" id="classic-popup-footer" style="display:none;background:white;">
       <span class="popup-footer-meta" id="popup-drive-link"></span>
       <button class="btn-icon" id="popup-close-btn">Close</button>
     </div>
@@ -1361,7 +1388,16 @@ let _petProfiles = {}; // { catName: { birthdate: 'YYYY-MM-DD' } }
 async function loadPetProfiles() {
   try {
     const d = await getDoc(doc(db, 'app_config', 'pet_profiles'));
-    if (d.exists()) _petProfiles = d.data().profiles || {};
+    if (d.exists()) {
+      _petProfiles = d.data().profiles || {};
+      // If petList was saved (new pets added via profiles), merge into APP_PETS
+      const savedPetList = d.data().petList;
+      if (savedPetList?.length) {
+        for (const p of savedPetList) {
+          if (!APP_PETS.includes(p)) APP_PETS.push(p);
+        }
+      }
+    }
     renderPetAges();
     renderCatFocusPills();
     // Re-render journal so cat chips pick up correct colors
@@ -1431,16 +1467,24 @@ function openPetProfilesModal() {
 
   const body = document.createElement('div');
   body.style.cssText = 'padding:1rem 1.25rem;';
-  body.innerHTML = `<p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-muted);margin-bottom:0.85rem;line-height:1.6;">Set birthdates and colors for each cat.</p>`;
+  body.innerHTML = `<p style="font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--ink-muted);margin-bottom:0.85rem;line-height:1.6;">Set birthdates and colors for each pet. Add new pets or remove ones no longer in the household.</p>`;
 
   const inputs = {};
-  cats.forEach((cat, idx) => {
-    const bd = _petProfiles[cat]?.birthdate || '';
-    const color = _petProfiles[cat]?.color || DEFAULT_COLOR;
-    const emoji = _petProfiles[cat]?.emoji || DEFAULT_EMOJI;
+  const petList = [...cats]; // mutable working copy
 
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--surface2);';
+  const petRows = document.createElement('div');
+  petRows.id = 'pet-profile-rows';
+  body.appendChild(petRows);
+
+  function renderPetRows() {
+    petRows.innerHTML = '';
+    petList.forEach((cat, idx) => {
+      const bd = _petProfiles[cat]?.birthdate || '';
+      const color = _petProfiles[cat]?.color || DEFAULT_COLOR;
+      const emoji = _petProfiles[cat]?.emoji || DEFAULT_EMOJI;
+
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--surface2);';
 
     // Emoji selector
     const emojiSel = document.createElement('select');
@@ -1476,14 +1520,48 @@ function openPetProfilesModal() {
     dateInput.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;color:var(--ink);outline:none;';
 
     inputs[cat] = { date: dateInput, color: colorInput, emoji: emojiSel };
+
+    // Delete button — only show if more than 1 pet
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '✕';
+    delBtn.title = `Remove ${cat}`;
+    delBtn.style.cssText = 'background:none;border:none;color:var(--ink-muted);font-size:0.7rem;cursor:pointer;padding:0.2rem 0.3rem;flex-shrink:0;border-radius:4px;';
+    delBtn.onmouseenter = () => { delBtn.style.color = 'var(--danger)'; };
+    delBtn.onmouseleave = () => { delBtn.style.color = 'var(--ink-muted)'; };
+    delBtn.onclick = () => {
+      if (petList.length <= 1) { showToast('Cannot remove the last pet', 'warning'); return; }
+      if (!confirm(`Remove ${cat} from pet profiles? This won't delete their records.`)) return;
+      petList.splice(petList.indexOf(cat), 1);
+      delete inputs[cat];
+      renderPetRows();
+    };
+
     row.appendChild(emojiSel);
     row.appendChild(colorWrap);
     row.appendChild(nameSpan);
     row.appendChild(dateInput);
-    body.appendChild(row);
-  });
+    row.appendChild(delBtn);
+    petRows.appendChild(row);
+  }); // end petList.forEach
+  } // end renderPetRows
 
-  if (!cats.length) body.innerHTML += `<p style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink-muted);">No pets found — process some records first.</p>`;
+  // Add Pet button
+  const addPetRow = document.createElement('div');
+  addPetRow.style.cssText = 'padding:0.6rem 0 0.2rem;';
+  const addPetBtn = document.createElement('button');
+  addPetBtn.className = 'btn-icon';
+  addPetBtn.style.cssText = 'width:100%;justify-content:center;font-size:0.6rem;';
+  addPetBtn.textContent = '+ Add Pet';
+  addPetBtn.onclick = () => {
+    const name = prompt('New pet name:')?.trim();
+    if (!name || petList.includes(name)) return;
+    petList.push(name);
+    if (!_petProfiles[name]) _petProfiles[name] = {};
+    renderPetRows();
+  };
+  addPetRow.appendChild(addPetBtn);
+  body.appendChild(addPetRow);
+
   box.appendChild(body);
 
   const footer = document.createElement('div');
@@ -1496,17 +1574,25 @@ function openPetProfilesModal() {
   saveBtn.className = 'btn-icon free-icon';
   saveBtn.innerHTML = '<span class="free-dot"></span> Save';
   saveBtn.onclick = async () => {
-    for (const [cat, els] of Object.entries(inputs)) {
-      if (!_petProfiles[cat]) _petProfiles[cat] = {};
-      _petProfiles[cat].birthdate = els.date.value || null;
-      _petProfiles[cat].color = els.color.value;
-      _petProfiles[cat].emoji = els.emoji.value;
+    // Collect current input values
+    for (const [pet, els] of Object.entries(inputs)) {
+      if (!_petProfiles[pet]) _petProfiles[pet] = {};
+      _petProfiles[pet].birthdate = els.date?.value || null;
+      _petProfiles[pet].color = els.color?.value || DEFAULT_COLOR;
+      _petProfiles[pet].emoji = els.emoji?.value || DEFAULT_EMOJI;
     }
-    await savePetProfiles();
+    // Update APP_PETS to match petList
+    APP_PETS.length = 0;
+    petList.forEach(p => APP_PETS.push(p));
+    // Save profiles + updated pet list
+    await setDoc(doc(db, 'app_config', 'pet_profiles'), {
+      profiles: _petProfiles,
+      petList: [...petList]
+    });
     modal.remove();
     renderPetAges();
     renderCatFocusPills();
-    // Reload journal so chips pick up new colors
+    updatePetList();
     _journalDocsCache = null;
     loadJournalSidebar();
     showToast('Pet profiles saved ✓', 'journal');
@@ -2114,6 +2200,7 @@ function openInvoiceComplaintEdit(visit, dlEl) {
 }
 
 function openVisitEdit(v) {
+  setupClassicPopup();
   $('popup-title').textContent = v.source === 'home' ? `Edit Home Issue — ${v.cat} · ${v.date}` : `Edit — ${v.cat} · ${v.date}`;
   const body = $('popup-body');
   body.innerHTML = '';
@@ -3256,6 +3343,7 @@ function openJournalAddItem(cats, listName) {
 }
 
 function openJournalEdit(item) {
+  setupClassicPopup();
   const itemCats = jCats(item);
   const isNew = !!item._isNew;
   $('popup-title').textContent = isNew ? 'Add Journal Entry' : `Edit Journal — ${itemCats.join(', ')} · ${item.list}`;
@@ -5360,7 +5448,8 @@ If nothing clinical is missing, respond exactly: NOTHING_NEW`;
         showVerifyResult(`✓ ${file.name.slice(0,30)}: nothing missing`);
       }
     } else {
-      $('popup-title').textContent = `Verify: ${file.name}`;
+      setupClassicPopup();
+  $('popup-title').textContent = `Verify: ${file.name}`;
       popupRawText = typeof diffResult === 'string' ? diffResult.trim() : '';
       popupMatches = []; popupMatchIdx = 0;
       const body = $('popup-body');
@@ -6850,50 +6939,259 @@ function openLabDetail(entry, test, displayVal, abn) {
 
 function openVisit(visit) {
   try {
-  const title = `${visit.cat} · ${formatDate(visit.date)}${visit.source === 'home' ? ' · 🏠 Home' : (visit.clinic ? ' · ' + abbreviateClinic(visit.clinic) : '')}`;
-  let content = '';
-  if (visit.synopsis) content += `${visit.synopsis}\n\n`;
-  if (visit.chiefComplaint) content += `Chief complaint: ${visit.chiefComplaint}\n\n`;
-  if (visit.vitals && Object.keys(visit.vitals).length) {
-    const vparts = [];
-    if (visit.vitals.weight) vparts.push(`Weight: ${visit.vitals.weight}`);
-    if (visit.vitals.HR) vparts.push(`HR: ${visit.vitals.HR}`);
-    if (visit.vitals.RR) vparts.push(`RR: ${visit.vitals.RR}`);
-    if (visit.vitals.BCS) vparts.push(`BCS: ${visit.vitals.BCS}`);
-    if (visit.vitals.muscleConditionScore) vparts.push(`MCS: ${visit.vitals.muscleConditionScore}`);
-    if (visit.vitals.BP) vparts.push(`BP: ${visit.vitals.BP}`);
-    if (vparts.length) content += `Vitals: ${vparts.join(' · ')}\n\n`;
+  // ── Parse narrative into sections ──────────────────────────────
+  function parseNarrativeSections(text) {
+    if (!text) return {};
+    const sectionHeaders = ['HISTORY', 'PHYSICAL EXAM', 'EXAM FINDINGS', 'ASSESSMENT', 'PLAN', 'DIET', 'DIAGNOSTICS', 'DIAGNOSTIC RESULTS', 'PROCEDURES'];
+    const sections = {};
+    const lines = text.split('\n');
+    let currentKey = null;
+    let buffer = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const matchedHeader = sectionHeaders.find(h => trimmed.toUpperCase() === h || trimmed.toUpperCase().startsWith(h + ':'));
+      if (matchedHeader) {
+        if (currentKey && buffer.join('\n').trim()) sections[currentKey] = buffer.join('\n').trim();
+        currentKey = matchedHeader === 'EXAM FINDINGS' ? 'PHYSICAL EXAM' : matchedHeader;
+        buffer = [];
+      } else if (currentKey) {
+        buffer.push(line);
+      }
+    }
+    if (currentKey && buffer.join('\n').trim()) sections[currentKey] = buffer.join('\n').trim();
+    return sections;
   }
-  if (visit.medications?.length) {
-    content += `Medications:\n`;
-    for (const m of visit.medications) content += `  • ${m.name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ', ' + m.frequency : ''}${m.route ? ', ' + m.route : ''}${m.continuing ? ' (continuing)' : ''}${m.dispensed ? ' (dispensed)' : ''}\n`;
-    content += '\n';
-  }
-  if (visit.procedures?.length) {
-    content += `Procedures:\n`;
-    for (const p of visit.procedures) content += `  • ${p.name}${p.date && p.date !== visit.date ? ' (' + formatDate(p.date) + ')' : ''}${p.findings ? ' — ' + p.findings : ''}\n`;
-    content += '\n';
-  }
-  if (visit.narrative) content += `\n${formatNarrative(visit.narrative)}`;
-  content = content.trim();
 
-  $('popup-title').textContent = title;
-  $('popup-search-input').value = '';
-  $('popup-search-count').textContent = '';
-  popupRawText = content;
-  popupMatches = []; popupMatchIdx = 0;
-  const body = $('popup-body');
-  renderPopupContent(body, content);
+  const sections = parseNarrativeSections(visit.narrative);
 
-  const linkEl = $('popup-drive-link');
+  // ── Check for same-date labs ──────────────────────────────────
+  const sameDateLabs = (_allLabsCache || []).filter(l =>
+    l.cat === visit.cat && (l.resultDate === visit.date || l.visitDate === visit.date)
+  );
+  const labsByGroup = {};
+  for (const lab of sameDateLabs) {
+    const g = lab.labGroup || 'Other';
+    if (!labsByGroup[g]) labsByGroup[g] = [];
+    labsByGroup[g].push(lab);
+  }
+
+  // ── Build tab list ─────────────────────────────────────────────
+  const hasVitals = visit.vitals && Object.keys(visit.vitals).some(k => visit.vitals[k]);
+  const tabs = [];
+  tabs.push({ id: 'summary', label: 'Summary' });
+  if (hasVitals) tabs.push({ id: 'vitals', label: 'Vitals' });
+  if (sections['HISTORY']) tabs.push({ id: 'history', label: 'History' });
+  if (sections['PHYSICAL EXAM']) tabs.push({ id: 'exam', label: 'Exam' });
+  if (sections['ASSESSMENT'] || sections['DIAGNOSTICS'] || sections['DIAGNOSTIC RESULTS']) tabs.push({ id: 'assessment', label: 'Assessment' });
+  if (sections['PLAN']) tabs.push({ id: 'plan', label: 'Plan' });
+  if (visit.medications?.length) tabs.push({ id: 'meds', label: 'Medications' });
+  if (sections['DIET'] || visit.diet) tabs.push({ id: 'diet', label: 'Diet' });
+  if (sameDateLabs.length) tabs.push({ id: 'labs', label: 'Labs' });
+
+  // ── Build content renderer ─────────────────────────────────────
+  function renderTabContent(tabId, container) {
+    container.innerHTML = '';
+
+    const para = (text) => {
+      if (!text?.trim()) return;
+      const p = document.createElement('p');
+      p.style.cssText = 'margin:0 0 0.75rem;white-space:pre-wrap;';
+      p.textContent = text.trim();
+      container.appendChild(p);
+    };
+
+    const sectionLabel = (txt) => {
+      const d = document.createElement('div');
+      d.className = 'folder-section-label';
+      d.textContent = txt;
+      container.appendChild(d);
+    };
+
+    if (tabId === 'summary') {
+      if (visit.chiefComplaint) {
+        sectionLabel('Chief Complaint');
+        para(visit.chiefComplaint);
+      }
+      if (visit.synopsis) {
+        sectionLabel('Summary');
+        para(visit.synopsis);
+      }
+      if (visit.procedures?.length) {
+        sectionLabel('Procedures');
+        const ul = document.createElement('ul');
+        ul.style.cssText = 'margin:0 0 0.75rem;padding-left:1.2rem;';
+        for (const p of visit.procedures) {
+          const li = document.createElement('li');
+          li.style.cssText = 'margin-bottom:0.25rem;';
+          li.textContent = p.name + (p.findings ? ' — ' + p.findings : '') + (p.date && p.date !== visit.date ? ' (' + formatDate(p.date) + ')' : '');
+          ul.appendChild(li);
+        }
+        container.appendChild(ul);
+      }
+      if (!visit.chiefComplaint && !visit.synopsis && !visit.procedures?.length) {
+        para('No summary recorded.');
+      }
+    }
+
+    else if (tabId === 'vitals') {
+      const v = visit.vitals || {};
+      const vitalDefs = [
+        ['weight', 'Weight'], ['HR', 'Heart Rate'], ['RR', 'Resp Rate'],
+        ['temp', 'Temperature'], ['BCS', 'BCS'], ['muscleConditionScore', 'Muscle Score'],
+        ['BP', 'Blood Pressure'], ['painScore', 'Pain Score'], ['dentalScore', 'Dental Score']
+      ];
+      const grid = document.createElement('div');
+      grid.className = 'folder-vitals-grid';
+      let any = false;
+      for (const [key, label] of vitalDefs) {
+        if (!v[key]) continue;
+        any = true;
+        const cell = document.createElement('div');
+        cell.className = 'folder-vital';
+        cell.innerHTML = `<div class="folder-vital-label">${label}</div><div class="folder-vital-val">${v[key]}</div>`;
+        grid.appendChild(cell);
+      }
+      if (any) container.appendChild(grid);
+    }
+
+    else if (tabId === 'history') {
+      para(sections['HISTORY']);
+    }
+
+    else if (tabId === 'exam') {
+      para(sections['PHYSICAL EXAM']);
+    }
+
+    else if (tabId === 'assessment') {
+      if (sections['ASSESSMENT']) { sectionLabel('Assessment'); para(sections['ASSESSMENT']); }
+      if (sections['DIAGNOSTICS']) { sectionLabel('Diagnostics'); para(sections['DIAGNOSTICS']); }
+      if (sections['DIAGNOSTIC RESULTS']) { sectionLabel('Diagnostic Results'); para(sections['DIAGNOSTIC RESULTS']); }
+    }
+
+    else if (tabId === 'plan') {
+      para(sections['PLAN']);
+    }
+
+    else if (tabId === 'meds') {
+      const meds = (visit.medications || []).filter(m => !m.supplement);
+      const supps = (visit.medications || []).filter(m => m.supplement);
+      if (meds.length) {
+        sectionLabel('Medications');
+        for (const m of meds) {
+          const row = document.createElement('div');
+          row.className = 'folder-med-item';
+          const detail = [m.dose, m.frequency, m.route].filter(Boolean).join(', ');
+          const flags = [m.continuing ? 'continuing' : null, m.dispensed ? 'dispensed' : null].filter(Boolean).join(', ');
+          row.innerHTML = `<span class="folder-med-name">${escHtml(m.name)}</span><span class="folder-med-detail">${escHtml(detail)}${flags ? ' · ' + flags : ''}</span>`;
+          container.appendChild(row);
+        }
+      }
+      if (supps.length) {
+        sectionLabel('Supplements');
+        for (const m of supps) {
+          const row = document.createElement('div');
+          row.className = 'folder-med-item';
+          const detail = [m.dose, m.frequency].filter(Boolean).join(', ');
+          row.innerHTML = `<span class="folder-med-name">${escHtml(m.name)}</span><span class="folder-med-detail">${escHtml(detail)}</span>`;
+          container.appendChild(row);
+        }
+      }
+    }
+
+    else if (tabId === 'diet') {
+      if (sections['DIET']) para(sections['DIET']);
+      if (visit.diet) para(visit.diet);
+    }
+
+    else if (tabId === 'labs') {
+      for (const [group, labs] of Object.entries(labsByGroup)) {
+        sectionLabel(group);
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;border-collapse:collapse;font-size:0.65rem;margin-bottom:1rem;';
+        for (const lab of labs.sort((a,b) => (a.test||'').localeCompare(b.test||''))) {
+          const tr = document.createElement('tr');
+          const abnColor = lab.abnormal === 'HIGH' || lab.abnormal === 'LOW' ? '#c04030' : 'inherit';
+          tr.innerHTML = `
+            <td style="padding:0.2rem 0.4rem 0.2rem 0;color:#5c4030;width:45%;">${escHtml(lab.test||'')}</td>
+            <td style="padding:0.2rem 0.4rem;font-weight:600;color:${abnColor};">${escHtml(String(lab.value ?? ''))}</td>
+            <td style="padding:0.2rem 0.4rem;color:#7a6a52;">${escHtml(lab.unit||'')}</td>
+            <td style="padding:0.2rem 0 0.2rem 0.4rem;color:#7a6a52;font-size:0.58rem;">${lab.refLow != null && lab.refHigh != null ? lab.refLow + ' – ' + lab.refHigh : (lab.abnormal || '')}</td>`;
+          table.appendChild(tr);
+        }
+        container.appendChild(table);
+      }
+    }
+  }
+
+  // ── Assemble the popup ─────────────────────────────────────────
+  const box = document.querySelector('.record-popup-box');
+  box.innerHTML = '';
+
+  // Tab strip
+  const tabStrip = document.createElement('div');
+  tabStrip.className = 'folder-tabs';
+  box.appendChild(tabStrip);
+
+  // Header (below tabs, connected)
+  const header = document.createElement('div');
+  header.className = 'folder-header';
+  const titleBlock = document.createElement('div');
+  titleBlock.style.cssText = 'flex:1;min-width:0;';
+  const visitClass = visit.visitClass ? ` · ${visit.visitClass}` : '';
+  titleBlock.innerHTML = `<div class="folder-title">${escHtml(visit.chiefComplaint || visit.synopsis?.slice(0,60) || 'Visit Record')}</div><div class="folder-meta">${escHtml(visit.cat)} · ${formatDate(visit.date)}${visit.doctor ? ' · ' + escHtml(visit.doctor) : ''}${visit.clinic ? ' · ' + escHtml(visit.clinic) : ''}</div>`;
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = 'background:rgba(180,155,110,0.2);border:1px solid rgba(180,155,110,0.4);border-radius:6px;width:26px;height:26px;cursor:pointer;color:#5c4030;font-size:0.75rem;flex-shrink:0;';
+  closeBtn.onclick = () => $('record-popup').classList.remove('open');
+  header.appendChild(titleBlock);
+  header.appendChild(closeBtn);
+  box.appendChild(header);
+
+  // Content area
+  const contentArea = document.createElement('div');
+  contentArea.className = 'folder-content';
+  box.appendChild(contentArea);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'record-popup-footer';
+  const linkEl = document.createElement('span');
+  linkEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:#7a6a52;';
   if (visit.driveFileIds?.[0]) {
     const fname = visit.sourceFiles?.[0] || visit.driveFileIds[0];
-    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" title="${escHtml(fname)}" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
   } else {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-icon';
+  editBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.6rem;';
+  editBtn.textContent = '✏ Edit';
+  editBtn.onclick = () => { $('record-popup').classList.remove('open'); openVisitEdit(visit); };
+  footer.appendChild(linkEl);
+  footer.appendChild(editBtn);
+  box.appendChild(footer);
+
+  // ── Render tabs ────────────────────────────────────────────────
+  let activeTab = tabs[0]?.id;
+  function switchTab(id) {
+    activeTab = id;
+    tabStrip.querySelectorAll('.folder-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+    renderTabContent(id, contentArea);
+  }
+
+  for (const tab of tabs) {
+    const t = document.createElement('button');
+    t.className = 'folder-tab' + (tab.id === activeTab ? ' active' : '');
+    t.dataset.tab = tab.id;
+    t.textContent = tab.label;
+    t.onclick = () => switchTab(tab.id);
+    tabStrip.appendChild(t);
+  }
+
+  if (activeTab) renderTabContent(activeTab, contentArea);
+
   $('record-popup').classList.add('open');
-  setTimeout(() => $('popup-search-input').focus(), 80);
   } catch(e) {
     console.error('openVisit error:', e);
     showAlert('Could not open visit: ' + e.message, 'warning');
@@ -6991,6 +7289,24 @@ $('flowsheet-modal-cat').addEventListener('change', () => {
 $('popup-close').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('popup-close-btn').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('record-popup').addEventListener('click', e => { if (e.target === $('record-popup')) $('record-popup').classList.remove('open'); });
+// Helper to switch popup to classic (edit/verify) mode
+function setupClassicPopup() {
+  const box = document.querySelector('.record-popup-box');
+  box.style.cssText = 'background:white;border-radius:13px;width:100%;max-width:700px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;';
+  // Hide folder-specific elements, show classic
+  box.querySelectorAll('.folder-tabs,.folder-header,.folder-content').forEach(el => el.remove());
+  $('classic-popup-header').style.display = 'flex';
+  $('popup-body').style.cssText = 'flex:1;overflow-y:auto;padding:1rem 1.1rem;background:white;display:block;';
+  $('classic-popup-footer').style.display = 'flex';
+}
+// Helper to reset popup to folder style
+function resetPopupToFolder() {
+  const box = document.querySelector('.record-popup-box');
+  box.style.cssText = '';
+  $('classic-popup-header').style.display = 'none';
+  $('popup-body').style.display = 'none';
+  $('classic-popup-footer').style.display = 'none';
+}
 document.getElementById('lab-detail-popup').addEventListener('click', e => { if (e.target === document.getElementById('lab-detail-popup')) document.getElementById('lab-detail-popup').style.display = 'none'; });
 $('popup-search-input').addEventListener('input', runPopupSearch);
 $('popup-next').addEventListener('click', () => navigatePopup(1));
