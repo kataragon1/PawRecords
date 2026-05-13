@@ -334,7 +334,7 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 /* ── LAYER 3 ── */
 #record-popup{display:none;position:fixed;inset:0;background:rgba(42,37,32,0.55);z-index:200;align-items:center;justify-content:center;padding:1.5rem 2rem;}
 #record-popup.open{display:flex;}
-.record-popup-box{background:#f5edd8;border-radius:4px 13px 13px 13px;width:100%;max-width:720px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(42,37,32,0.35),0 4px 12px rgba(42,37,32,0.15);overflow:hidden;position:relative;}
+.record-popup-box{background:#f5edd8;border-radius:4px 13px 13px 13px;width:100%;max-width:720px;height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(42,37,32,0.35),0 4px 12px rgba(42,37,32,0.15);overflow:hidden;position:relative;}
 .record-popup-box::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 27px,rgba(180,160,120,0.08) 27px,rgba(180,160,120,0.08) 28px);pointer-events:none;border-radius:inherit;}
 .folder-tabs{display:flex;align-items:flex-end;gap:2px;padding:0 1rem;padding-top:0.5rem;flex-shrink:0;overflow-x:auto;scrollbar-width:none;}
 .folder-tabs::-webkit-scrollbar{display:none;}
@@ -7040,6 +7040,8 @@ function openVisit(visit) {
         ['temp', 'Temperature'], ['BCS', 'BCS'], ['muscleConditionScore', 'Muscle Score'],
         ['BP', 'Blood Pressure'], ['painScore', 'Pain Score'], ['dentalScore', 'Dental Score']
       ];
+
+      // Current vitals grid
       const grid = document.createElement('div');
       grid.className = 'folder-vitals-grid';
       let any = false;
@@ -7052,6 +7054,128 @@ function openVisit(visit) {
         grid.appendChild(cell);
       }
       if (any) container.appendChild(grid);
+
+      // Historical trends — pull weight and BCS from all visits
+      const allVisits = (_allVisitsCache || [])
+        .filter(vv => vv.cat === visit.cat && vv.vitals?.weight && vv.date)
+        .sort((a,b) => a.date.localeCompare(b.date));
+
+      if (allVisits.length >= 2) {
+        const parseWeight = (w) => {
+          if (typeof w === 'number') return w;
+          const m = String(w).match(/[\d.]+/);
+          return m ? parseFloat(m[0]) : null;
+        };
+        const weightPoints = allVisits.map(vv => ({
+          date: vv.date,
+          val: parseWeight(vv.vitals.weight),
+          isCurrent: vv.date === visit.date
+        })).filter(p => p.val);
+
+        if (weightPoints.length >= 2) {
+          const hr = document.createElement('hr');
+          hr.className = 'folder-divider';
+          container.appendChild(hr);
+          const lbl = document.createElement('div');
+          lbl.className = 'folder-section-label';
+          lbl.textContent = 'Weight Trend';
+          container.appendChild(lbl);
+
+          // SVG sparkline
+          const W = 560, H = 100, PAD = 28;
+          const vals = weightPoints.map(p => p.val);
+          const minV = Math.min(...vals), maxV = Math.max(...vals);
+          const range = maxV - minV || 1;
+          const toX = (i) => PAD + (i / (weightPoints.length - 1)) * (W - PAD * 2);
+          const toY = (v) => PAD + ((maxV - v) / range) * (H - PAD * 2);
+
+          // Build SVG path
+          const pathD = weightPoints.map((p,i) => `${i===0?'M':'L'}${toX(i).toFixed(1)},${toY(p.val).toFixed(1)}`).join(' ');
+          // Area fill
+          const areaD = pathD + ` L${toX(weightPoints.length-1).toFixed(1)},${H-4} L${PAD},${H-4} Z`;
+
+          const svgNS = 'http://www.w3.org/2000/svg';
+          const svg = document.createElementNS(svgNS, 'svg');
+          svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+          svg.style.cssText = 'width:100%;height:auto;overflow:visible;';
+
+          // Grid lines
+          [0, 0.5, 1].forEach(t => {
+            const y = PAD + t * (H - PAD * 2);
+            const line = document.createElementNS(svgNS, 'line');
+            line.setAttribute('x1', PAD); line.setAttribute('x2', W - PAD);
+            line.setAttribute('y1', y); line.setAttribute('y2', y);
+            line.setAttribute('stroke', 'rgba(140,110,70,0.15)'); line.setAttribute('stroke-width', '1');
+            svg.appendChild(line);
+            const tv = document.createElementNS(svgNS, 'text');
+            tv.setAttribute('x', PAD - 4); tv.setAttribute('y', y + 4);
+            tv.setAttribute('text-anchor', 'end');
+            tv.setAttribute('font-family', 'JetBrains Mono, monospace');
+            tv.setAttribute('font-size', '8');
+            tv.setAttribute('fill', 'rgba(100,80,50,0.6)');
+            tv.textContent = (minV + (1-t)*range).toFixed(1);
+            svg.appendChild(tv);
+          });
+
+          // Area fill
+          const area = document.createElementNS(svgNS, 'path');
+          area.setAttribute('d', areaD);
+          area.setAttribute('fill', 'rgba(180,140,80,0.12)');
+          svg.appendChild(area);
+
+          // Line
+          const path = document.createElementNS(svgNS, 'path');
+          path.setAttribute('d', pathD);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', 'rgba(140,90,40,0.7)');
+          path.setAttribute('stroke-width', '1.5');
+          path.setAttribute('stroke-linecap', 'round');
+          path.setAttribute('stroke-linejoin', 'round');
+          svg.appendChild(path);
+
+          // Points + labels
+          weightPoints.forEach((p, i) => {
+            const cx = toX(i), cy = toY(p.val);
+            const circle = document.createElementNS(svgNS, 'circle');
+            circle.setAttribute('cx', cx); circle.setAttribute('cy', cy);
+            circle.setAttribute('r', p.isCurrent ? '5' : '3');
+            circle.setAttribute('fill', p.isCurrent ? 'rgba(120,70,30,0.9)' : 'rgba(140,100,50,0.6)');
+            circle.setAttribute('stroke', 'white'); circle.setAttribute('stroke-width', '1.5');
+            svg.appendChild(circle);
+
+            // Date label on first, last, current
+            if (i === 0 || i === weightPoints.length - 1 || p.isCurrent) {
+              const dtxt = document.createElementNS(svgNS, 'text');
+              const anchor = i === 0 ? 'start' : i === weightPoints.length - 1 ? 'end' : 'middle';
+              dtxt.setAttribute('x', cx); dtxt.setAttribute('y', H - 4);
+              dtxt.setAttribute('text-anchor', anchor);
+              dtxt.setAttribute('font-family', 'JetBrains Mono, monospace');
+              dtxt.setAttribute('font-size', '7.5');
+              dtxt.setAttribute('fill', p.isCurrent ? 'rgba(120,70,30,0.9)' : 'rgba(100,80,50,0.55)');
+              dtxt.textContent = formatDateShort(p.date);
+              svg.appendChild(dtxt);
+            }
+
+            // Value label on current point
+            if (p.isCurrent) {
+              const vtxt = document.createElementNS(svgNS, 'text');
+              vtxt.setAttribute('x', cx); vtxt.setAttribute('y', cy - 9);
+              vtxt.setAttribute('text-anchor', 'middle');
+              vtxt.setAttribute('font-family', 'JetBrains Mono, monospace');
+              vtxt.setAttribute('font-size', '9');
+              vtxt.setAttribute('font-weight', '700');
+              vtxt.setAttribute('fill', 'rgba(120,70,30,0.95)');
+              vtxt.textContent = p.val + ' lbs';
+              svg.appendChild(vtxt);
+            }
+          });
+
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'background:rgba(255,255,255,0.35);border:1px solid rgba(180,155,110,0.25);border-radius:8px;padding:0.75rem;';
+          wrap.appendChild(svg);
+          container.appendChild(wrap);
+        }
+      }
     }
 
     else if (tabId === 'history') {
@@ -7167,7 +7291,7 @@ function openVisit(visit) {
   editBtn.className = 'btn-icon';
   editBtn.style.cssText = 'font-size:0.6rem;padding:0.2rem 0.6rem;';
   editBtn.textContent = '✏ Edit';
-  editBtn.onclick = () => { $('record-popup').classList.remove('open'); openVisitEdit(visit); };
+  editBtn.onclick = () => openVisitEdit(visit);
   footer.appendChild(linkEl);
   footer.appendChild(editBtn);
   box.appendChild(footer);
