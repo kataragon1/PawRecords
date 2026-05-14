@@ -1439,4 +1439,13 @@ function showBatchBanner(batchId, total, processed) {
 
 // Expose for window.loadDriveFiles reference in HTML onclick handlers
 window.loadDriveFiles = loadDriveFiles;
+
+// ── DRIVE RECONNECT BUTTON WIRING ──
+{
+  const connectBtn = $('connect-drive-btn');
+  if (connectBtn) connectBtn.addEventListener('click', () => reconnectDrive(connectBtn));
+
+  const statusIndicator = $('drive-status-indicator');
+  if (statusIndicator) statusIndicator.addEventListener('click', () => reconnectDrive(null));
+}
 window.openFlagsModal = (...args) => import('./ui.js').then(m => m.openFlagsModal?.(...args) || window._openFlagsModal?.(...args));
