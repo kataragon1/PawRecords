@@ -19,8 +19,9 @@ import {
   writeBatch, collection, getDocs, query, where, orderBy,
   $, showToast, showAlert, escHtml, formatDate, formatDateShort,
   catEmoji, abbreviateClinic, invalidateChatContext,
-  isCatKitten, renderPetAges,
 } from './core.js';
+
+import { isCatKitten, renderPetAges } from './pets.js';
 
 // ── RECORDS SIDEBAR ──
 
