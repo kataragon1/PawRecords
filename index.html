@@ -1511,8 +1511,33 @@ function openPetProfilesModal() {
     colorWrap.appendChild(colorInput);
 
     const nameSpan = document.createElement('span');
-    nameSpan.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--ink);flex:1;';
+    nameSpan.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--ink);flex:1;cursor:pointer;border-bottom:1px dashed transparent;transition:border-color 0.15s;';
+    nameSpan.title = 'Click to rename';
     nameSpan.textContent = cat;
+    nameSpan.onmouseenter = () => { nameSpan.style.borderBottomColor = 'var(--ink-muted)'; };
+    nameSpan.onmouseleave = () => { nameSpan.style.borderBottomColor = 'transparent'; };
+    nameSpan.onclick = () => {
+      const oldName = petList[idx];
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = oldName;
+      nameInput.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--ink);flex:1;background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:0.1rem 0.3rem;outline:none;width:100%;';
+      nameSpan.replaceWith(nameInput);
+      nameInput.select();
+      const commit = () => {
+        const newName = nameInput.value.trim();
+        if (newName && newName !== oldName) {
+          petList[idx] = newName;
+          _petProfiles[newName] = _petProfiles[oldName];
+          delete _petProfiles[oldName];
+          inputs[newName] = inputs[oldName];
+          delete inputs[oldName];
+        }
+        renderPetRows();
+      };
+      nameInput.onblur = commit;
+      nameInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); } else if (e.key === 'Escape') { nameInput.value = oldName; nameInput.blur(); } };
+    };
 
     const dateInput = document.createElement('input');
     dateInput.type = 'date';
