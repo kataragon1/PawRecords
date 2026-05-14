@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(git ls-remote *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(git rebase *)",
+      "Bash(dir /b *.js *.css)",
+      "Bash(sed -n '1429,1440p' main.js)",
+      "Bash(sed -n '93,104p' labs.js)",
+      "Bash(grep -n \"^window\\\\.\\\\|^document\\\\.querySelector\\\\|^\\\\$\\(\" main.js)"
+    ]
+  }
+}
