@@ -7249,6 +7249,7 @@ function openVisit(visit) {
 
   // ── Assemble the popup ─────────────────────────────────────────
   const box = document.querySelector('.record-popup-box');
+  box.style.cssText = ''; // clear any inline styles from classic mode
   box.innerHTML = '';
 
   // Tab strip
@@ -7413,32 +7414,44 @@ $('flowsheet-modal-cat').addEventListener('change', () => {
 $('popup-close').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('popup-close-btn').addEventListener('click', () => $('record-popup').classList.remove('open'));
 $('record-popup').addEventListener('click', e => { if (e.target === $('record-popup')) $('record-popup').classList.remove('open'); });
-// Helper to switch popup to classic (edit/verify) mode
+// Helper to switch popup to classic (edit/verify) mode — always rebuilds from scratch
 function setupClassicPopup() {
   const box = document.querySelector('.record-popup-box');
-  box.style.cssText = 'background:white;border-radius:13px;width:100%;max-width:700px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;';
-  // Hide folder-specific elements, show classic
-  box.querySelectorAll('.folder-tabs,.folder-header,.folder-content').forEach(el => el.remove());
-  $('classic-popup-header').style.display = 'flex';
-  $('popup-body').style.cssText = 'flex:1;overflow-y:auto;padding:1rem 1.1rem;background:white;display:block;';
-  $('classic-popup-footer').style.display = 'flex';
-}
-// Helper to reset popup to folder style
-function resetPopupToFolder() {
-  const box = document.querySelector('.record-popup-box');
-  box.style.cssText = '';
-  $('classic-popup-header').style.display = 'none';
-  $('popup-body').style.display = 'none';
-  $('classic-popup-footer').style.display = 'none';
+  box.style.cssText = 'background:white;border-radius:13px;width:100%;max-width:700px;height:82vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;';
+  box.innerHTML = [
+    '<div id="classic-popup-header" style="background:white;padding:0.85rem 1.1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;flex-shrink:0;flex-wrap:wrap;">',
+      '<div class="record-popup-title" id="popup-title"></div>',
+      '<div class="record-popup-search">',
+        '<input id="popup-search-input" placeholder="Search…">',
+        '<button class="popup-search-nav" id="popup-prev">▲</button>',
+        '<button class="popup-search-nav" id="popup-next">▼</button>',
+        '<span id="popup-search-count"></span>',
+      '</div>',
+      '<button class="modal-close" id="popup-close">✕</button>',
+    '</div>',
+    '<div class="record-popup-body" id="popup-body" style="flex:1;overflow-y:auto;padding:1rem 1.1rem;background:white;"></div>',
+    '<div id="classic-popup-footer" style="padding:0.65rem 1.1rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:white;">',
+      '<span id="popup-drive-link" style="font-family:JetBrains Mono,monospace;font-size:0.58rem;color:var(--ink-muted);"></span>',
+      '<button class="btn-icon" id="popup-close-btn">Close</button>',
+    '</div>',
+  ].join('');
+  // Re-wire close handlers
+  $('popup-close')?.addEventListener('click', () => $('record-popup').classList.remove('open'));
+  $('popup-close-btn')?.addEventListener('click', () => $('record-popup').classList.remove('open'));
+  // Re-wire search
+  wirePopupSearch();
 }
 document.getElementById('lab-detail-popup').addEventListener('click', e => { if (e.target === document.getElementById('lab-detail-popup')) document.getElementById('lab-detail-popup').style.display = 'none'; });
-$('popup-search-input').addEventListener('input', runPopupSearch);
-$('popup-next').addEventListener('click', () => navigatePopup(1));
-$('popup-prev').addEventListener('click', () => navigatePopup(-1));
-$('popup-search-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); navigatePopup(e.shiftKey ? -1 : 1); }
-  if (e.key === 'Escape') $('record-popup').classList.remove('open');
-});
+function wirePopupSearch() {
+  $('popup-search-input')?.addEventListener('input', runPopupSearch);
+  $('popup-next')?.addEventListener('click', () => navigatePopup(1));
+  $('popup-prev')?.addEventListener('click', () => navigatePopup(-1));
+  $('popup-search-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); navigatePopup(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Escape') $('record-popup').classList.remove('open');
+  });
+}
+wirePopupSearch(); // initial wire on page load
 
 // ── ABNORMAL LAB ALERTS ──
 async function checkAbnormalLabs() {
@@ -8512,7 +8525,7 @@ function buildNotesContext() {
   if (!_notesCache.length) return '';
   const pinned = _notesCache.filter(n => n.pinned);
   const active = _notesCache.filter(n => !n.pinned);
-  let ctx = '\n\n## Active Context Notes\n';
+  let ctx = '\n\n## Active Context Notes (AI-generated observations from previous sessions — not written by the owner)\n';
   for (const n of pinned) {
     const catPrefix = n.cats?.length ? `[${n.cats.join('/')}] ` : '';
     ctx += `📌 ${catPrefix}${n.text}\n`;
@@ -9976,11 +9989,8 @@ const JOURNAL_CACHE_TTL = 60000; // 1 minute
 
 async function buildChatContext(userMessage) {
   const knownCats = APP_PETS.length ? APP_PETS : [];
-  const mentioned = knownCats.filter(c => userMessage.toLowerCase().includes(c.toLowerCase()));
-  // Cat focus pills take priority; fall back to message mentions, then all cats
-  const targetCats = _chatFocusCats
-    ? [..._chatFocusCats]
-    : (mentioned.length ? mentioned : knownCats);
+  // Always send all cats — context is cached, filtering causes confusion
+  const targetCats = knownCats;
   if (!targetCats.length) return '';
 
   // Search/full-history queries always rebuild — they depend on the message itself
@@ -9994,8 +10004,24 @@ async function buildChatContext(userMessage) {
 
   await ensureDataCache();
 
-  // Notes context always comes first — highest priority
-  let context = buildNotesContext();
+  // Pet roster with ages — always first line
+  const petIntro = targetCats.map(cat => {
+    const profile = _petProfiles[cat] || {};
+    let ageStr = '';
+    if (profile.birthdate) {
+      const birth = new Date(profile.birthdate + 'T12:00:00');
+      const ageMs = Date.now() - birth;
+      const years = Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
+      const months = Math.floor((ageMs % (365.25 * 24 * 3600 * 1000)) / (30.44 * 24 * 3600 * 1000));
+      ageStr = years >= 1 ? ` (${years}y ${months}m old)` : ` (${months}m old)`;
+    }
+    const species = profile.species || 'cat';
+    return `${cat}${ageStr}`;
+  }).join(', ');
+  let context = `## Pets: ${petIntro}\n`;
+
+  // Notes context — highest priority
+  context += buildNotesContext();
 
   // Journal — cached for 1 minute to avoid a Firestore read on every message
   try {
@@ -10681,9 +10707,10 @@ The block must be a valid JSON array. Use cats array — include multiple cats w
   const timeStr = now.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' });
   const staticInstruction = `You are a veterinary care assistant for ${APP_PETS.length ? APP_PETS.join(', ') : 'the pets in this account'}.
 Today is ${todayStr} at ${timeStr}. Use this when answering questions about timing, schedules, or how long ago something occurred.
-You have access to their complete medical records, lab results, and care journal below.
+You have access to their complete medical records, lab results, and care journal below. The records are loaded — you do not need to be told what they contain, you already have them.
 Be precise — cite specific cats, dates, values, and sources. Note abnormal lab values clearly.
 If asked about supplements or nutrition, discuss thoroughly with context from their specific conditions and records.
+On your FIRST response in a session, briefly demonstrate awareness of each pet's current situation — their active conditions, recent visits, and anything flagged. Do not wait to be asked. Be concise but show you have reviewed the records.
 
 CARE JOURNAL STATUS — this is critical for accuracy:
 Items with NO status tag are CURRENTLY ACTIVE — the cat is taking/eating/doing this right now.
