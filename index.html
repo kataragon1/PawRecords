@@ -568,6 +568,11 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <button class="btn-icon free-icon" id="add-home-issue-btn" style="font-size:0.6rem;padding:0.2rem 0.45rem;"><span class="free-dot"></span> + Issue</button>
         <button class="btn-icon" id="open-trends-btn" style="font-size:0.6rem;padding:0.2rem 0.45rem;">📈 Trends</button>
       </div>
+      <div style="padding:0.3rem 0.75rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.4rem;flex-shrink:0;">
+        <span style="font-size:0.65rem;color:var(--ink-muted);">🔍</span>
+        <input id="records-search-input" placeholder="Search visits…" style="flex:1;background:transparent;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink);">
+        <button id="records-search-clear" style="display:none;background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.65rem;padding:0.1rem 0.2rem;line-height:1;">✕</button>
+      </div>
       <div class="sidebar-empty" id="records-empty" style="flex:1;">
         <div class="sidebar-empty-icon">📋</div>
         <div>No records yet.<br>Process files to get started.</div>
@@ -1350,6 +1355,8 @@ async function updatePetList() {
     const pets = [...new Set(snap.docs.map(d => d.data().cat).filter(Boolean))].sort();
     if (pets.length) {
       APP_PETS = pets;
+      // Also include any manually added pets that have no visits yet
+      Object.keys(_petProfiles).forEach(p => { if (!APP_PETS.includes(p)) APP_PETS.push(p); });
 
       // Auto-detect birthdates for cats that don't have one yet
       let profilesUpdated = false;
@@ -10304,6 +10311,52 @@ async function saveHomeIssue() {
     showAlert('Failed to save: ' + err.message, 'warning');
   }
 }
+
+// ── VISIT SEARCH ──
+function filterVisitsByKeyword(q) {
+  if (!q) {
+    _recordsSidebarDirty = true;
+    _loadRecordsSidebarImpl();
+    return;
+  }
+  const ql = q.toLowerCase();
+  const filtered = (_allVisitsCache || []).filter(v => {
+    const fields = [
+      v.cat, v.chiefComplaint, v.diagnosis, v.synopsis, v.clinic, v.date, v.docType,
+      ...(v.medications || []).map(m => m.name),
+      ...(v.procedures || []).map(p => p.name),
+    ];
+    return fields.some(f => f && f.toLowerCase().includes(ql));
+  });
+  if (!filtered.length) {
+    $('records-empty').style.display = 'flex';
+    $('records-tree').innerHTML = '';
+    return;
+  }
+  const tree = {};
+  filtered.forEach(v => {
+    if (!tree[v.cat]) tree[v.cat] = {};
+    if (!tree[v.cat][v.date]) tree[v.cat][v.date] = [];
+    if (!tree[v.cat][v.date].find(x => x.id === v.id)) tree[v.cat][v.date].push(v);
+  });
+  renderRecordsTree(tree);
+  document.querySelectorAll('#records-tree .cat-heading').forEach(h => {
+    if (!h.classList.contains('open')) h.click();
+  });
+}
+
+const _rsi = $('records-search-input');
+const _rsc = $('records-search-clear');
+_rsi.addEventListener('input', () => {
+  const q = _rsi.value.trim();
+  _rsc.style.display = q ? '' : 'none';
+  filterVisitsByKeyword(q);
+});
+_rsc.addEventListener('click', () => {
+  _rsi.value = '';
+  _rsc.style.display = 'none';
+  filterVisitsByKeyword('');
+});
 
 $('add-home-issue-btn').addEventListener('click', openHomeIssueModal);
 $('home-issue-modal-close').addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
