@@ -816,7 +816,7 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
         <span id="flowsheet-search-count" style="font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-muted);white-space:nowrap;min-width:32px;"></span>
         <button id="flowsheet-search-prev" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↑</button>
         <button id="flowsheet-search-next" style="background:none;border:none;cursor:pointer;color:var(--ink-muted);font-size:0.7rem;padding:0 2px;line-height:1;">↓</button>
-        <button id="flowsheet-search-mode" title="Toggle search/filter mode" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--ink-muted);font-family:'JetBrains Mono',monospace;font-size:0.55rem;padding:0.1rem 0.3rem;line-height:1.4;margin-left:2px;transition:all 0.15s;">Search</button>
+        <button id="flowsheet-search-mode" title="Toggle search/filter mode" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--ink-muted);font-family:'JetBrains Mono',monospace;font-size:0.55rem;padding:0.1rem 0.3rem;line-height:1.4;margin-left:2px;transition:all 0.15s;">Filter</button>
       </div>
       <button id="flowsheet-modal-close">✕</button>
     </div>
@@ -2665,7 +2665,7 @@ function initFlowsheetSearch(body) {
 
   // Sync mode button visual state
   const syncModeBtn = () => {
-    modeBtn.textContent = _flowsheetFilterMode ? 'Filter' : 'Search';
+    modeBtn.textContent = _flowsheetFilterMode ? 'Search' : 'Filter';
     modeBtn.style.color = _flowsheetFilterMode ? 'var(--accent)' : 'var(--ink-muted)';
     modeBtn.style.borderColor = _flowsheetFilterMode ? 'var(--accent)' : 'var(--border)';
     newInput.placeholder = _flowsheetFilterMode ? 'Filter test…' : 'Search test…';
