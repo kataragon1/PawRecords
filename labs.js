@@ -144,7 +144,7 @@ export function renderLabsSidebar() {
 
   for (const e of entries) {
     const g = normalizeGroup(e.labGroup || inferLabGroup(e.test, e.labName) || 'Other');
-    const key = e.test + '||' + g;
+    const key = (e.test || '').trim().toLowerCase() + '||' + g;
     if (!latest[key] || (e.resultDate||'') > (latest[key].resultDate||'')) latest[key] = e;
   }
   const allRowKeys = Object.keys(latest);
@@ -217,8 +217,8 @@ export function renderLabsSidebar() {
     body.style.display = '';
 
     for (const key of ordered) {
-      const test = key.split('||')[0];
       const e = latest[key];
+      const test = e.test; // use original casing from the entry, not the normalized key
       makeLabRow(test, e, body, () => openLabDetail(e, test,
         typeof e.value === 'number'
           ? (e.value % 1 === 0 ? e.value.toString() : e.value < 0.1 ? e.value.toFixed(3) : e.value < 10 ? e.value.toFixed(2) : e.value.toFixed(1))
@@ -296,7 +296,7 @@ export function buildFlowsheetTable(cat, container) {
   const normalizeGroup = g => (g || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const rowKeyOf = e => {
     const g = e.labGroup || inferLabGroup(e.test, e.labName) || 'Other';
-    return e.test + '||' + normalizeGroup(g);
+    return (e.test || '').trim().toLowerCase() + '||' + normalizeGroup(g);
   };
   const allRowKeys = [...new Set(entries.map(rowKeyOf))];
   const lookup = {};
@@ -374,7 +374,8 @@ export function buildFlowsheetTable(cat, container) {
     tbody.appendChild(sepRow);
 
     for (const rowKey of byGroup[group]) {
-      const test = rowKey.split('||')[0];
+      const mostRecentEntry = Object.values(lookup[rowKey]).sort((a,b)=>(b.resultDate||'')>(a.resultDate||'')?1:-1)[0];
+      const test = mostRecentEntry?.test || rowKey.split('||')[0];
       const row = document.createElement('tr');
       row.addEventListener('mouseenter', () => {
         row.querySelectorAll('td').forEach(td => {

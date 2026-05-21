@@ -269,8 +269,8 @@ export function renderCatFocusPills() {
   const allActive = !_chatFocusCats;
 
   const allPill = document.createElement('span');
-  allPill.textContent = 'All cats';
-  allPill.title = 'Include all cats in context';
+  allPill.textContent = 'All pets';
+  allPill.title = 'Include all pets in context';
   pillStyle(allPill, allActive);
   allPill.addEventListener('click', () => { setChatFocusCats(null); invalidateChatContext(); renderCatFocusPills(); });
   bar.appendChild(allPill);

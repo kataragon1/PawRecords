@@ -1448,4 +1448,29 @@ window.loadDriveFiles = loadDriveFiles;
   const statusIndicator = $('drive-status-indicator');
   if (statusIndicator) statusIndicator.addEventListener('click', () => reconnectDrive(null));
 }
+
+// ── TOOLBAR BUTTON WIRING ──
+{
+  const refreshBtn = $('refresh-drive-btn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => {
+    if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+    window._driveLastLoaded = 0;
+    loadDriveFiles();
+  });
+
+  const uploadBtn = $('upload-files-btn');
+  const uploadInput = $('upload-file-input');
+  if (uploadBtn && uploadInput) {
+    uploadBtn.addEventListener('click', () => {
+      if (!driveAccessToken) { showToast('Connect Drive first', 'warning'); return; }
+      uploadInput.click();
+    });
+    uploadInput.addEventListener('change', () => {
+      if (uploadInput.files?.length) {
+        uploadFilesToDrive(Array.from(uploadInput.files));
+        uploadInput.value = '';
+      }
+    });
+  }
+}
 window.openFlagsModal = (...args) => import('./ui.js').then(m => m.openFlagsModal?.(...args) || window._openFlagsModal?.(...args));
