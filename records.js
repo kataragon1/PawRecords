@@ -873,8 +873,8 @@ export async function saveHomeIssue() {
     treatment ? `TREATMENT\n${treatment}` : '',
   ].filter(Boolean).join('\n\n');
 
-  // sanitizeForFirestore imported lazily to avoid circular dep
-  const { sanitizeForFirestore } = await import('./import.js');
+  // sanitizeForFirestore lives in files.js
+  const { sanitizeForFirestore } = await import('./files.js');
 
   const record = sanitizeForFirestore({
     cat,
@@ -1296,6 +1296,7 @@ export function openVisit(visit) {
 }
 
 // ── BUTTON WIRING ──
+$('home-issue-modal-close')?.addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
 $('home-issue-cancel-btn')?.addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
 $('home-issue-save-btn')?.addEventListener('click', saveHomeIssue);
 $('merge-cancel-btn')?.addEventListener('click', () => { $('merge-modal').style.display = 'none'; });
