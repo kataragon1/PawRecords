@@ -166,8 +166,9 @@ export function updateStatusBar() {
     $('send-btn').disabled = true;
   }
   if (driveAccessToken) {
-    $('drive-dot').className = 'status-dot green';
-    $('drive-status').textContent = 'Drive connected';
+    // Token exists from session but not yet verified — don't show green until loadDriveFiles() confirms
+    $('drive-dot').className = 'status-dot amber';
+    $('drive-status').textContent = 'Drive — connecting…';
   } else {
     $('drive-dot').className = 'status-dot amber';
     $('drive-status').textContent = 'Drive — click Files to connect';
@@ -447,4 +448,29 @@ async function _updatePetList() {
       $('user-input').placeholder = `Ask anything about ${list}…`;
     }
   } catch(e) { /* non-critical */ }
+}
+
+// ── API KEY MODAL WIRING ──
+{
+  const openModal = () => {
+    $('apikey-input').value = apiKey || '';
+    $('apikey-status-msg').textContent = '';
+    $('apikey-modal').style.display = 'flex';
+    setTimeout(() => $('apikey-input')?.focus(), 80);
+  };
+  const closeModal = () => { $('apikey-modal').style.display = 'none'; };
+  $('apikey-status-indicator')?.addEventListener('click', openModal);
+  $('apikey-modal-close')?.addEventListener('click', closeModal);
+  $('apikey-cancel-btn')?.addEventListener('click', closeModal);
+  $('apikey-save-btn')?.addEventListener('click', async () => {
+    const key = $('apikey-input').value.trim();
+    $('apikey-status-msg').textContent = 'Saving…';
+    await saveApiKey(key);
+    $('apikey-status-msg').textContent = key ? 'Saved ✓' : 'Key cleared';
+    setTimeout(closeModal, 800);
+  });
+  $('apikey-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('apikey-save-btn')?.click();
+    if (e.key === 'Escape') closeModal();
+  });
 }

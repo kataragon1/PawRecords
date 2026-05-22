@@ -1449,6 +1449,16 @@ window.loadDriveFiles = loadDriveFiles;
   if (statusIndicator) statusIndicator.addEventListener('click', () => reconnectDrive(null));
 }
 
+// ── PROGRESS STOP BUTTON ──
+{
+  const stopBtn = $('progress-stop-btn');
+  if (stopBtn) stopBtn.addEventListener('click', () => {
+    setProcessingStop(true);
+    stopBtn.textContent = 'Stopping…';
+    stopBtn.disabled = true;
+  });
+}
+
 // ── TOOLBAR BUTTON WIRING ──
 {
   const refreshBtn = $('refresh-drive-btn');

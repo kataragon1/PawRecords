@@ -1294,3 +1294,8 @@ export function openVisit(visit) {
     import('./core.js').then(m => m.showAlert('Could not open visit: ' + e.message, 'warning'));
   }
 }
+
+// ── BUTTON WIRING ──
+$('home-issue-cancel-btn')?.addEventListener('click', () => { $('home-issue-modal').style.display = 'none'; });
+$('home-issue-save-btn')?.addEventListener('click', saveHomeIssue);
+$('merge-cancel-btn')?.addEventListener('click', () => { $('merge-modal').style.display = 'none'; });

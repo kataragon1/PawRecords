@@ -20,8 +20,10 @@ import {
   db, doc, getDoc, setDoc, deleteDoc, writeBatch,
   collection, getDocs, query, where, orderBy,
   $, showToast, showAlert, escHtml, invalidateChatContext,
-  catEmoji,
+  catEmoji, updateStatusBar,
 } from './core.js';
+
+import { setSessionCost } from './state.js';
 
 // ── CONTEXT MENU ──
 export function showCtxMenu(e, label, items) {
@@ -573,3 +575,49 @@ window.openLabDetail = openLabDetail;
 window.openTrendsModal = openTrendsModal;
 window.openCostModal = openCostModal;
 window._openFlagsModal = openFlagsModal;
+
+// ── BUTTON WIRING ──
+
+// Trends modal
+$('trends-modal-close')?.addEventListener('click', () => { $('trends-modal').style.display = 'none'; });
+
+// Cost modal
+$('cost-reset-btn')?.addEventListener('click', () => {
+  setSessionCost(0);
+  $('cost-modal-total').textContent = '$0.0000';
+  updateStatusBar();
+  showToast('Session cost reset ✓', 'journal');
+});
+$('cost-save-btn')?.addEventListener('click', () => {
+  const warn = parseFloat($('cost-warn-input').value) || 0;
+  const alert2 = parseFloat($('cost-alert-input').value) || 0;
+  import('./state.js').then(m => { m.setCostWarnThreshold(warn); m.setCostAlertThreshold(alert2); });
+  import('./core.js').then(m => m.saveCostSettings());
+  $('cost-modal').classList.remove('open');
+  showToast('Cost settings saved ✓', 'journal');
+});
+
+// Chat search
+const _csBar = $('chat-search-bar');
+$('chat-search-btn')?.addEventListener('click', () => {
+  if (_csBar) { _csBar.style.display = _csBar.style.display === 'none' ? '' : ''; _csBar.style.display = ''; }
+  $('chat-search-input')?.focus();
+});
+$('chat-search-input')?.addEventListener('input', runChatSearch);
+$('chat-search-prev')?.addEventListener('click', () => navigateChatSearch(-1));
+$('chat-search-next')?.addEventListener('click', () => navigateChatSearch(1));
+$('chat-search-close')?.addEventListener('click', () => {
+  clearChatSearch();
+  if (_csBar) _csBar.style.display = 'none';
+});
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && $('app')?.classList.contains('active')) {
+    e.preventDefault();
+    if (_csBar) _csBar.style.display = '';
+    $('chat-search-input')?.focus();
+  }
+  if (e.key === 'Escape' && _csBar?.style.display !== 'none') {
+    clearChatSearch();
+    if (_csBar) _csBar.style.display = 'none';
+  }
+});
