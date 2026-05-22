@@ -90,6 +90,10 @@
     <div class="sidebar-panel" id="panel-journal">
       <div id="journal-cat-tabs" style="display:none;flex-shrink:0;border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap;padding:0 0.5rem;background:white;">
       </div>
+      <div id="journal-action-bar" style="display:none;padding:0.3rem 0.75rem;border-bottom:1px solid var(--border);display:flex;gap:0.35rem;align-items:center;flex-shrink:0;background:var(--surface);">
+        <button class="btn-icon" id="journal-dedup-btn" style="font-size:0.58rem;padding:0.18rem 0.4rem;" title="Find and remove duplicate journal entries">Dedup</button>
+        <span id="journal-dedup-status" style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);"></span>
+      </div>
       <div class="sidebar-empty" id="journal-empty">
         <div class="sidebar-empty-icon">📓</div>
         <div>Journal is empty.<br>Start chatting to build it.</div>

@@ -153,9 +153,11 @@ export function renderJournalSidebar(docs) {
     empty.style.display = 'flex';
     tabBar.style.display = 'none';
     container.querySelectorAll('.journal-cat-section').forEach(el => el.remove());
+    updateJournalActionBar(0);
     return;
   }
   empty.style.display = 'none';
+  updateJournalActionBar(docs.length);
 
   const allCatsInJournal = [...new Set(docs.flatMap(j => jCats(j)))].sort();
   if (_journalActiveCat !== 'all' && !allCatsInJournal.includes(_journalActiveCat)) {
@@ -623,6 +625,81 @@ export async function confirmDeleteJournalEntry(item) {
     renderJournalSidebar(_journalDocsCache || []);
     showToast('Entry deleted ✓', 'journal');
   } catch(err) { showAlert('Delete failed: ' + err.message, 'warning'); }
+}
+
+// ── JOURNAL DEDUP ──
+
+export async function runJournalDedup() {
+  const statusEl = $('journal-dedup-status');
+  if (statusEl) statusEl.textContent = 'Scanning…';
+
+  // Ensure cache is loaded
+  if (!_journalDocsCache) {
+    const snap = await getDocs(query(collection(db, 'journal'), orderBy('addedDate', 'desc')));
+    setJournalDocsCache(snap.docs.map(d => {
+      const data = { id: d.id, ...d.data() };
+      data.list = normalizeListName(data.list);
+      return data;
+    }));
+  }
+
+  // Group by canonical key: list + text + sorted cats
+  const groups = new Map();
+  for (const e of _journalDocsCache) {
+    const cats = jCats(e).slice().sort().join(',');
+    const key = (e.list || '').toLowerCase().trim() + '|' + (e.text || '').toLowerCase().trim() + '|' + cats;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  }
+
+  // Collect duplicates: keep the oldest (by addedDate asc, then id), delete the rest
+  const toDelete = [];
+  for (const [, entries] of groups) {
+    if (entries.length < 2) continue;
+    const sorted = entries.slice().sort((a, b) => {
+      const da = a.addedDate || '', db2 = b.addedDate || '';
+      if (da !== db2) return da < db2 ? -1 : 1;
+      return (a.id || '') < (b.id || '') ? -1 : 1;
+    });
+    toDelete.push(...sorted.slice(1)); // keep first (oldest), delete the rest
+  }
+
+  if (!toDelete.length) {
+    if (statusEl) { statusEl.textContent = 'No duplicates found'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    return;
+  }
+
+  const proceed = confirm(`Found ${toDelete.length} duplicate journal entr${toDelete.length === 1 ? 'y' : 'ies'} to remove:\n\n${toDelete.map(e => `· ${jCats(e).join('/')} ${e.list}: ${e.text}`).join('\n')}\n\nOldest copy of each will be kept. Proceed?`);
+  if (!proceed) {
+    if (statusEl) statusEl.textContent = '';
+    return;
+  }
+
+  try {
+    const batch = writeBatch(db);
+    for (const e of toDelete) batch.delete(doc(db, 'journal', e.id));
+    await batch.commit();
+
+    const deleteIds = new Set(toDelete.map(e => e.id));
+    setJournalDocsCache(_journalDocsCache.filter(e => !deleteIds.has(e.id)));
+    invalidateChatContext();
+    renderJournalSidebar(_journalDocsCache || []);
+    showToast(`Removed ${toDelete.length} duplicate${toDelete.length > 1 ? 's' : ''} ✓`, 'journal');
+    if (statusEl) statusEl.textContent = '';
+  } catch (err) {
+    showAlert('Dedup failed: ' + err.message, 'warning');
+    if (statusEl) statusEl.textContent = '';
+  }
+}
+
+// ── MODULE-LEVEL WIRING ──
+$('journal-dedup-btn')?.addEventListener('click', runJournalDedup);
+
+// Show dedup action bar once journal panel becomes non-empty
+// (Called from renderJournalSidebar to toggle visibility)
+export function updateJournalActionBar(docCount) {
+  const bar = $('journal-action-bar');
+  if (bar) bar.style.display = docCount > 0 ? '' : 'none';
 }
 
 // ── PENDING ITEMS / SESSION TRACKING ──

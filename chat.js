@@ -197,9 +197,26 @@ export async function buildChatContext(userMessage) {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
     for (const cat of targetCats) {
-      const labs = _allLabsCache
-        .filter(l => l.cat === cat && (_chatFullContext || (l.resultDate || l.visitDate || '') >= cutoff))
+      const allCatLabs = _allLabsCache
+        .filter(l => l.cat === cat)
         .sort((a,b) => (b.resultDate||'') > (a.resultDate||'') ? 1 : -1);
+
+      let labs;
+      if (_chatFullContext) {
+        labs = allCatLabs;
+      } else {
+        // Always include the most recent result per test (even if older than 6 mo),
+        // plus everything within the 6-month window.
+        const seenTest = new Set();
+        const pinned = new Set();
+        for (const l of allCatLabs) {
+          const tk = (l.test || '').toLowerCase().trim();
+          if (!seenTest.has(tk)) { seenTest.add(tk); pinned.add(l.id || l); }
+        }
+        labs = allCatLabs.filter(l =>
+          pinned.has(l.id || l) || (l.resultDate || l.visitDate || '') >= cutoff
+        );
+      }
       if (!labs.length) continue;
       const byDate = {};
       for (const l of labs) {
