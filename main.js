@@ -94,6 +94,7 @@ onAuthStateChanged(auth, async user => {
     await loadApiKey();
     await loadInitialData();
     show('app');
+    import('./exchange.js').then(m => m.initExchangeBar());
   } else {
     setCurrentUser(null);
     show('signin');

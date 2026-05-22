@@ -241,6 +241,26 @@
       <div class="input-hint">⬆ send &nbsp;·&nbsp; shift+⬆ newline &nbsp;·&nbsp; <span style="color:var(--btn-cost)">●</span> costs tokens</div>
     </div>
 
+    <!-- Exchange bar -->
+    <div id="exchange-bar">
+      <select id="exchange-cat-select" title="Select pet (or all)">
+        <option value="">All pets</option>
+      </select>
+      <label class="exchange-from-label" title="History start date for export">from</label>
+      <input type="date" id="exchange-from-date" title="Include history from this date">
+      <button id="exchange-export-btn" title="Export pet data for external AI session">↑ Export</button>
+      <button id="exchange-import-btn" title="Import AI session results back into records">↓ Import</button>
+    </div>
+
+    <!-- Import paste area -->
+    <div id="exchange-import-area" style="display:none;">
+      <textarea id="exchange-import-input" placeholder="Paste AI response here (the RETURN block)…" rows="5" spellcheck="false"></textarea>
+      <div class="exchange-import-actions">
+        <button id="exchange-import-cancel" class="btn-icon">Cancel</button>
+        <button id="exchange-import-preview-btn" class="btn-icon free-icon"><span class="free-dot"></span>Preview &amp; Apply</button>
+      </div>
+    </div>
+
     <!-- Status bar -->
     <div class="status-bar">
       <div class="status-indicator">
@@ -532,6 +552,24 @@
     <div class="modal-footer">
       <button class="btn-icon" id="apikey-cancel-btn">Cancel</button>
       <button class="btn-icon free-icon" id="apikey-save-btn"><span class="free-dot"></span> Save to Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ IMPORT PREVIEW MODAL ══ -->
+<div id="import-preview-modal" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:450;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:white;border-radius:14px;width:100%;max-width:540px;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);flex:1;">Review Import</span>
+      <button id="import-preview-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">✕</button>
+    </div>
+    <div style="padding:0.6rem 1.25rem;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
+      <p style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-dim);line-height:1.65;">Review changes before applying. Journal updates are permanent. Session notes are added to the Notes tab.</p>
+    </div>
+    <div id="import-preview-body" style="flex:1;overflow-y:auto;padding:0.75rem 1.25rem;"></div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;flex-shrink:0;">
+      <button class="btn-icon" id="import-preview-cancel">Cancel</button>
+      <button class="btn-icon free-icon" id="import-preview-apply"><span class="free-dot"></span>Apply</button>
     </div>
   </div>
 </div>
