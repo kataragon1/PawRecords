@@ -217,3 +217,14 @@ document.addEventListener('DOMContentLoaded', () => {
 import('./pets.js').then(m => { window.openPetProfilesModal = m.openPetProfilesModal; });
 import('./records.js').then(m => { window.openVisit = m.openVisit; });
 import('./ui.js').then(m => { window.openFlagsModal = m.openFlagsModal; });
+
+// ── HEADER BUTTON WIRING ──
+$('open-trends-btn')?.addEventListener('click', async () => {
+  const { openTrendsModal } = await import('./ui.js');
+  openTrendsModal();
+});
+
+$('add-home-issue-btn')?.addEventListener('click', async () => {
+  const { openHomeIssueModal } = await import('./records.js');
+  openHomeIssueModal();
+});
