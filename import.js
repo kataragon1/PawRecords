@@ -1176,7 +1176,8 @@ export async function writeExtractionToFirestore(file, allVisits, allLabs, allFl
       if (!cat) continue;
       const resolvedDate = lab.resultDate || lab.visitDate || primaryDate;
 
-      // Dedup
+      // Dedup: skip if an identical result already exists in Firestore,
+      // unless the stored value is a string and the new one is numeric (upgrade).
       if (_allLabsCache) {
         const existing = _allLabsCache.find(l =>
           l.cat === cat && l.test === lab.test &&
@@ -1185,11 +1186,8 @@ export async function writeExtractionToFirestore(file, allVisits, allLabs, allFl
         if (existing) {
           const newIsNumeric = typeof lab.value === 'number';
           const existingIsString = typeof existing.value === 'string';
-          const newIsManual = lab.source === 'manual';
-          const existingIsManual = existing.source === 'manual';
-          if (!(newIsNumeric && existingIsString) || newIsManual || existingIsManual === false) {
-            continue;
-          }
+          // Only allow write if we're upgrading a qualitative string to a numeric value
+          if (!(newIsNumeric && existingIsString)) continue;
         }
       }
 
