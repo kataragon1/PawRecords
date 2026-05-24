@@ -908,3 +908,125 @@ export async function checkAbnormalLabs() {
 function openLabDetail(...args) {
   if (typeof window.openLabDetail === 'function') return window.openLabDetail(...args);
 }
+
+// ── MANUAL LAB ENTRY ──
+
+export function openAddLabModal(prefillCat) {
+  const modal = $('add-lab-modal');
+  if (!modal) return;
+
+  // Populate cat select
+  const catSel = $('add-lab-cat');
+  catSel.innerHTML = '';
+  const cats = Object.keys(labDataCache).sort();
+  // Also include APP_PETS so cats without labs yet are available
+  import('./state.js').then(({ APP_PETS }) => {
+    const allCats = [...new Set([...cats, ...APP_PETS])].sort();
+    catSel.innerHTML = '';
+    for (const c of allCats) {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      if (c === (prefillCat || flowsheetCat)) opt.selected = true;
+      catSel.appendChild(opt);
+    }
+  });
+
+  // Populate group select
+  const groupSel = $('add-lab-group');
+  groupSel.innerHTML = '';
+  const groups = _labGroups.length ? _labGroups : ['CBC','Chemistry','Urinalysis','Endocrinology','GI Panel','PCR','Other'];
+  for (const g of groups) {
+    const opt = document.createElement('option');
+    opt.value = g; opt.textContent = g;
+    groupSel.appendChild(opt);
+  }
+
+  // Populate test name autocomplete from existing labs
+  const dl = $('add-lab-test-list');
+  if (dl) {
+    const knownTests = [...new Set((_allLabsCache || []).map(l => l.test).filter(Boolean))].sort();
+    dl.innerHTML = '';
+    for (const t of knownTests) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      dl.appendChild(opt);
+    }
+  }
+
+  // Default date to today
+  $('add-lab-date').value = new Date().toISOString().slice(0, 10);
+  $('add-lab-test').value = '';
+  $('add-lab-value').value = '';
+  $('add-lab-unit').value = '';
+  $('add-lab-reflo').value = '';
+  $('add-lab-refhi').value = '';
+  $('add-lab-abnormal').value = '';
+
+  modal.style.display = 'flex';
+  setTimeout(() => $('add-lab-test')?.focus(), 80);
+}
+
+async function saveManualLab() {
+  const cat = $('add-lab-cat')?.value?.trim();
+  const test = $('add-lab-test')?.value?.trim();
+  const rawValue = $('add-lab-value')?.value?.trim();
+  const unit = $('add-lab-unit')?.value?.trim() || null;
+  const refLo = $('add-lab-reflo')?.value;
+  const refHi = $('add-lab-refhi')?.value;
+  const date = $('add-lab-date')?.value;
+  const group = $('add-lab-group')?.value || 'Other';
+  const abnormal = $('add-lab-abnormal')?.value || null;
+
+  if (!cat) { showToast('Select a cat', 'warning'); return; }
+  if (!test) { showToast('Test name is required', 'warning'); return; }
+  if (!rawValue) { showToast('Value is required', 'warning'); return; }
+  if (!date) { showToast('Date is required', 'warning'); return; }
+
+  // Coerce to number if possible
+  const numVal = parseFloat(rawValue);
+  const value = isNaN(numVal) ? rawValue : numVal;
+
+  const btn = $('add-lab-save');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    await setDoc(doc(collection(db, 'labs')), {
+      cat,
+      test,
+      value,
+      unit,
+      refLow: refLo !== '' && refLo != null ? parseFloat(refLo) : null,
+      refHigh: refHi !== '' && refHi != null ? parseFloat(refHi) : null,
+      abnormal,
+      resultDate: date,
+      visitDate: date,
+      labGroup: group,
+      labName: group,
+      source: 'manual',
+      createdAt: new Date().toISOString(),
+    });
+    $('add-lab-modal').style.display = 'none';
+    invalidateLabsCache();
+    await loadLabsSidebar();
+    // Re-render flowsheet if open
+    if ($('flowsheet-modal')?.classList.contains('open') && flowsheetCat) {
+      openFlowsheetModal(flowsheetCat);
+    }
+    showToast(`${test} added for ${cat} ✓`, 'journal');
+  } catch (e) {
+    showAlert('Save failed: ' + e.message, 'warning');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
+}
+
+// ── MODULE-LEVEL WIRING ──
+{
+  const closeModal = () => { $('add-lab-modal').style.display = 'none'; };
+  $('add-lab-modal-close')?.addEventListener('click', closeModal);
+  $('add-lab-cancel')?.addEventListener('click', closeModal);
+  $('add-lab-save')?.addEventListener('click', saveManualLab);
+  $('flowsheet-add-lab-btn')?.addEventListener('click', () => openAddLabModal(flowsheetCat));
+}

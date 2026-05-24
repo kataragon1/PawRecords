@@ -336,6 +336,7 @@
     <div id="flowsheet-modal-header">
       <div id="flowsheet-modal-title">Lab Results</div>
       <select class="flowsheet-modal-cat-select" id="flowsheet-modal-cat"></select>
+      <button id="flowsheet-add-lab-btn" class="btn-icon free-icon" style="font-size:0.6rem;padding:0.2rem 0.45rem;flex-shrink:0;" title="Add a manual lab entry"><span class="free-dot"></span>+ Add</button>
       <div style="display:flex;align-items:center;gap:0.3rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem;">
         <span style="font-size:0.65rem;color:var(--ink-muted);">🔍</span>
         <input id="flowsheet-search" placeholder="Search test…" style="background:transparent;border:none;outline:none;font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink);width:120px;">
@@ -347,6 +348,65 @@
       <button id="flowsheet-modal-close">✕</button>
     </div>
     <div id="flowsheet-modal-body"></div>
+  </div>
+</div>
+
+<!-- ══ ADD LAB MODAL ══ -->
+<div id="add-lab-modal" style="display:none;position:fixed;inset:0;background:rgba(42,37,32,0.45);z-index:460;align-items:center;justify-content:center;padding:2rem;">
+  <div style="background:white;border-radius:14px;width:100%;max-width:480px;display:flex;flex-direction:column;box-shadow:0 10px 50px rgba(42,37,32,0.2);overflow:hidden;">
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+      <span style="font-family:'Instrument Serif',serif;font-size:1.05rem;color:var(--ink);flex:1;">Add Lab Result</span>
+      <button id="add-lab-modal-close" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;width:26px;height:26px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">✕</button>
+    </div>
+    <div style="padding:1rem 1.25rem;display:flex;flex-direction:column;gap:0.65rem;">
+      <datalist id="add-lab-test-list"></datalist>
+      <div class="add-lab-row">
+        <label class="add-lab-label">Cat</label>
+        <select id="add-lab-cat" class="add-lab-input"></select>
+      </div>
+      <div class="add-lab-row">
+        <label class="add-lab-label">Test name</label>
+        <input id="add-lab-test" class="add-lab-input" list="add-lab-test-list" placeholder="e.g. BUN, Hematocrit…" autocomplete="off">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.65rem;">
+        <div class="add-lab-row">
+          <label class="add-lab-label">Value</label>
+          <input id="add-lab-value" class="add-lab-input" placeholder="e.g. 28 or NORMAL">
+        </div>
+        <div class="add-lab-row">
+          <label class="add-lab-label">Unit</label>
+          <input id="add-lab-unit" class="add-lab-input" placeholder="e.g. mg/dL">
+        </div>
+        <div class="add-lab-row">
+          <label class="add-lab-label">Ref low</label>
+          <input id="add-lab-reflo" class="add-lab-input" type="number" step="any" placeholder="optional">
+        </div>
+        <div class="add-lab-row">
+          <label class="add-lab-label">Ref high</label>
+          <input id="add-lab-refhi" class="add-lab-input" type="number" step="any" placeholder="optional">
+        </div>
+      </div>
+      <div class="add-lab-row">
+        <label class="add-lab-label">Date</label>
+        <input id="add-lab-date" class="add-lab-input" type="date">
+      </div>
+      <div class="add-lab-row">
+        <label class="add-lab-label">Lab group</label>
+        <select id="add-lab-group" class="add-lab-input"></select>
+      </div>
+      <div class="add-lab-row">
+        <label class="add-lab-label">Abnormal</label>
+        <select id="add-lab-abnormal" class="add-lab-input">
+          <option value="">Normal / unknown</option>
+          <option value="H">H — High</option>
+          <option value="L">L — Low</option>
+        </select>
+      </div>
+    </div>
+    <div style="padding:0.75rem 1.25rem;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:0.5rem;flex-shrink:0;">
+      <button class="btn-icon" id="add-lab-cancel">Cancel</button>
+      <button class="btn-icon free-icon" id="add-lab-save"><span class="free-dot"></span>Save</button>
+    </div>
   </div>
 </div>
 

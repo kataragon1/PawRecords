@@ -487,6 +487,12 @@ mark.sh.current{background:var(--btn);color:white;border-radius:2px;}
 #flowsheet-modal-body::-webkit-scrollbar{width:6px;height:6px;}
 #flowsheet-modal-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 .lab-expand-btn{width:100%;background:none;border:none;border-top:1px solid var(--border);padding:0.45rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);cursor:pointer;text-align:center;letter-spacing:0.04em;}
+/* Add Lab form */
+.add-lab-row{display:flex;flex-direction:column;gap:0.2rem;}
+.add-lab-label{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);letter-spacing:0.04em;text-transform:uppercase;}
+.add-lab-input{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.5rem;outline:none;transition:border-color 0.15s;width:100%;}
+.add-lab-input:focus{border-color:var(--accent);}
+select.add-lab-input{cursor:pointer;}
 .lab-expand-btn:hover{background:var(--surface);color:var(--btn);}
 
 /* ── LAYERS 8-10 ── */
