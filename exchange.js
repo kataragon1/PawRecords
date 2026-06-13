@@ -45,6 +45,12 @@ function catMatchesJournal(entry, cat) {
   return _jCats(entry).includes(cat);
 }
 
+// Active = not discontinued/rejected. Only active items are exported and diffed.
+function isActiveJournal(entry) {
+  const s = entry.status || 'current';
+  return s !== 'past' && s !== 'rejected';
+}
+
 function catMatchesNote(note, cat) {
   if (!cat) return true;
   if (Array.isArray(note.cats)) return note.cats.includes(cat);
@@ -104,8 +110,8 @@ export function buildExportText(cat, fromDateStr) {
 
   let out = `PAWS: ${catLabel} | exported ${today} | history from ${fromDate}\n\n`;
 
-  // ── CURRENT ──
-  const journal = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat));
+  // ── CURRENT ── (active items only — past/rejected are history, not exported)
+  const journal = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat) && isActiveJournal(e));
   const byList = {};
   for (const e of journal) {
     const l = _normalizeList(e.list || 'misc');
@@ -120,6 +126,21 @@ export function buildExportText(cat, fromDateStr) {
     out += '\n';
   }
 
+  // ── PAST / DISCONTINUED (history — read-only context, not part of roundtrip) ──
+  const pastItems = (_journalDocsCache || [])
+    .filter(e => catMatchesJournal(e, cat) && !isActiveJournal(e) && (e.list || '').length)
+    .sort((a, b) => (b.endDate || b.startDate || '') > (a.endDate || a.startDate || '') ? 1 : -1);
+  if (pastItems.length) {
+    out += 'PAST (discontinued — for history only, do NOT include in RETURN block)\n';
+    for (const e of pastItems) {
+      const cats = _jCats(e);
+      const tag = multiCat && cats.length ? ` (${cats.length > 1 ? 'all cats' : cats[0]})` : '';
+      const span = e.startDate ? ` ${e.startDate}${e.endDate ? '→' + e.endDate : ''}` : '';
+      out += `${_normalizeList(e.list)}: ${(e.text || '').trim()}${tag}${e.dose ? ' | ' + e.dose : ''}${span}\n`;
+    }
+    out += '\n';
+  }
+
   // ── VISITS ──
   const visits = (_allVisitsCache || [])
     .filter(v => (!cat || v.cat === cat) && (v.date || '') >= fromDate)
@@ -127,11 +148,26 @@ export function buildExportText(cat, fromDateStr) {
   if (visits.length) {
     out += 'VISITS\n';
     for (const v of visits) {
+      const catTag = multiCat && v.cat ? ` [${v.cat}]` : '';
       const clinic = v.clinic ? ` ${abbrevClinic(v.clinic)}:` : ':';
       const wt = v.vitals?.weight ? ` wt ${v.vitals.weight}` : '';
       const bcs = v.vitals?.BCS ? ` BCS${v.vitals.BCS}` : '';
-      const synopsis = (v.synopsis || v.chiefComplaint || '').replace(/\n/g, ' ').slice(0, 200);
-      out += `${v.date || '?'}${clinic}${wt}${bcs}${synopsis ? '. ' + synopsis : ''}\n`;
+      const synopsis = (v.synopsis || v.chiefComplaint || '').replace(/\n/g, ' ').slice(0, 240);
+      out += `${v.date || '?'}${catTag}${clinic}${wt}${bcs}${synopsis ? '. ' + synopsis : ''}\n`;
+      // Prescribed/given meds at this visit (antibiotic & treatment history)
+      const meds = (v.medications || []).filter(m => m.name && !m.supplement);
+      if (meds.length) {
+        const medStr = meds.map(m => {
+          const detail = [m.dose, m.frequency, m.route].filter(Boolean).join(' ');
+          return detail ? `${m.name} ${detail}` : m.name;
+        }).join('; ');
+        out += `  Rx: ${medStr}\n`;
+      }
+      // Procedures performed
+      const procs = (v.procedures || []).filter(p => p.name);
+      if (procs.length) {
+        out += `  Proc: ${procs.map(p => p.name).join('; ')}\n`;
+      }
     }
     out += '\n';
   }
@@ -315,9 +351,18 @@ export function parseImportText(raw) {
 // IMPORT — DIFF
 // ─────────────────────────────────────────────
 
+// Normalize dose for comparison: strip extra whitespace and parenthetical notes.
+// "2.5mg BID (5mg total daily)" → "2.5mg BID" (same as "2.5mg BID")
+function _normalizeDose(dose) {
+  if (!dose) return '';
+  return dose.replace(/\s*\([^)]*\)/g, '').trim();
+}
+
 export function buildImportDiff(cat, parsed) {
   const { journalItems: returned, sessionNotes } = parsed;
-  const originals = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat));
+  // Only diff against active items — past/rejected entries are history and
+  // must never be re-deleted or counted as "removed".
+  const originals = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat) && isActiveJournal(e));
 
   // Build origMap: every possible key for each original entry
   const origMap = new Map();
@@ -342,7 +387,7 @@ export function buildImportDiff(cat, parsed) {
     if (!orig) {
       added.push(item);
     } else if (
-      (item.dose || '') !== (orig.dose || '') ||
+      _normalizeDose(item.dose) !== _normalizeDose(orig.dose) ||
       (item.startDate || '') !== (orig.startDate || '')
     ) {
       changed.push({ orig, item });
@@ -408,7 +453,7 @@ function _buildPreviewHTML(diff) {
   }
   if (removed.length) {
     html += `<div class="exchange-preview-section">`;
-    html += `<div class="exchange-preview-label remove">− Remove (${removed.length})</div>`;
+    html += `<div class="exchange-preview-label remove">→ Discontinue / mark past (${removed.length})</div>`;
     for (const orig of removed) html += `<div class="exchange-preview-row remove">${_fmtOrig(orig)}</div>`;
     html += '</div>';
   }
@@ -459,15 +504,28 @@ export async function applyImport(diff, cat) {
     });
   }
 
-  // Remove journal items
+  // Discontinue journal items — mark as PAST (preserve history), never delete.
   for (const orig of removed) {
     if (!orig.id) continue;
     const origCats = _jCats(orig);
     const ref = doc(db, 'journal', orig.id);
     if (cat && origCats.length > 1) {
+      // Multi-cat entry, single cat discontinued: keep others current,
+      // split off a past entry for this cat to preserve its history.
       batch.update(ref, { cats: origCats.filter(c => c !== cat) });
+      batch.set(doc(collection(db, 'journal')), {
+        list: orig.list,
+        text: orig.text,
+        dose: orig.dose || '',
+        startDate: orig.startDate || '',
+        endDate: today,
+        cats: [cat],
+        status: 'past',
+        addedDate: orig.addedDate || today,
+      });
     } else {
-      batch.delete(ref);
+      // Single-cat (or all-cats) entry: mark the whole thing past.
+      batch.update(ref, { status: 'past', endDate: today });
     }
   }
 
