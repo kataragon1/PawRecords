@@ -1,7 +1,4 @@
 // ── EXCHANGE ── Export/Import for external AI sessions
-// Builds a compact plain-text snapshot for pasting into an external Claude session.
-// On import, parses the returned JOURNAL block (full roundtrip diff) and SESSION NOTES
-// (add-only) and writes changes to Firestore.
 
 import {
   $, db, addDoc, writeBatch, doc, collection, showToast, arrayRemove,
@@ -19,14 +16,33 @@ import {
 } from './state.js';
 
 // ─────────────────────────────────────────────
+// LIST NAME NORMALIZATION
+// ─────────────────────────────────────────────
+
+const _LIST_ALIASES = {
+  med: 'medications', meds: 'medications', medication: 'medications', medications: 'medications',
+  supp: 'supplements', supps: 'supplements', supplement: 'supplements', supplements: 'supplements',
+  diet: 'diet',
+  food: 'foods', foods: 'foods',
+};
+
+function _normalizeList(list) {
+  return _LIST_ALIASES[(list || '').toLowerCase().trim()] || (list || '').toLowerCase().trim();
+}
+
+// ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
 
+function _jCats(e) {
+  if (Array.isArray(e.cats) && e.cats.length) return e.cats;
+  if (e.cat) return [e.cat];
+  return [];
+}
+
 function catMatchesJournal(entry, cat) {
   if (!cat) return true;
-  if (Array.isArray(entry.cats)) return entry.cats.includes(cat);
-  if (entry.cat) return entry.cat === cat;
-  return true;
+  return _jCats(entry).includes(cat);
 }
 
 function catMatchesNote(note, cat) {
@@ -35,25 +51,45 @@ function catMatchesNote(note, cat) {
   return true;
 }
 
-function formatJournalLine(e) {
-  // list: text | dose | since YYYY-MM-DD
-  let line = `${(e.list || 'misc').toLowerCase()}: ${(e.text || '').trim()}`;
+// Format one journal entry as export text.
+// showCat=true appends " (PetName)" or " (all cats)" to the item name.
+function formatJournalLine(e, showCat = false) {
+  const cats = _jCats(e);
+  let name = (e.text || '').trim();
+  if (showCat && cats.length > 0) {
+    const label = cats.length > 1 ? 'all cats' : cats[0];
+    name += ` (${label})`;
+  }
+  let line = `${_normalizeList(e.list || 'misc')}: ${name}`;
   if (e.dose && e.dose.trim()) line += ` | ${e.dose.trim()}`;
   if (e.startDate && e.startDate.trim()) line += ` | since ${e.startDate.trim()}`;
   return line;
 }
 
-function journalKey(list, text) {
-  return (list || '').toLowerCase().trim() + '|' + (text || '').toLowerCase().trim();
+// Key used for dedup matching: normalized list + text (lowercase) + optional cat
+function _journalKey(list, text, cat) {
+  let k = _normalizeList(list) + '|' + (text || '').toLowerCase().trim();
+  if (cat && cat !== 'all') k += '|' + cat.toLowerCase().trim();
+  else if (cat === 'all') k += '|all';
+  return k;
+}
+
+// All possible keys for an original entry (one per cat, plus "all" for multi-cat)
+function _origKeys(e) {
+  const cats = _jCats(e);
+  if (!cats.length) return [_journalKey(e.list, e.text, null)];
+  const keys = cats.map(c => _journalKey(e.list, e.text, c));
+  if (cats.length > 1) keys.push(_journalKey(e.list, e.text, 'all'));
+  return keys;
 }
 
 function abbrevClinic(name) {
   if (!name) return '';
-  // Shorten common long names
-  return name.replace(/Veterinary Emergency Group/i, 'VEG')
-             .replace(/Animal Medical Center/i, 'AMC')
-             .replace(/BluePearl/i, 'BluePearl')
-             .replace(/Banfield Pet Hospital/i, 'Banfield');
+  return name
+    .replace(/Veterinary Emergency Group/i, 'VEG')
+    .replace(/Animal Medical Center/i, 'AMC')
+    .replace(/BluePearl/i, 'BluePearl')
+    .replace(/Banfield Pet Hospital/i, 'Banfield');
 }
 
 // ─────────────────────────────────────────────
@@ -64,23 +100,22 @@ export function buildExportText(cat, fromDateStr) {
   const today = new Date().toISOString().slice(0, 10);
   const fromDate = fromDateStr || '2000-01-01';
   const catLabel = cat || 'All pets';
+  const multiCat = !cat;
 
   let out = `PAWS: ${catLabel} | exported ${today} | history from ${fromDate}\n\n`;
 
-  // ── CURRENT (full journal, no date filter) ──
+  // ── CURRENT ──
   const journal = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat));
-
   const byList = {};
   for (const e of journal) {
-    const l = (e.list || 'misc').toLowerCase();
+    const l = _normalizeList(e.list || 'misc');
     if (!byList[l]) byList[l] = [];
     byList[l].push(e);
   }
-
   if (Object.keys(byList).length) {
     out += 'CURRENT\n';
     for (const [, items] of Object.entries(byList)) {
-      for (const e of items) out += formatJournalLine(e) + '\n';
+      for (const e of items) out += formatJournalLine(e, multiCat) + '\n';
     }
     out += '\n';
   }
@@ -89,7 +124,6 @@ export function buildExportText(cat, fromDateStr) {
   const visits = (_allVisitsCache || [])
     .filter(v => (!cat || v.cat === cat) && (v.date || '') >= fromDate)
     .sort((a, b) => (b.date || '') > (a.date || '') ? 1 : -1);
-
   if (visits.length) {
     out += 'VISITS\n';
     for (const v of visits) {
@@ -102,11 +136,10 @@ export function buildExportText(cat, fromDateStr) {
     out += '\n';
   }
 
-  // ── LABS (grouped by date) ──
+  // ── LABS ──
   const labs = (_allLabsCache || [])
     .filter(l => (!cat || l.cat === cat) && (l.resultDate || '') >= fromDate)
     .sort((a, b) => (b.resultDate || '') > (a.resultDate || '') ? 1 : -1);
-
   if (labs.length) {
     out += 'LABS\n';
     const byDate = {};
@@ -126,11 +159,10 @@ export function buildExportText(cat, fromDateStr) {
     out += '\n';
   }
 
-  // ── WEIGHT (inline from visits with weight data) ──
+  // ── WEIGHT ──
   const withWeight = (_allVisitsCache || [])
     .filter(v => (!cat || v.cat === cat) && v.vitals?.weight && (v.date || '') >= fromDate)
     .sort((a, b) => (b.date || '') > (a.date || '') ? 1 : -1);
-
   if (withWeight.length) {
     out += 'WEIGHT\n';
     out += withWeight
@@ -142,7 +174,6 @@ export function buildExportText(cat, fromDateStr) {
   const notes = (_notesCache || [])
     .filter(n => !n.archived && catMatchesNote(n, cat) && (n.addedDate || '') >= fromDate)
     .sort((a, b) => (b.addedDate || '') > (a.addedDate || '') ? 1 : -1);
-
   if (notes.length) {
     out += 'NOTES\n';
     for (const n of notes) {
@@ -154,13 +185,18 @@ export function buildExportText(cat, fromDateStr) {
   // ── RETURN BLOCK ──
   out += '---RETURN THIS BLOCK WHEN DONE---\n';
   out += 'JOURNAL\n';
-  for (const e of journal) out += formatJournalLine(e) + '\n';
+  for (const e of journal) out += formatJournalLine(e, multiCat) + '\n';
   out += '\nSESSION NOTES\n(Add: YYYY-MM-DD: brief session summary)\n\n';
 
   // ── INSTRUCTIONS ──
   out += '---INSTRUCTIONS---\n';
   out += `Records for ${catLabel}. When user says done: output the RETURN block.\n`;
-  out += 'JOURNAL: list all current items (omissions = discontinued). Format: list: name | dose | since YYYY-MM-DD\n';
+  out += 'JOURNAL: list every current item (omissions = discontinued). Keep the exact format:\n';
+  out += multiCat
+    ? '  list: item name (PetName) | dose | since YYYY-MM-DD\n'
+    : '  list: item name | dose | since YYYY-MM-DD\n';
+  out += '  list is one of: medications, supplements, diet, foods\n';
+  if (multiCat) out += '  Use (all cats) for items shared by all pets.\n';
   out += 'SESSION NOTES: replace placeholder with: YYYY-MM-DD: brief session summary.\n';
 
   return out;
@@ -169,15 +205,12 @@ export function buildExportText(cat, fromDateStr) {
 export async function triggerExport(cat, fromDate) {
   const text = buildExportText(cat, fromDate);
   const bytes = new TextEncoder().encode(text).length;
-
   if (bytes < 100 * 1024) {
     try {
       await navigator.clipboard.writeText(text);
       showToast(`Copied ${(bytes / 1024).toFixed(1)} KB to clipboard ✓`, 'journal');
       return;
-    } catch (e) {
-      // fall through to download
-    }
+    } catch (e) { /* fall through */ }
   }
   _downloadText(text, cat);
   showToast(`Downloaded ${(bytes / 1024).toFixed(1)} KB export`, 'journal');
@@ -198,22 +231,53 @@ function _downloadText(text, cat) {
 // IMPORT — PARSE
 // ─────────────────────────────────────────────
 
+// Extract "(CatName)" or "(all cats)" from end of text string.
+// Returns { text, cat } where cat is a pet name, "all", or null.
+function _extractCat(raw) {
+  const m = raw.match(/\s*\(([^)]+)\)\s*$/);
+  if (!m) return { text: raw.trim(), cat: null };
+  const inner = m[1].trim();
+  const isAll = /^all(\s+cats?)?$/i.test(inner);
+  return {
+    text: raw.slice(0, m.index).trim(),
+    cat: isAll ? 'all' : inner,
+  };
+}
+
+// Parse one journal line. Handles two formats:
+//   "medications: Prednisolone (Mocha) | 2.5mg | since 2026-04-19"  (our format)
+//   "list: meds | Prednisolone (Mocha) | 2.5mg | since 2026-04-19"  (Claude's variant)
 function _parseJournalLine(line) {
   const colonIdx = line.indexOf(':');
   if (colonIdx < 0) return null;
-  const list = line.slice(0, colonIdx).trim().toLowerCase();
-  if (!list || list.startsWith('-') || list.startsWith('(')) return null;
-  const rest = line.slice(colonIdx + 1).trim();
+  let list = line.slice(0, colonIdx).trim().toLowerCase();
+  let rest = line.slice(colonIdx + 1).trim();
+
+  if (!list || list.startsWith('-') || list.startsWith('(') || list === 'session notes' || list === 'journal') return null;
+
+  // Handle "list: meds | ..." variant where "list" is a literal keyword
+  if (list === 'list') {
+    const pipeIdx = rest.indexOf('|');
+    if (pipeIdx < 0) return null;
+    list = rest.slice(0, pipeIdx).trim().toLowerCase();
+    rest = rest.slice(pipeIdx + 1).trim();
+  }
+
   const parts = rest.split('|').map(p => p.trim());
-  const text = parts[0] || '';
+  const rawText = parts[0] || '';
+  if (!rawText) return null;
+
+  const { text, cat } = _extractCat(rawText);
   if (!text) return null;
+
   const dose = parts[1] || '';
   let startDate = '';
-  if (parts[2]) {
-    const m = parts[2].match(/(\d{4}-\d{2}-\d{2})/);
-    if (m) startDate = m[1];
+  for (let i = 2; i < parts.length; i++) {
+    const m = parts[i].match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) { startDate = m[1]; break; }
   }
-  return { list, text, dose, startDate };
+
+  return { list, text, dose, startDate, cat };
 }
 
 export function parseImportText(raw) {
@@ -228,7 +292,6 @@ export function parseImportText(raw) {
     if (trimmed === 'SESSION NOTES') { section = 'notes'; continue; }
     if (trimmed.startsWith('---')) { section = null; continue; }
     if (!trimmed) continue;
-
     if (section === 'journal') journalLines.push(trimmed);
     else if (section === 'notes') sessionNoteLines.push(trimmed);
   }
@@ -254,17 +317,24 @@ export function parseImportText(raw) {
 
 export function buildImportDiff(cat, parsed) {
   const { journalItems: returned, sessionNotes } = parsed;
-
   const originals = (_journalDocsCache || []).filter(e => catMatchesJournal(e, cat));
 
+  // Build origMap: every possible key for each original entry
   const origMap = new Map();
-  for (const e of originals) origMap.set(journalKey(e.list, e.text), e);
+  for (const e of originals) {
+    for (const k of _origKeys(e)) {
+      if (!origMap.has(k)) origMap.set(k, e);
+    }
+  }
 
+  // Build returnMap: one key per returned item
   const returnMap = new Map();
-  for (const item of returned) returnMap.set(journalKey(item.list, item.text), item);
+  for (const item of returned) {
+    const k = _journalKey(item.list, item.text, item.cat);
+    returnMap.set(k, item);
+  }
 
   const added = [];
-  const removed = [];
   const changed = [];
 
   for (const [k, item] of returnMap) {
@@ -279,8 +349,16 @@ export function buildImportDiff(cat, parsed) {
     }
   }
 
-  for (const [k, orig] of origMap) {
-    if (!returnMap.has(k)) removed.push(orig);
+  // Removed: originals where NO key appears in returnMap
+  const removedIds = new Set();
+  const removed = [];
+  for (const e of originals) {
+    if (e.id && removedIds.has(e.id)) continue;
+    const anyMatch = _origKeys(e).some(k => returnMap.has(k));
+    if (!anyMatch) {
+      removed.push(e);
+      if (e.id) removedIds.add(e.id);
+    }
   }
 
   return { added, removed, changed, sessionNotes };
@@ -289,6 +367,29 @@ export function buildImportDiff(cat, parsed) {
 // ─────────────────────────────────────────────
 // IMPORT — PREVIEW HTML
 // ─────────────────────────────────────────────
+
+function _esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _fmtItem(item) {
+  // For preview, show "list: text (cat) | dose | since date"
+  let s = `${_normalizeList(item.list)}: ${_esc(item.text)}`;
+  if (item.cat && item.cat !== 'all') s += ` <em>(${_esc(item.cat)})</em>`;
+  else if (item.cat === 'all') s += ` <em>(all cats)</em>`;
+  if (item.dose) s += ` | ${_esc(item.dose)}`;
+  if (item.startDate) s += ` | since ${item.startDate}`;
+  return s;
+}
+
+function _fmtOrig(e) {
+  const cats = _jCats(e);
+  let s = `${_normalizeList(e.list)}: ${_esc(e.text)}`;
+  if (cats.length) s += ` <em>(${cats.join('/')})</em>`;
+  if (e.dose) s += ` | ${_esc(e.dose)}`;
+  if (e.startDate) s += ` | since ${e.startDate}`;
+  return s;
+}
 
 function _buildPreviewHTML(diff) {
   const { added, removed, changed, sessionNotes } = diff;
@@ -299,45 +400,33 @@ function _buildPreviewHTML(diff) {
   }
 
   let html = '';
-
   if (added.length) {
     html += `<div class="exchange-preview-section">`;
     html += `<div class="exchange-preview-label add">+ Add (${added.length})</div>`;
-    for (const item of added) {
-      html += `<div class="exchange-preview-row add">${_esc(formatJournalLine(item))}</div>`;
-    }
+    for (const item of added) html += `<div class="exchange-preview-row add">${_fmtItem(item)}</div>`;
     html += '</div>';
   }
   if (removed.length) {
     html += `<div class="exchange-preview-section">`;
     html += `<div class="exchange-preview-label remove">− Remove (${removed.length})</div>`;
-    for (const orig of removed) {
-      html += `<div class="exchange-preview-row remove">${_esc(formatJournalLine(orig))}</div>`;
-    }
+    for (const orig of removed) html += `<div class="exchange-preview-row remove">${_fmtOrig(orig)}</div>`;
     html += '</div>';
   }
   if (changed.length) {
     html += `<div class="exchange-preview-section">`;
     html += `<div class="exchange-preview-label change">~ Update (${changed.length})</div>`;
     for (const { orig, item } of changed) {
-      html += `<div class="exchange-preview-row change">${_esc(formatJournalLine(item))}<br><span class="exchange-preview-was">was: ${_esc(formatJournalLine(orig))}</span></div>`;
+      html += `<div class="exchange-preview-row change">${_fmtItem(item)}<br><span class="exchange-preview-was">was: ${_fmtOrig(orig)}</span></div>`;
     }
     html += '</div>';
   }
   if (sessionNotes.length) {
     html += `<div class="exchange-preview-section">`;
     html += `<div class="exchange-preview-label note">📝 Session Notes (${sessionNotes.length})</div>`;
-    for (const n of sessionNotes) {
-      html += `<div class="exchange-preview-row note">${_esc(n.date)}: ${_esc(n.text)}</div>`;
-    }
+    for (const n of sessionNotes) html += `<div class="exchange-preview-row note">${_esc(n.date)}: ${_esc(n.text)}</div>`;
     html += '</div>';
   }
-
   return html;
-}
-
-function _esc(s) {
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ─────────────────────────────────────────────
@@ -347,19 +436,24 @@ function _esc(s) {
 export async function applyImport(diff, cat) {
   const { added, removed, changed, sessionNotes } = diff;
   const today = new Date().toISOString().slice(0, 10);
-  const catArr = cat ? [cat] : APP_PETS.slice();
+  const defaultCatArr = cat ? [cat] : APP_PETS.slice();
 
   const batch = writeBatch(db);
 
   // Add new journal items
   for (const item of added) {
+    let itemCats;
+    if (item.cat === 'all') itemCats = APP_PETS.slice();
+    else if (item.cat) itemCats = [item.cat];
+    else itemCats = defaultCatArr;
+
     const ref = doc(collection(db, 'journal'));
     batch.set(ref, {
       list: item.list,
       text: item.text,
       dose: item.dose || '',
       startDate: item.startDate || '',
-      cats: catArr,
+      cats: itemCats,
       addedDate: today,
       status: 'active',
     });
@@ -368,17 +462,16 @@ export async function applyImport(diff, cat) {
   // Remove journal items
   for (const orig of removed) {
     if (!orig.id) continue;
-    const origCats = Array.isArray(orig.cats) ? orig.cats : (orig.cat ? [orig.cat] : []);
+    const origCats = _jCats(orig);
     const ref = doc(db, 'journal', orig.id);
     if (cat && origCats.length > 1) {
-      // Multi-cat entry: remove just this cat
       batch.update(ref, { cats: origCats.filter(c => c !== cat) });
     } else {
       batch.delete(ref);
     }
   }
 
-  // Update changed journal items
+  // Update changed items
   for (const { orig, item } of changed) {
     if (!orig.id) continue;
     batch.update(doc(db, 'journal', orig.id), {
@@ -389,34 +482,47 @@ export async function applyImport(diff, cat) {
 
   await batch.commit();
 
-  // Add session notes (no batch for addDoc)
+  // Add session notes
   for (const n of sessionNotes) {
     await addDoc(collection(db, 'context_notes'), {
       text: n.text,
-      cats: catArr,
+      cats: defaultCatArr,
       addedDate: n.date,
       pinned: false,
       archived: false,
     });
   }
 
-  // Invalidate caches so next render fetches fresh data
   setJournalDocsCache(null);
   setNotesCache([]);
   setChatContextDirty(true);
 
-  // Trigger sidebar re-render if journal tab is visible
   try {
     const { loadJournalSidebar } = await import('./journal.js');
     const { loadNotes } = await import('./notes.js');
     await Promise.all([loadJournalSidebar(), loadNotes()]);
-  } catch (e) {
-    // non-critical
-  }
+  } catch (e) { /* non-critical */ }
 }
 
 // ─────────────────────────────────────────────
-// UI — EXCHANGE BAR INIT
+// COPY REMINDER PROMPT
+// ─────────────────────────────────────────────
+
+const REMINDER_PROMPT = `We're done for today. Please output the complete RETURN block now.
+
+---RETURN THIS BLOCK WHEN DONE---
+JOURNAL
+(list every current medication, supplement, diet, and food item — one per line)
+Format: list: item name (PetName) | dose | since YYYY-MM-DD
+  - list is one of: medications, supplements, diet, foods
+  - Use (all cats) for items shared by all pets
+  - Omit anything discontinued
+
+SESSION NOTES
+YYYY-MM-DD: brief summary of what we discussed today`;
+
+// ─────────────────────────────────────────────
+// UI — INIT
 // ─────────────────────────────────────────────
 
 let _pendingDiff = null;
@@ -426,12 +532,10 @@ export function initExchangeBar() {
   const sel = $('exchange-cat-select');
   if (!sel) return;
 
-  // Populate pet selector (APP_PETS is populated by loadInitialData before initExchangeBar is called)
   while (sel.options.length > 1) sel.remove(1);
   for (const pet of APP_PETS) {
     const opt = document.createElement('option');
-    opt.value = pet;
-    opt.textContent = pet;
+    opt.value = pet; opt.textContent = pet;
     sel.appendChild(opt);
   }
 
@@ -440,13 +544,18 @@ export function initExchangeBar() {
     const cat = sel.value || null;
     const fromDate = $('exchange-from-date')?.value || '';
     const btn = $('exchange-export-btn');
-    btn.disabled = true;
-    btn.textContent = 'Exporting…';
+    btn.disabled = true; btn.textContent = 'Exporting…';
+    try { await triggerExport(cat, fromDate); }
+    finally { btn.disabled = false; btn.textContent = '↑ Export'; }
+  });
+
+  // Copy reminder prompt
+  $('exchange-copy-prompt-btn')?.addEventListener('click', async () => {
     try {
-      await triggerExport(cat, fromDate);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '↑ Export';
+      await navigator.clipboard.writeText(REMINDER_PROMPT);
+      showToast('Prompt copied — paste it to Claude ✓', 'journal');
+    } catch (e) {
+      showToast('Copy failed', 'warning');
     }
   });
 
@@ -492,8 +601,7 @@ export function initExchangeBar() {
   $('import-preview-apply')?.addEventListener('click', async () => {
     if (!_pendingDiff) return;
     const btn = $('import-preview-apply');
-    btn.disabled = true;
-    btn.textContent = 'Applying…';
+    btn.disabled = true; btn.textContent = 'Applying…';
     try {
       await applyImport(_pendingDiff, _pendingCat);
       $('import-preview-modal').style.display = 'none';
@@ -504,16 +612,13 @@ export function initExchangeBar() {
     } catch (e) {
       showToast('Import failed: ' + e.message, 'error');
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Apply';
+      btn.disabled = false; btn.textContent = 'Apply';
     }
   });
 
-  // Close/cancel preview modal
   const closePreview = () => {
     $('import-preview-modal').style.display = 'none';
-    _pendingDiff = null;
-    _pendingCat = null;
+    _pendingDiff = null; _pendingCat = null;
   };
   $('import-preview-close')?.addEventListener('click', closePreview);
   $('import-preview-cancel')?.addEventListener('click', closePreview);
