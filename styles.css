@@ -233,10 +233,11 @@ body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--i
 .exchange-from-label{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--ink-muted);}
 #exchange-from-date{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-dim);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:0.18rem 0.3rem;outline:none;cursor:pointer;}
 #exchange-from-date:focus{border-color:var(--accent);}
-#exchange-export-btn,#exchange-import-btn{font-family:'JetBrains Mono',monospace;font-size:0.6rem;padding:0.22rem 0.55rem;border-radius:5px;cursor:pointer;transition:all 0.15s;border:1px solid var(--border);background:var(--surface2);color:var(--ink-dim);}
+#exchange-export-btn,#exchange-import-btn,#exchange-copy-prompt-btn{font-family:'JetBrains Mono',monospace;font-size:0.6rem;padding:0.22rem 0.55rem;border-radius:5px;cursor:pointer;transition:all 0.15s;border:1px solid var(--border);background:var(--surface2);color:var(--ink-dim);}
 #exchange-export-btn:hover{background:var(--accent);color:white;border-color:var(--accent);}
 #exchange-import-btn:hover{background:var(--btn-free-bg);color:var(--btn-free-ink);border-color:var(--btn-free);}
-#exchange-export-btn:disabled,#exchange-import-btn:disabled{opacity:0.5;cursor:not-allowed;}
+#exchange-copy-prompt-btn:hover{background:var(--blue-bg);color:var(--blue);border-color:var(--blue);}
+#exchange-export-btn:disabled,#exchange-import-btn:disabled,#exchange-copy-prompt-btn:disabled{opacity:0.5;cursor:not-allowed;}
 
 /* Import paste area */
 #exchange-import-area{background:var(--surface);border-top:1px solid var(--border);padding:0.5rem 1rem;flex-shrink:0;}
