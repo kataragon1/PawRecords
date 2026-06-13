@@ -30,6 +30,17 @@ function _normalizeList(list) {
   return _LIST_ALIASES[(list || '').toLowerCase().trim()] || (list || '').toLowerCase().trim();
 }
 
+// Proper-case list name for storage — must match journal.js normalizeListName
+// canonical forms so entries land in the right sidebar section.
+const _LIST_DISPLAY = {
+  medications: 'Medications', supplements: 'Supplements', diet: 'Diet', foods: 'Foods',
+};
+function _listDisplayName(list) {
+  const norm = _normalizeList(list);
+  if (_LIST_DISPLAY[norm]) return _LIST_DISPLAY[norm];
+  return norm ? norm.charAt(0).toUpperCase() + norm.slice(1) : 'Supplements';
+}
+
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
@@ -494,13 +505,16 @@ export async function applyImport(diff, cat) {
 
     const ref = doc(collection(db, 'journal'));
     batch.set(ref, {
-      list: item.list,
+      cats: itemCats,
+      list: _listDisplayName(item.list),
       text: item.text,
       dose: item.dose || '',
-      startDate: item.startDate || '',
-      cats: itemCats,
+      status: 'current',
+      startDate: item.startDate || today,
+      endDate: null,
       addedDate: today,
-      status: 'active',
+      updatedDate: today,
+      updates: [],
     });
   }
 
@@ -514,18 +528,20 @@ export async function applyImport(diff, cat) {
       // split off a past entry for this cat to preserve its history.
       batch.update(ref, { cats: origCats.filter(c => c !== cat) });
       batch.set(doc(collection(db, 'journal')), {
+        cats: [cat],
         list: orig.list,
         text: orig.text,
         dose: orig.dose || '',
+        status: 'past',
         startDate: orig.startDate || '',
         endDate: today,
-        cats: [cat],
-        status: 'past',
         addedDate: orig.addedDate || today,
+        updatedDate: today,
+        updates: [],
       });
     } else {
       // Single-cat (or all-cats) entry: mark the whole thing past.
-      batch.update(ref, { status: 'past', endDate: today });
+      batch.update(ref, { status: 'past', endDate: today, updatedDate: today });
     }
   }
 
@@ -534,7 +550,8 @@ export async function applyImport(diff, cat) {
     if (!orig.id) continue;
     batch.update(doc(db, 'journal', orig.id), {
       dose: item.dose || '',
-      startDate: item.startDate || '',
+      startDate: item.startDate || orig.startDate || '',
+      updatedDate: today,
     });
   }
 
