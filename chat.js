@@ -390,7 +390,9 @@ export async function sendMessage() {
   if (!text || !apiKey) return;
   $('user-input').value = '';
   $('user-input').style.height = 'auto';
-  $('chat-welcome').style.display = 'none';
+  // chat-welcome may have been removed (e.g. by session restore) — guard it.
+  const welcomeEl = $('chat-welcome');
+  if (welcomeEl) welcomeEl.style.display = 'none';
   appendMsg('user', text);
   convHistory.push({ role: 'user', content: text });
   $('send-btn').disabled = true;
