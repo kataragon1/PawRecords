@@ -343,6 +343,33 @@ export async function callClaudeRaw(messages, systemPrompt, maxTokens) {
   }
 }
 
+// Retry bar shown under the chat when a message fails to send.
+// `hint` is a short instruction line (e.g. "wait 60s" vs "top up credits").
+function _showRetryBar(text, hint) {
+  const retryBar = document.createElement('div');
+  retryBar.style.cssText = 'display:flex;gap:0.5rem;padding:0.5rem 1.25rem;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap;';
+  const preview = text.length > 50 ? text.slice(0, 50) + '…' : text;
+  retryBar.innerHTML =
+    `<span style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-muted);flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview)}</span>` +
+    (hint ? `<span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--amber);flex-basis:100%;">${escHtml(hint)}</span>` : '');
+  const continueBtn = document.createElement('button');
+  continueBtn.className = 'btn-icon free-icon';
+  continueBtn.innerHTML = '<span class="free-dot"></span> Retry';
+  continueBtn.addEventListener('click', () => {
+    retryBar.remove();
+    $('user-input').value = text;
+    $('user-input').dispatchEvent(new Event('input'));
+    $('user-input').focus();
+  });
+  const dismissBtn = document.createElement('button');
+  dismissBtn.className = 'btn-icon';
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.addEventListener('click', () => retryBar.remove());
+  retryBar.appendChild(continueBtn);
+  retryBar.appendChild(dismissBtn);
+  $('chat-body').after(retryBar);
+}
+
 // ── SEND MESSAGE ──
 export function appendMsg(role, text) {
   const chatBody = $('chat-body');
@@ -398,25 +425,35 @@ export async function sendMessage() {
   } catch (err) {
     typingEl.remove();
     const msg = err.message || '';
-    const isRate = msg.toLowerCase().includes('rate') || msg.includes('429') || msg.toLowerCase().includes('credit');
-    if (isRate) {
+    const lower = msg.toLowerCase();
+
+    // Classify the failure so we don't tell the user to "wait" on a problem
+    // that waiting can't fix (out of credits, bad key, spend cap).
+    const isCredit = lower.includes('credit balance') || lower.includes('billing') || lower.includes('purchase credits');
+    const isSpendCap = lower.includes('spend') && lower.includes('limit');
+    const isAuth = lower.includes('invalid x-api-key') || lower.includes('authentication') || msg.includes('401');
+    const isRate = !isCredit && !isSpendCap && (lower.includes('rate limit') || msg.includes('429') || msg.includes('529') || lower.includes('overloaded'));
+
+    if (isCredit || isSpendCap || isAuth) {
+      // Account-level block — the message was not sent and retrying won't help.
+      convHistory.pop();
+      let banner, hint;
+      if (isCredit) {
+        banner = '⚠ Out of API credits — your message was not sent.';
+        hint = 'Top up at console.anthropic.com → Billing, then Retry.';
+      } else if (isSpendCap) {
+        banner = '⚠ Monthly spend limit reached — your message was not sent.';
+        hint = 'Raise the limit at console.anthropic.com → Limits, then Retry.';
+      } else {
+        banner = '⚠ API key rejected — your message was not sent.';
+        hint = 'Check your key in the status bar (click "API key"), then Retry.';
+      }
+      appendMsg('assistant', banner);
+      _showRetryBar(text, hint);
+    } else if (isRate) {
       convHistory.pop();
       appendMsg('assistant', '⏸ Rate limit reached — your message was not sent.');
-      const retryBar = document.createElement('div');
-      retryBar.style.cssText = 'display:flex;gap:0.5rem;padding:0.5rem 1.25rem;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;align-items:center;';
-      const preview = text.length > 60 ? text.slice(0,60) + '…' : text;
-      retryBar.innerHTML = `<span style="font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview)}</span>`;
-      const continueBtn = document.createElement('button');
-      continueBtn.className = 'btn-icon free-icon';
-      continueBtn.innerHTML = '<span class="free-dot"></span> Retry';
-      continueBtn.addEventListener('click', () => { retryBar.remove(); $('user-input').value = text; $('user-input').dispatchEvent(new Event('input')); $('user-input').focus(); });
-      const dismissBtn = document.createElement('button');
-      dismissBtn.className = 'btn-icon';
-      dismissBtn.textContent = 'Dismiss';
-      dismissBtn.addEventListener('click', () => retryBar.remove());
-      retryBar.appendChild(continueBtn);
-      retryBar.appendChild(dismissBtn);
-      $('chat-body').after(retryBar);
+      _showRetryBar(text, 'Per-minute limit — wait ~60s, then Retry.');
     } else {
       appendMsg('assistant', `Sorry, I hit an error: ${msg}`);
     }
