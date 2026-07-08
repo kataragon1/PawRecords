@@ -173,18 +173,27 @@ function answerVisits(text, cat) {
   const header = isSearch
     ? `${matches.length} matching visit${matches.length !== 1 ? 's' : ''}${cat ? ' for ' + cat : ''}${more ? ' (top 12 by relevance)' : ''}:`
     : `${matches.length} visit${matches.length !== 1 ? 's' : ''}${cat ? ' for ' + cat : ''}${more ? ' (newest 12)' : ''}:`;
+  // Build a plain-text version (history/clipboard) AND a structured rows array
+  // that drives clickable rendering — each row opens the full visit record.
   let out = LOCAL_TAG + header + '\n';
-
+  const rows = [];
   for (const v of shown) {
-    out += `\n• ${v.date || '?'}${!cat ? ' · ' + (v.cat || '?') : ''}${v.clinic ? ' · ' + v.clinic : ''}`;
+    const label = `${v.date || '?'}${!cat ? ' · ' + (v.cat || '?') : ''}${v.clinic ? ' · ' + v.clinic : ''}`;
     // For a search, show the sentence around the match; for browse, the synopsis.
     const snip = isSearch ? _matchSnippet(v, text) : null;
-    const body = (snip || v.synopsis || v.chiefComplaint || '').replace(/\n/g, ' ').trim();
-    if (body) out += `\n  ${body.length > 320 ? body.slice(0, 320) + '…' : body}`;
+    let body = (snip || v.synopsis || v.chiefComplaint || '').replace(/\n/g, ' ').trim();
+    if (body.length > 320) body = body.slice(0, 320) + '…';
+    out += `\n• ${label}`;
+    if (body) out += `\n  ${body}`;
+    rows.push({ visit: v, label, body });
   }
 
-  if (isSearch) out += `\n\n(Literal search — expands common drug classes to brand/generic names, but may still miss synonyms. For a thorough read, use “🧠 Ask Claude”.)`;
-  return { text: out };
+  const footer = isSearch
+    ? 'Literal search — expands common drug classes to brand/generic names, but may still miss synonyms. For a thorough read, use “🧠 Ask Claude”.'
+    : '';
+  if (footer) out += `\n\n(${footer})`;
+
+  return { text: out, header: LOCAL_TAG + header, visits: rows, footer };
 }
 
 function answerJournal(text, cat) {

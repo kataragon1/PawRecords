@@ -397,6 +397,57 @@ export function appendMsg(role, text) {
   return div;
 }
 
+// Render a local visit lookup with clickable rows — each opens the full record.
+function appendLocalVisits(local) {
+  const chatBody = $('chat-body');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.innerHTML = `<div class="msg-avatar">pr</div>`;
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+
+  const head = document.createElement('div');
+  head.textContent = local.header;
+  head.style.cssText = 'white-space:pre-wrap;margin-bottom:0.4rem;';
+  bubble.appendChild(head);
+
+  for (const r of local.visits) {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:0.35rem 0.55rem;margin:0.28rem 0;border-left:2px solid var(--accent2);background:var(--surface);border-radius:0 6px 6px 0;cursor:pointer;transition:background 0.12s;';
+    row.title = 'Open this visit record';
+    const label = document.createElement('div');
+    label.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--accent);font-weight:600;";
+    label.textContent = '📄 ' + r.label;
+    row.appendChild(label);
+    if (r.body) {
+      const body = document.createElement('div');
+      body.style.cssText = 'font-size:0.72rem;color:var(--ink-dim);margin-top:0.15rem;line-height:1.5;';
+      body.textContent = r.body;
+      row.appendChild(body);
+    }
+    row.addEventListener('mouseenter', () => { row.style.background = 'var(--surface2)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = 'var(--surface)'; });
+    row.addEventListener('click', async () => {
+      try {
+        const open = window.openVisit || (await import('./records.js')).openVisit;
+        open(r.visit);
+      } catch (e) { showToast('Could not open visit: ' + (e.message || e), 'warning'); }
+    });
+    bubble.appendChild(row);
+  }
+
+  if (local.footer) {
+    const foot = document.createElement('div');
+    foot.style.cssText = 'font-size:0.6rem;color:var(--ink-muted);margin-top:0.4rem;font-style:italic;';
+    foot.textContent = local.footer;
+    bubble.appendChild(foot);
+  }
+
+  div.appendChild(bubble);
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
 // Bar shown under a free local answer offering to send it to Claude for analysis.
 function _showInterpretBar(text) {
   const bar = document.createElement('div');
@@ -436,7 +487,9 @@ export async function sendMessage() {
   // Try a free local lookup first — no API call, works with no key/credits.
   const local = tryLocalAnswer(text);
   if (local) {
-    appendMsg('assistant', local.text);
+    // Visit lookups render as clickable rows (open the record); others as text.
+    if (local.visits && local.visits.length) appendLocalVisits(local);
+    else appendMsg('assistant', local.text);
     convHistory.push({ role: 'assistant', content: local.text });
     if (convHistory.length >= 2) {
       $('save-session-btn').style.display = 'inline-flex';
