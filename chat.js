@@ -32,6 +32,7 @@ import {
 
 import { addPendingItem, renderJournalSidebar, loadJournalSidebar } from './journal.js';
 import { buildNotesContext, addNote, deleteNote, showNoteArchiveReview } from './notes.js';
+import { searchVisits, tryLocalAnswer } from './lookup.js';
 
 // ── DATA CACHE ──
 export async function ensureDataCache() {
@@ -45,14 +46,7 @@ export async function ensureDataCache() {
   }
 }
 
-export function searchVisits(query) {
-  if (!_allVisitsCache) return [];
-  const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
-  return _allVisitsCache.filter(v => {
-    const text = `${v.synopsis||''} ${v.narrative||''} ${v.chiefComplaint||''}`.toLowerCase();
-    return terms.every(t => text.includes(t));
-  });
-}
+// searchVisits now lives in lookup.js (shared with local lookup mode).
 
 const JOURNAL_CACHE_TTL = 60000;
 
@@ -151,16 +145,22 @@ export async function buildChatContext(userMessage) {
       }
     }
   } else if (isSearchQuery) {
-    const matches = searchVisits(userMessage).filter(v => targetCats.includes(v.cat));
+    // If the question names a specific pet, scope the search to that pet.
+    const mentionedCat = targetCats.find(c =>
+      new RegExp(`\\b${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(userMessage)
+    ) || null;
+    const matches = searchVisits(userMessage, mentionedCat).filter(v => targetCats.includes(v.cat));
     if (matches.length) {
-      context += `\n\n## Search Results for "${userMessage.slice(0,50)}"\n`;
+      const scopeLabel = mentionedCat ? `${mentionedCat} — ` : '';
+      context += `\n\n## ${scopeLabel}Search Results for "${userMessage.slice(0,50)}"\n`;
       for (const v of matches.slice(0, 8)) {
         context += `\n### ${v.cat} · ${v.date}${v.clinic ? ' · ' + v.clinic : ''}\n`;
         if (v.synopsis) context += `${v.synopsis}\n`;
         if (v.narrative) context += `\n${v.narrative}\n`;
       }
     } else {
-      context += `\n\n(No visits matched the search query in records)\n`;
+      const who = mentionedCat || 'any pet';
+      context += `\n\n(No visits found for ${who} matching that query — note: this searches only visit note text, not labs or journal.)\n`;
     }
   } else {
     for (const cat of targetCats) {
@@ -385,9 +385,34 @@ export function appendMsg(role, text) {
   return div;
 }
 
+// Bar shown under a free local answer offering to send it to Claude for analysis.
+function _showInterpretBar(text) {
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:0.5rem;padding:0.4rem 1.25rem;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;align-items:center;';
+  bar.innerHTML = `<span style="font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--ink-muted);flex:1;">Free lookup — no tokens used.</span>`;
+  const askBtn = document.createElement('button');
+  askBtn.className = 'btn-icon';
+  askBtn.style.cssText = 'font-size:0.62rem;';
+  askBtn.innerHTML = '🧠 Ask Claude to interpret';
+  askBtn.title = 'Send this to Claude for analysis (uses API credits)';
+  askBtn.addEventListener('click', () => {
+    bar.remove();
+    if (!apiKey) { appendMsg('assistant', 'No API key set — add one via the status bar to use Claude.'); return; }
+    sendToClaude(text);
+  });
+  const dismissBtn = document.createElement('button');
+  dismissBtn.className = 'btn-icon';
+  dismissBtn.style.cssText = 'font-size:0.62rem;';
+  dismissBtn.textContent = '✕';
+  dismissBtn.addEventListener('click', () => bar.remove());
+  bar.appendChild(askBtn);
+  bar.appendChild(dismissBtn);
+  $('chat-body').after(bar);
+}
+
 export async function sendMessage() {
   const text = $('user-input').value.trim();
-  if (!text || !apiKey) return;
+  if (!text) return;
   $('user-input').value = '';
   $('user-input').style.height = 'auto';
   // chat-welcome may have been removed (e.g. by session restore) — guard it.
@@ -395,6 +420,31 @@ export async function sendMessage() {
   if (welcomeEl) welcomeEl.style.display = 'none';
   appendMsg('user', text);
   convHistory.push({ role: 'user', content: text });
+
+  // Try a free local lookup first — no API call, works with no key/credits.
+  const local = tryLocalAnswer(text);
+  if (local) {
+    appendMsg('assistant', local.text);
+    convHistory.push({ role: 'assistant', content: local.text });
+    if (convHistory.length >= 2) {
+      $('save-session-btn').style.display = 'inline-flex';
+      $('pause-session-btn').style.display = 'inline-flex';
+    }
+    _showInterpretBar(text);
+    return;
+  }
+
+  // Not a lookup — needs Claude.
+  if (!apiKey) {
+    appendMsg('assistant', 'No API key set. I can still do free local lookups — try "show Evie\'s visits", "Mocha\'s current meds", "latest labs for Latte", or "Mocha\'s weight". For analysis, add an API key via the status bar.');
+    return;
+  }
+  await sendToClaude(text);
+}
+
+// Send a message to Claude (paid). Assumes the user turn is already in
+// convHistory and rendered — this only handles the API call + response.
+async function sendToClaude(text) {
   $('send-btn').disabled = true;
   const typingEl = appendTyping();
   try {
@@ -460,7 +510,7 @@ export async function sendMessage() {
       appendMsg('assistant', `Sorry, I hit an error: ${msg}`);
     }
   }
-  $('send-btn').disabled = !apiKey;
+  $('send-btn').disabled = false;
 }
 
 // ── PAUSE / RESTORE SESSION ──

@@ -159,12 +159,12 @@ export function updateStatusBar() {
   if (apiKey) {
     $('apikey-dot').className = 'status-dot green';
     $('apikey-status').textContent = 'API key set';
-    $('send-btn').disabled = false;
   } else {
     $('apikey-dot').className = 'status-dot amber';
     $('apikey-status').textContent = 'No API key';
-    $('send-btn').disabled = true;
   }
+  // Send stays enabled even without a key — free local lookups don't need one.
+  $('send-btn').disabled = false;
   if (driveAccessToken) {
     // Token exists from session but not yet verified — don't show green until loadDriveFiles() confirms
     $('drive-dot').className = 'status-dot amber';
