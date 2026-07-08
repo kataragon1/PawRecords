@@ -259,7 +259,6 @@ window.openPetProfilesModal = openPetProfilesModal;
 export function renderCatFocusPills() {
   const bar = document.getElementById('cat-focus-bar');
   if (!bar || !APP_PETS.length) return;
-  bar.style.display = 'flex'; // bar starts hidden in HTML — reveal once pets are known
   bar.innerHTML = '';
 
   const label = document.createElement('span');
@@ -330,68 +329,8 @@ export function renderCatFocusPills() {
   });
   bar.appendChild(depthBtn);
 
-  // Export context button
-  const exportBtn = document.createElement('button');
-  exportBtn.style.cssText = 'font-family:\'JetBrains Mono\',monospace;font-size:0.55rem;border:1px solid var(--border);border-radius:4px;padding:0.15rem 0.45rem;cursor:pointer;background:var(--surface);color:var(--ink-muted);flex-shrink:0;';
-  exportBtn.textContent = '⎘ Export';
-  exportBtn.title = 'Export records as text to paste into Claude.ai';
-  exportBtn.addEventListener('click', async () => {
-    exportBtn.textContent = '…';
-    exportBtn.disabled = true;
-    try {
-      const prevFull = _chatFullContext;
-      setChatFullContext(true);
-      invalidateChatContext();
-      const { buildChatContext } = await import('./chat.js');
-      const ctx = await buildChatContext('full history export');
-      setChatFullContext(prevFull);
-      invalidateChatContext();
-      const cats = _chatFocusCats ? [..._chatFocusCats].join(', ') : APP_PETS.join(', ');
-      const header = `# Paw Records — ${cats}\nExported ${new Date().toLocaleDateString()}\n\nThis is a summary of veterinary records for my cat(s). Please use this as context for my questions.\n`;
-
-      let journalSection = '';
-      try {
-        const targetCats = _chatFocusCats ? [..._chatFocusCats] : APP_PETS;
-        const { _journalDocsCache: jdc } = await import('./state.js');
-        let jDocs = jdc;
-        if (!jDocs) {
-          const snap = await getDocs(collection(db, 'journal'));
-          jDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        }
-        const relevant = jDocs.filter(j => jCats(j).some(c => targetCats.includes(c)));
-        if (relevant.length) {
-          journalSection = '\n\n## Care Journal\n';
-          const byStatus = { current: [], plan: [], maybe: [], past: [] };
-          for (const j of relevant) {
-            const s = j.status || 'current';
-            if (byStatus[s]) byStatus[s].push(j);
-            else byStatus.current.push(j);
-          }
-          for (const [status, items] of Object.entries(byStatus)) {
-            if (!items.length) continue;
-            journalSection += `\n### ${status.charAt(0).toUpperCase() + status.slice(1)}\n`;
-            for (const j of items) {
-              const cats2 = jCats(j).join(', ') || '?';
-              const dose = j.dose ? ` (${j.dose})` : '';
-              const dates = j.startDate ? ` [since ${j.startDate}${j.endDate ? ' – ' + j.endDate : ''}]` : '';
-              journalSection += `- [${cats2}] ${j.list}: ${j.text}${dose}${dates}\n`;
-            }
-          }
-        }
-      } catch(je) { console.warn('Journal export failed:', je); }
-
-      const full = header + '\n' + ctx + journalSection;
-      await navigator.clipboard.writeText(full);
-      exportBtn.textContent = '✓ Copied';
-      setTimeout(() => { exportBtn.textContent = '⎘ Export'; exportBtn.disabled = false; }, 2000);
-    } catch(e) {
-      exportBtn.textContent = '⎘ Export';
-      exportBtn.disabled = false;
-      const { showAlert } = await import('./core.js');
-      showAlert('Export failed: ' + e.message, 'warning');
-    }
-  });
-  bar.appendChild(exportBtn);
+  // (The old ⎘ Export button lived here — removed; the Export/Import bar below
+  // the chat is the canonical export now.)
 
   bar.style.display = 'flex';
 }
