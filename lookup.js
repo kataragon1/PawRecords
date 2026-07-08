@@ -159,23 +159,47 @@ const LOCAL_TAG = '🔍 Local lookup (free, no API):\n\n';
 // ANSWER BUILDERS
 // ─────────────────────────────────────────────
 
-function answerVisits(text, cat) {
-  const isSearch = _contentTerms(text).length > 0;
-  const matches = searchVisits(text, cat);
+// Classify a visit record: invoice/pickup, home-logged event, or clinical.
+function _visitKind(v) {
+  if (v.docType === 'Invoice') return 'invoice';
+  if (v.source === 'home') return 'home';
+  return 'clinical';
+}
 
-  if (!matches.length) {
+// opts.includeInvoice / opts.includeHome fold those categories back in.
+export function runVisitLookup(text, cat, opts = {}) {
+  return answerVisits(text, cat, opts);
+}
+
+function answerVisits(text, cat, opts = {}) {
+  const isSearch = _contentTerms(text).length > 0;
+  const all = searchVisits(text, cat);
+
+  // Invoice pickups and home logs are hidden by default (they clutter clinical
+  // history) but counted so the UI can offer chips to reveal them.
+  let hiddenInvoice = 0, hiddenHome = 0;
+  const kept = all.filter(v => {
+    const k = _visitKind(v);
+    if (k === 'invoice') { if (opts.includeInvoice) return true; hiddenInvoice++; return false; }
+    if (k === 'home')    { if (opts.includeHome)    return true; hiddenHome++;    return false; }
+    return true;
+  });
+
+  const base = { hidden: { invoice: hiddenInvoice, home: hiddenHome }, query: text, cat, opts };
+
+  if (!kept.length && !hiddenInvoice && !hiddenHome) {
     const why = isSearch ? ' mentioning that' : '';
-    return { text: LOCAL_TAG + `No vet visits found${cat ? ' for ' + cat : ''}${why}.\n(Literal text search of visit notes — a term recorded under a name it doesn't recognize won't match. Use “🧠 Ask Claude” below for a semantic search.)` };
+    const msg = LOCAL_TAG + `No vet visits found${cat ? ' for ' + cat : ''}${why}.\n(Literal text search of visit notes — a term recorded under a name it doesn't recognize won't match. Use “🧠 Ask Claude” below for a semantic search.)`;
+    return { text: msg, header: msg, visits: [], footer: '', ...base };
   }
 
-  const shown = matches.slice(0, 12);
-  const more = matches.length > 12;
-  const header = isSearch
-    ? `${matches.length} matching visit${matches.length !== 1 ? 's' : ''}${cat ? ' for ' + cat : ''}${more ? ' (top 12 by relevance)' : ''}:`
-    : `${matches.length} visit${matches.length !== 1 ? 's' : ''}${cat ? ' for ' + cat : ''}${more ? ' (newest 12)' : ''}:`;
-  // Build a plain-text version (history/clipboard) AND a structured rows array
-  // that drives clickable rendering — each row opens the full visit record.
-  let out = LOCAL_TAG + header + '\n';
+  const shown = kept.slice(0, 12);
+  const more = kept.length > 12;
+  const head = kept.length
+    ? `${kept.length} ${isSearch ? 'matching ' : ''}visit${kept.length !== 1 ? 's' : ''}${cat ? ' for ' + cat : ''}${more ? (isSearch ? ' (top 12 by relevance)' : ' (newest 12)') : ''}:`
+    : `No clinical visits${cat ? ' for ' + cat : ''}${isSearch ? ' match' : ''} — only hidden records below.`;
+
+  let out = LOCAL_TAG + head + '\n';
   const rows = [];
   for (const v of shown) {
     const label = `${v.date || '?'}${!cat ? ' · ' + (v.cat || '?') : ''}${v.clinic ? ' · ' + v.clinic : ''}`;
@@ -188,12 +212,17 @@ function answerVisits(text, cat) {
     rows.push({ visit: v, label, body });
   }
 
-  const footer = isSearch
-    ? 'Literal search — expands common drug classes to brand/generic names, but may still miss synonyms. For a thorough read, use “🧠 Ask Claude”.'
-    : '';
-  if (footer) out += `\n\n(${footer})`;
+  const hiddenBits = [];
+  if (hiddenInvoice) hiddenBits.push(`${hiddenInvoice} pickup/invoice${hiddenInvoice !== 1 ? 's' : ''}`);
+  if (hiddenHome) hiddenBits.push(`${hiddenHome} home log${hiddenHome !== 1 ? 's' : ''}`);
+  if (hiddenBits.length) out += `\n\n(Hidden: ${hiddenBits.join(' · ')} — tap to include in the app)`;
 
-  return { text: out, header: LOCAL_TAG + header, visits: rows, footer };
+  const searchNote = isSearch
+    ? 'Literal search — expands common drug classes to brand/generic names, but may still miss synonyms.'
+    : '';
+  if (searchNote) out += `\n(${searchNote})`;
+
+  return { text: out, header: LOCAL_TAG + head, visits: rows, footer: searchNote, ...base };
 }
 
 function answerJournal(text, cat) {

@@ -397,8 +397,26 @@ export function appendMsg(role, text) {
   return div;
 }
 
+// Small chip that re-runs the lookup with an extra include-option and swaps
+// the message in place (reveals hidden invoice pickups / home logs).
+function _revealChip(labelText, local, extraOpts, oldDiv) {
+  const chip = document.createElement('button');
+  chip.textContent = labelText;
+  chip.title = 'Include these records in the results';
+  chip.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:0.58rem;padding:0.15rem 0.5rem;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--ink-dim);cursor:pointer;transition:all 0.12s;";
+  chip.addEventListener('mouseenter', () => { chip.style.borderColor = 'var(--accent)'; chip.style.color = 'var(--accent)'; });
+  chip.addEventListener('mouseleave', () => { chip.style.borderColor = 'var(--border)'; chip.style.color = 'var(--ink-dim)'; });
+  chip.addEventListener('click', async () => {
+    const m = await import('./lookup.js');
+    const updated = m.runVisitLookup(local.query, local.cat, { ...(local.opts || {}), ...extraOpts });
+    appendLocalVisits(updated, oldDiv);
+  });
+  return chip;
+}
+
 // Render a local visit lookup with clickable rows — each opens the full record.
-function appendLocalVisits(local) {
+// `replaceDiv` (optional) swaps an existing message in place (used by chips).
+function appendLocalVisits(local, replaceDiv) {
   const chatBody = $('chat-body');
   const div = document.createElement('div');
   div.className = 'msg assistant';
@@ -436,6 +454,22 @@ function appendLocalVisits(local) {
     bubble.appendChild(row);
   }
 
+  // Reveal chips for hidden invoice pickups / home logs.
+  const h = local.hidden || {};
+  const chips = [];
+  if (h.invoice && !local.opts?.includeInvoice) {
+    chips.push(_revealChip(`＋ ${h.invoice} pickup/invoice${h.invoice !== 1 ? 's' : ''}`, local, { includeInvoice: true }, div));
+  }
+  if (h.home && !local.opts?.includeHome) {
+    chips.push(_revealChip(`＋ ${h.home} home log${h.home !== 1 ? 's' : ''}`, local, { includeHome: true }, div));
+  }
+  if (chips.length) {
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.45rem;';
+    chips.forEach(c => chipRow.appendChild(c));
+    bubble.appendChild(chipRow);
+  }
+
   if (local.footer) {
     const foot = document.createElement('div');
     foot.style.cssText = 'font-size:0.6rem;color:var(--ink-muted);margin-top:0.4rem;font-style:italic;';
@@ -444,8 +478,12 @@ function appendLocalVisits(local) {
   }
 
   div.appendChild(bubble);
-  chatBody.appendChild(div);
-  chatBody.scrollTop = chatBody.scrollHeight;
+  if (replaceDiv && replaceDiv.parentNode) {
+    replaceDiv.parentNode.replaceChild(div, replaceDiv);
+  } else {
+    chatBody.appendChild(div);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
 }
 
 // Bar shown under a free local answer offering to send it to Claude for analysis.
@@ -487,8 +525,9 @@ export async function sendMessage() {
   // Try a free local lookup first — no API call, works with no key/credits.
   const local = tryLocalAnswer(text);
   if (local) {
-    // Visit lookups render as clickable rows (open the record); others as text.
-    if (local.visits && local.visits.length) appendLocalVisits(local);
+    // Visit lookups (identified by `hidden`) render as clickable rows with
+    // reveal chips; other lookups render as plain text.
+    if (local.hidden) appendLocalVisits(local);
     else appendMsg('assistant', local.text);
     convHistory.push({ role: 'assistant', content: local.text });
     if (convHistory.length >= 2) {
