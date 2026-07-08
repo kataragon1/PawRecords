@@ -216,8 +216,9 @@ export function saveCostSettings() {
   } catch(e) {}
 }
 
-export function startCacheTimer() {
-  setCacheExpiresAt(Date.now() + 5 * 60 * 1000);
+export function startCacheTimer(ttlMs = 5 * 60 * 1000) {
+  // ttlMs matches the cache TTL chosen for the request (5m quick / 1h extended).
+  setCacheExpiresAt(Date.now() + ttlMs);
   const timerEl = $('cache-timer');
   const valEl = $('cache-timer-val');
   if (!timerEl || !valEl) return;

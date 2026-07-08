@@ -6,6 +6,7 @@ import { getDocs, collection, doc, getDoc, setDoc, addDoc, deleteDoc, writeBatch
 
 import {
   APP_PETS, _petProfiles,
+  _chatFocusCats,
   convHistory, setConvHistory,
   pendingJournalItems, setPendingJournalItems,
   apiKey,
@@ -51,7 +52,11 @@ export async function ensureDataCache() {
 const JOURNAL_CACHE_TTL = 60000;
 
 export async function buildChatContext(userMessage) {
-  const targetCats = APP_PETS.length ? APP_PETS : [];
+  // Honor the cat-focus pills: a focused subset restricts context to those pets
+  // (smaller/cheaper payload). No focus = all pets. Folded into the cache key
+  // below (catsKey) so each selection caches independently.
+  const focus = _chatFocusCats ? [..._chatFocusCats].filter(c => APP_PETS.includes(c)) : null;
+  const targetCats = (focus && focus.length) ? focus : (APP_PETS.length ? APP_PETS : []);
   if (!targetCats.length) return '';
 
   const isSearchQuery = /search|find|mention|history|all visit|every time|when did|has she ever|back in|years? ago|look(ing)? for/i.test(userMessage);
@@ -276,9 +281,16 @@ Items tagged [REJECTED - DO NOT SUGGEST] were consciously decided against — ne
 Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Never omit the distinction when it matters clinically.`;
 
   const contextBlock = context || '(No records loaded yet — records will appear after files are processed)';
+  // Cache TTL is user-selectable (Quick vs Extended session):
+  //  - Quick (5m, default): cheaper write (1.25x). Best for one-off questions.
+  //  - Extended (1h): pricier write (2x) but survives long pauses; every read
+  //    within the hour is 0.1x, so far cheaper for an intermittent session.
+  const cacheControl = window._extendedCache
+    ? { type: 'ephemeral', ttl: '1h' }
+    : { type: 'ephemeral' };
   const systemBlocks = [
     { type: 'text', text: staticInstruction },
-    { type: 'text', text: contextBlock + journalInstruction, cache_control: { type: 'ephemeral' } }
+    { type: 'text', text: contextBlock + journalInstruction, cache_control: cacheControl }
   ];
 
   const model = window._useSonnet ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
@@ -290,7 +302,7 @@ Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Ne
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
+        'anthropic-beta': 'prompt-caching-2024-07-31,extended-cache-ttl-2025-04-11',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({ model, max_tokens: 1024, system: systemBlocks, messages: history })
@@ -301,7 +313,7 @@ Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Ne
         updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0, data.usage.cache_read_input_tokens||0, data.usage.cache_creation_input_tokens||0);
         if (data.usage.cache_read_input_tokens) console.log(`Cache hit: ${data.usage.cache_read_input_tokens} tokens read`);
       }
-      startCacheTimer();
+      startCacheTimer(window._extendedCache ? 60 * 60 * 1000 : 5 * 60 * 1000);
       return data.content.map(b => b.text || '').join('').trim();
     }
     const err = await res.json().catch(() => ({}));
@@ -910,6 +922,22 @@ export function initChat() {
     btn.style.color = window._useSonnet ? 'var(--accent)' : 'var(--ink-muted)';
     btn.style.borderColor = window._useSonnet ? 'var(--accent)' : 'var(--border)';
     btn.title = window._useSonnet ? 'Sonnet: deeper reasoning (more $)\nClick for Haiku' : 'Haiku: fast & cheap\nClick for Sonnet: deeper reasoning';
+  });
+
+  // Cache-mode toggle — Quick (5m) vs Extended (1h) prompt cache
+  window._extendedCache = false;
+  $('cache-mode-btn')?.addEventListener('click', () => {
+    window._extendedCache = !window._extendedCache;
+    const btn = $('cache-mode-btn');
+    btn.textContent = window._extendedCache ? '🕐1h' : '⚡5m';
+    btn.style.color = window._extendedCache ? 'var(--accent)' : 'var(--ink-muted)';
+    btn.style.borderColor = window._extendedCache ? 'var(--accent)' : 'var(--border)';
+    btn.title = window._extendedCache
+      ? 'Extended session: 1-hour cache, survives long pauses (cheaper for a long back-and-forth).\nClick for Quick.'
+      : 'Quick session: cheap 5-min cache, best for one-off questions.\nClick for Extended: 1-hour cache.';
+    showToast(window._extendedCache
+      ? 'Extended session — cache held 1 hour'
+      : 'Quick session — cache held 5 min', 'journal');
   });
 
   $('user-input').addEventListener('input', function() {

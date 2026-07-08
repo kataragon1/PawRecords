@@ -259,6 +259,7 @@ window.openPetProfilesModal = openPetProfilesModal;
 export function renderCatFocusPills() {
   const bar = document.getElementById('cat-focus-bar');
   if (!bar || !APP_PETS.length) return;
+  bar.style.display = 'flex'; // bar starts hidden in HTML — reveal once pets are known
   bar.innerHTML = '';
 
   const label = document.createElement('span');
