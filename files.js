@@ -1484,3 +1484,41 @@ window.loadDriveFiles = loadDriveFiles;
   }
 }
 window.openFlagsModal = (...args) => import('./ui.js').then(m => m.openFlagsModal?.(...args) || window._openFlagsModal?.(...args));
+
+// ── PROCESS BUTTON WIRING ──
+function _fileById(id) {
+  return (window._driveFiles || []).find(f => f.id === id);
+}
+
+{
+  const allBtn = $('process-all-btn');
+  if (allBtn) allBtn.addEventListener('click', () => {
+    const files = [...document.querySelectorAll('.file-item')]
+      .filter(el => ['unprocessed', 'failed', 'empty'].includes(el.dataset.status))
+      .map(el => _fileById(el.dataset.fileId))
+      .filter(Boolean);
+    if (!files.length) { showToast('No unprocessed files', 'warning'); return; }
+    openProcessModal(files);
+  });
+
+  const selBtn = $('process-selected-btn');
+  if (selBtn) selBtn.addEventListener('click', () => {
+    const files = [...document.querySelectorAll('.file-item-checkbox')]
+      .filter(cb => cb.checked)
+      .map(cb => _fileById(cb.dataset.fileId))
+      .filter(Boolean);
+    if (!files.length) { showToast('No files selected', 'warning'); return; }
+    openProcessModal(files);
+  });
+
+  const closeModal = () => { $('process-modal').classList.remove('open'); };
+  $('process-modal-cancel')?.addEventListener('click', closeModal);
+  $('process-modal-close')?.addEventListener('click', closeModal);
+
+  $('process-modal-confirm')?.addEventListener('click', () => {
+    const files = window._pendingProcessFiles || [];
+    if (!files.length) return;
+    closeModal();
+    startProcessingQueue(files);
+  });
+}

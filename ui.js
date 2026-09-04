@@ -24,6 +24,31 @@ import {
 } from './core.js';
 
 import { setSessionCost } from './state.js';
+import { abbreviateClinic } from './core.js';
+
+// ── VITALS PARSING (for Trends) ──
+// Weight strings vary: "8.25 lbs", "4.2 kg", "12 oz". Normalize to kg.
+function parseKgFromWeight(raw) {
+  if (!raw) return null;
+  const m = String(raw).trim().match(/([\d.]+)\s*(lbs?|lb|kgs?|kg|oz)?/i);
+  if (!m) return null;
+  const val = parseFloat(m[1]);
+  if (isNaN(val)) return null;
+  const unit = (m[2] || 'lbs').toLowerCase();
+  if (unit.startsWith('kg')) return val;
+  if (unit === 'oz') return val * 0.0283495;
+  return val * 0.453592; // lbs (default when no unit given)
+}
+
+// BCS / MCS strings look like "5/9" or "4.5/9" or "1.5/4" — take the numerator.
+function parseBCS(raw) {
+  if (!raw) return null;
+  const m = String(raw).match(/([\d.]+)\s*\/\s*\d+/);
+  if (m) return parseFloat(m[1]);
+  const n = parseFloat(raw);
+  return isNaN(n) ? null : n;
+}
+const parseMCS = parseBCS;
 
 // ── CONTEXT MENU ──
 export function showCtxMenu(e, label, items) {
@@ -483,14 +508,14 @@ export async function renderTrends(cat) {
       .map(v => ({
         date: v.date,
         visitId: v.id,
-        weight: window.parseKgFromWeight ? window.parseKgFromWeight(v.vitals?.weight, window.isCatKitten ? window.isCatKitten(v.cat, v.date) : false) : null,
-        bcs: window.parseBCS ? window.parseBCS(v.vitals?.BCS) : null,
-        mcs: window.parseMCS ? window.parseMCS(v.vitals?.muscleConditionScore) : null,
+        weight: parseKgFromWeight(v.vitals?.weight),
+        bcs: parseBCS(v.vitals?.BCS),
+        mcs: parseMCS(v.vitals?.muscleConditionScore),
         rawWeight: v.vitals?.weight || '',
         rawBCS: v.vitals?.BCS || '',
         rawMCS: v.vitals?.muscleConditionScore || '',
         source: v.source === 'home' ? 'home' : 'vet',
-        label: v.source === 'home' ? (v.chiefComplaint || 'Home') : (window.abbreviateClinic ? window.abbreviateClinic(v.clinic || '') : (v.clinic || 'Visit')),
+        label: v.source === 'home' ? (v.chiefComplaint || 'Home') : (abbreviateClinic(v.clinic || '') || v.clinic || 'Visit'),
       }))
       .filter(p => p.weight || p.bcs || p.mcs)
       .sort((a, b) => a.date.localeCompare(b.date));
