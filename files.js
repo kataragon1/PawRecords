@@ -1440,6 +1440,37 @@ function showBatchBanner(batchId, total, processed) {
 // Expose for window.loadDriveFiles reference in HTML onclick handlers
 window.loadDriveFiles = loadDriveFiles;
 
+// ── JUMP TO FILE (from a visit's "source" link) ──
+// Switches to the Files tab, clears any active status filter that might be
+// hiding the file, then scrolls to it and flashes a highlight.
+export function jumpToFileInFiles(fileId) {
+  if (!fileId) { showToast('This visit has no linked source file', 'warning'); return; }
+
+  const tab = document.querySelector('.sidebar-tab[data-tab="files"]');
+  if (tab) tab.click();
+
+  const allFilterBtn = document.querySelector('.filter-btn[data-filter="all"]');
+  if (allFilterBtn && !allFilterBtn.classList.contains('active')) allFilterBtn.click();
+
+  let attempts = 0;
+  const tryHighlight = () => {
+    const el = document.querySelector(`.file-item[data-file-id="${fileId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const prevBg = el.style.background;
+      el.style.transition = 'background 0.4s';
+      el.style.background = 'var(--accent2)';
+      setTimeout(() => { el.style.background = prevBg; }, 1600);
+      return;
+    }
+    attempts++;
+    if (attempts < 25) setTimeout(tryHighlight, 200); // wait for Drive files to load, ~5s max
+    else showToast('Could not locate that file in Drive — it may have been moved or deleted', 'warning');
+  };
+  setTimeout(tryHighlight, 150);
+}
+window.jumpToFileInFiles = jumpToFileInFiles;
+
 // ── DRIVE RECONNECT BUTTON WIRING ──
 {
   const connectBtn = $('connect-drive-btn');

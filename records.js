@@ -565,7 +565,12 @@ export function openVisitEdit(v) {
   if (linkEl) {
     if (v.driveFileIds?.[0]) {
       const fname = v.sourceFiles?.[0] || v.driveFileIds[0];
-      linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${v.driveFileIds[0]}/view" target="_blank" title="${escHtml(fname)}" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+      linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${v.driveFileIds[0]}/view" target="_blank" title="${escHtml(fname)}" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a> &nbsp;·&nbsp; <a href="#" id="popup-find-in-files" style="color:var(--accent);text-decoration:none;">Find in Files tab</a>`;
+      $('popup-find-in-files')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const { jumpToFileInFiles } = await import('./files.js');
+        jumpToFileInFiles(v.driveFileIds[0]);
+      });
     } else {
       linkEl.textContent = v.sourceFiles?.[0] || '';
     }
@@ -1260,7 +1265,12 @@ export function openVisit(visit) {
   const linkEl = document.createElement('span');
   linkEl.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:0.58rem;color:#7a6a52;';
   if (visit.driveFileIds?.[0]) {
-    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a>`;
+    linkEl.innerHTML = `<a href="https://drive.google.com/file/d/${visit.driveFileIds[0]}/view" target="_blank" style="color:var(--accent);text-decoration:none;">Open original in Drive ↗</a> &nbsp;·&nbsp; <a href="#" id="folder-find-in-files" style="color:var(--accent);text-decoration:none;">Find in Files tab</a>`;
+    linkEl.querySelector('#folder-find-in-files')?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const { jumpToFileInFiles } = await import('./files.js');
+      jumpToFileInFiles(visit.driveFileIds[0]);
+    });
   } else {
     linkEl.textContent = visit.sourceFiles?.[0] || '';
   }
