@@ -1029,4 +1029,9 @@ async function saveManualLab() {
   $('add-lab-cancel')?.addEventListener('click', closeModal);
   $('add-lab-save')?.addEventListener('click', saveManualLab);
   $('flowsheet-add-lab-btn')?.addEventListener('click', () => openAddLabModal(flowsheetCat));
+
+  // Flowsheet modal close — had no listener at all, requiring a full page reload to dismiss.
+  $('flowsheet-modal-close')?.addEventListener('click', () => {
+    $('flowsheet-modal').classList.remove('open');
+  });
 }

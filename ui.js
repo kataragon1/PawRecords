@@ -25,30 +25,53 @@ import {
 
 import { setSessionCost } from './state.js';
 import { abbreviateClinic } from './core.js';
+import { isCatKitten } from './pets.js';
 
 // ── VITALS PARSING (for Trends) ──
-// Weight strings vary: "8.25 lbs", "4.2 kg", "12 oz". Normalize to kg.
-function parseKgFromWeight(raw) {
-  if (!raw) return null;
-  const m = String(raw).trim().match(/([\d.]+)\s*(lbs?|lb|kgs?|kg|oz)?/i);
-  if (!m) return null;
-  const val = parseFloat(m[1]);
-  if (isNaN(val)) return null;
-  const unit = (m[2] || 'lbs').toLowerCase();
-  if (unit.startsWith('kg')) return val;
-  if (unit === 'oz') return val * 0.0283495;
-  return val * 0.453592; // lbs (default when no unit given)
+// Restored from the pre-refactor monolithic index.html — these were real,
+// working functions that got dropped when the app was split into ES modules
+// (the callers were rewritten to `window.parseKgFromWeight(...)` etc., but
+// the function bodies themselves were never carried over or attached to
+// window, so Trends silently broke).
+function parseKgFromWeight(w, isKitten) {
+  if (!w) return null;
+  const s = String(w);
+  // 1. Explicit kg — always trust
+  const kgMatch = s.match(/([0-9]+\.?[0-9]*)\s*(?:kgs?|kg)\b/i);
+  if (kgMatch) return parseFloat(kgMatch[1]);
+  // 2. Explicit lbs — convert to kg
+  const lbsMatch = s.match(/([0-9]+\.?[0-9]*)\s*(?:lbs?|lb)\b/i);
+  if (lbsMatch) return Math.round(parseFloat(lbsMatch[1]) / 2.20462 * 100) / 100;
+  // 3. Bare number — apply threshold unless kitten (< 1yo)
+  const n = parseFloat(s);
+  if (isNaN(n) || n <= 0) return null;
+  if (isKitten) return Math.round(n / 2.20462 * 100) / 100; // kittens: assume lbs
+  if (n > 5.5) return Math.round(n / 2.20462 * 100) / 100;  // adult: clearly lbs → convert
+  if (n >= 1.5) return n;                                     // adult: plausible kg
+  return null; // < 1.5 kg — implausible, skip
 }
 
-// BCS / MCS strings look like "5/9" or "4.5/9" or "1.5/4" — take the numerator.
-function parseBCS(raw) {
-  if (!raw) return null;
-  const m = String(raw).match(/([\d.]+)\s*\/\s*\d+/);
+function parseBCS(v) {
+  if (!v) return null;
+  // Explicit /9 scale
+  const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*9/i);
   if (m) return parseFloat(m[1]);
-  const n = parseFloat(raw);
-  return isNaN(n) ? null : n;
+  // Bare number only if unambiguously BCS range (1–9, no decimal suggesting /4 confusion)
+  const n = parseFloat(v);
+  if (!isNaN(n) && n >= 1 && n <= 9) return n;
+  return null;
 }
-const parseMCS = parseBCS;
+
+function parseMCS(v) {
+  if (!v) return null;
+  // MCS is scored /4 — match explicit /4 or /3 denominator
+  const m = String(v).match(/([0-9]+\.?[0-9]*)\s*\/\s*[34]/i);
+  if (m) return parseFloat(m[1]);
+  // Bare number only if clearly /4 range and not also a valid BCS value
+  const n = parseFloat(v);
+  if (!isNaN(n) && n >= 0 && n <= 4 && !String(v).includes('/9')) return n;
+  return null;
+}
 
 // ── CONTEXT MENU ──
 export function showCtxMenu(e, label, items) {
@@ -508,7 +531,7 @@ export async function renderTrends(cat) {
       .map(v => ({
         date: v.date,
         visitId: v.id,
-        weight: parseKgFromWeight(v.vitals?.weight),
+        weight: parseKgFromWeight(v.vitals?.weight, isCatKitten(v.cat, v.date)),
         bcs: parseBCS(v.vitals?.BCS),
         mcs: parseMCS(v.vitals?.muscleConditionScore),
         rawWeight: v.vitals?.weight || '',
