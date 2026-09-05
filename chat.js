@@ -540,7 +540,12 @@ export async function sendMessage() {
 
   // Not a lookup — needs Claude.
   if (!apiKey) {
-    appendMsg('assistant', 'No API key set. I can still do free local lookups — try "show Evie\'s visits", "Mocha\'s current meds", "latest labs for Latte", or "Mocha\'s weight". For analysis, add an API key via the status bar.');
+    // Build the example from the account's actual pets rather than a hardcoded name.
+    const p = APP_PETS[0];
+    const examples = p
+      ? `"show ${p}'s visits", "${p}'s current meds", "latest labs for ${p}", or "${p}'s weight"`
+      : `"show recent visits", "current meds", "latest labs", or "weight trend"`;
+    appendMsg('assistant', `No API key set. I can still do free local lookups — try ${examples}. For analysis, add an API key via the status bar.`);
     return;
   }
   await sendToClaude(text);

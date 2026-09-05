@@ -166,9 +166,11 @@ export function updateStatusBar() {
   // Send stays enabled even without a key — free local lookups don't need one.
   $('send-btn').disabled = false;
   if (driveAccessToken) {
-    // Token exists from session but not yet verified — don't show green until loadDriveFiles() confirms
+    // A token exists from a prior session but nothing here actually verifies
+    // it — that only happens if the user opens Files or clicks this. Don't
+    // say "connecting…", which implies something is already in progress.
     $('drive-dot').className = 'status-dot amber';
-    $('drive-status').textContent = 'Drive — connecting…';
+    $('drive-status').textContent = 'Drive — click to connect';
   } else {
     $('drive-dot').className = 'status-dot amber';
     $('drive-status').textContent = 'Drive — click Files to connect';

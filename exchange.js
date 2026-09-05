@@ -292,8 +292,8 @@ function _extractCat(raw) {
 }
 
 // Parse one journal line. Handles two formats:
-//   "medications: Prednisolone (Mocha) | 2.5mg | since 2026-04-19"  (our format)
-//   "list: meds | Prednisolone (Mocha) | 2.5mg | since 2026-04-19"  (Claude's variant)
+//   "medications: DrugName (PetName) | 2.5mg | since 2026-04-19"  (our format)
+//   "list: meds | DrugName (PetName) | 2.5mg | since 2026-04-19"  (Claude's variant)
 function _parseJournalLine(line) {
   const colonIdx = line.indexOf(':');
   if (colonIdx < 0) return null;

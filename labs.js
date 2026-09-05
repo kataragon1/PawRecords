@@ -245,6 +245,9 @@ export function openFlowsheetModal(cat, focusTest) {
     if (c === flowsheetCat) opt.selected = true;
     sel.appendChild(opt);
   });
+  // Changing cat had no listener at all — selecting a different pet did nothing.
+  // Property assignment (not addEventListener) so repeated modal opens don't stack handlers.
+  sel.onchange = () => openFlowsheetModal(sel.value);
   $('flowsheet-modal-title').textContent = flowsheetCat + ' — Lab Results';
   const body = $('flowsheet-modal-body');
   body.innerHTML = '';

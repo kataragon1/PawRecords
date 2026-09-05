@@ -76,7 +76,7 @@ function _expandTerms(terms) {
 
 // Search visits by content terms. `catFilter` (optional) restricts to one pet.
 // Class terms are expanded to their real names; best-matching first. With no
-// content terms ("show Evie's visits"), returns that pet's visits newest-first.
+// content terms ("show [pet]'s visits"), returns that pet's visits newest-first.
 export function searchVisits(query, catFilter = null) {
   if (!_allVisitsCache) return [];
   let pool = _allVisitsCache;

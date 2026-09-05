@@ -477,6 +477,8 @@ export function renderFilesList(driveFiles, statusMap) {
     filesList.appendChild(item);
   }
 
+  populateFileVisitLabels(sorted);
+
   setTimeout(() => {
     const sal = $('select-all-link');
     if (sal) sal.addEventListener('click', () => {
@@ -497,6 +499,42 @@ export function renderFilesList(driveFiles, statusMap) {
 
   $('files-actions').style.display = 'flex';
   updateProcessButtons();
+}
+
+// ── FILE → VISIT LABELS ──
+// Vet-portal filenames are often meaningless serial numbers ("Records_00123.pdf")
+// that all look alike. Since every visit already records which file(s) produced
+// it (driveFileIds), show that mapping directly on each row instead — "[Pet] ·
+// 2024-03-05" tells you what a file actually contains; the filename doesn't.
+function _fileVisitLabel(fileId) {
+  if (!_allVisitsCache) return '';
+  const matches = _allVisitsCache.filter(v => (v.driveFileIds || []).includes(fileId));
+  if (!matches.length) return '';
+  const parts = matches
+    .slice()
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .map(v => `${v.cat || '?'} ${v.date || '?'}`);
+  const shown = parts.slice(0, 3).join(', ');
+  return parts.length > 3 ? `${shown} +${parts.length - 3} more` : shown;
+}
+
+async function populateFileVisitLabels(files) {
+  if (!_allVisitsCache) {
+    try {
+      const { ensureDataCache } = await import('./chat.js');
+      await ensureDataCache();
+    } catch (e) { return; } // non-critical — rows just keep showing the filename
+  }
+  for (const file of files) {
+    const span = document.getElementById(`cats-${file.id}`);
+    if (!span) continue; // list may have re-rendered since
+    const label = _fileVisitLabel(file.id);
+    if (label) {
+      span.textContent = label;
+      span.title = 'Visit(s) this file produced';
+      span.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--accent);white-space:nowrap;";
+    }
+  }
 }
 
 // ── UPDATE PROCESS BUTTONS ──
@@ -1481,7 +1519,8 @@ export function jumpToFileInFiles(fileId) {
       el.style.background = 'var(--accent2)';
       setTimeout(() => { el.style.background = prevBg; }, 2500);
       const fullName = el.dataset.fileName || el.querySelector('.file-name')?.textContent || 'file';
-      showToast(`Found: ${fullName}`, 'journal');
+      const visitLabel = _fileVisitLabel(fileId);
+      showToast(visitLabel ? `Found: ${visitLabel} (${fullName})` : `Found: ${fullName}`, 'journal');
       return;
     }
     attempts++;
