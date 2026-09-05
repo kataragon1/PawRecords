@@ -223,8 +223,10 @@ export async function loadDriveFiles() {
   }
   const connectPrompt = $('drive-connect-prompt');
   if (connectPrompt) connectPrompt.style.display = 'none';
-  $('drive-dot').className = 'status-dot green';
-  $('drive-status').textContent = 'Drive connected';
+  // Don't claim "connected" yet — the token hasn't actually been verified
+  // against Drive. Only set green once a real API call succeeds, below.
+  $('drive-dot').className = 'status-dot amber';
+  $('drive-status').textContent = 'Drive — connecting…';
   $('files-actions').style.display = 'none';
 
   const loadStart = Date.now();
@@ -328,6 +330,9 @@ export async function loadDriveFiles() {
 
     const filesData = await filesRes.json();
     const driveFiles = filesData.files || [];
+    // A real Drive API call just succeeded — this is the actual "connected" signal.
+    $('drive-dot').className = 'status-dot green';
+    $('drive-status').textContent = 'Drive connected';
     try { sessionStorage.setItem('pr_drive_file_ids', JSON.stringify(driveFiles.map(f => f.id))); } catch(e) {}
     const statusMap = await loadFileStatuses(driveFiles.map(f => f.id));
     clearInterval(ticker); clearTimeout(timeout);
@@ -1441,16 +1446,30 @@ function showBatchBanner(batchId, total, processed) {
 window.loadDriveFiles = loadDriveFiles;
 
 // ── JUMP TO FILE (from a visit's "source" link) ──
-// Switches to the Files tab, clears any active status filter that might be
-// hiding the file, then scrolls to it and flashes a highlight.
+// Closes any open visit popup (so the Files tab is actually visible), switches
+// to Files, forces a fresh Drive fetch (a stale token can otherwise show a
+// false "connected" status and a stale list that never has the target file),
+// clears any status filter hiding it, then scrolls to it and flashes a
+// highlight — plus a toast naming the file, since similarly-named files with
+// truncated endings are hard to tell apart from the highlight alone.
 export function jumpToFileInFiles(fileId) {
   if (!fileId) { showToast('This visit has no linked source file', 'warning'); return; }
 
+  document.getElementById('record-popup')?.classList.remove('open');
+
+  // Prevent main.js's tab-click handler from also auto-loading — we force
+  // our own reload below so the file list is guaranteed fresh.
+  window._driveLoaded = true;
   const tab = document.querySelector('.sidebar-tab[data-tab="files"]');
   if (tab) tab.click();
 
   const allFilterBtn = document.querySelector('.filter-btn[data-filter="all"]');
   if (allFilterBtn && !allFilterBtn.classList.contains('active')) allFilterBtn.click();
+
+  if (driveAccessToken) {
+    window._driveLastLoaded = 0;
+    loadDriveFiles();
+  }
 
   let attempts = 0;
   const tryHighlight = () => {
@@ -1460,12 +1479,18 @@ export function jumpToFileInFiles(fileId) {
       const prevBg = el.style.background;
       el.style.transition = 'background 0.4s';
       el.style.background = 'var(--accent2)';
-      setTimeout(() => { el.style.background = prevBg; }, 1600);
+      setTimeout(() => { el.style.background = prevBg; }, 2500);
+      const fullName = el.dataset.fileName || el.querySelector('.file-name')?.textContent || 'file';
+      showToast(`Found: ${fullName}`, 'journal');
       return;
     }
     attempts++;
-    if (attempts < 25) setTimeout(tryHighlight, 200); // wait for Drive files to load, ~5s max
-    else showToast('Could not locate that file in Drive — it may have been moved or deleted', 'warning');
+    if (attempts < 70) { setTimeout(tryHighlight, 250); return; } // up to ~17.5s for a full Drive reload
+    if (!driveAccessToken) {
+      showToast('Drive is not connected — reconnect, then try again', 'warning');
+    } else {
+      showToast('Could not locate that file in Drive — it may have been moved or deleted', 'warning');
+    }
   };
   setTimeout(tryHighlight, 150);
 }
