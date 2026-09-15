@@ -1116,7 +1116,7 @@ export async function submitBatchJob(files) {
       requests.push({
         custom_id: file.id,
         params: {
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-5',
           max_tokens: 6000,
           system: importMod.getSystemExtraction(),
           messages: [{

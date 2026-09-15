@@ -266,7 +266,7 @@ export async function callExtractionClaude(messages, maxTokens = 2000) {
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: maxTokens,
       system: getSystemExtraction(),
       messages
@@ -281,7 +281,7 @@ export async function callExtractionClaude(messages, maxTokens = 2000) {
     const res2 = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system: getSystemExtraction(), messages })
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: maxTokens, system: getSystemExtraction(), messages })
     });
     if (res2.status === 429 || res2.status === 529) {
       showPauseOverlay($('progress-current').textContent);
@@ -353,7 +353,7 @@ export async function callPlainClaude(prompt, maxTokens = 1000) {
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }]
     })

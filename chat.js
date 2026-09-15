@@ -293,7 +293,7 @@ Never describe a [PLAN] or [MAYBE] item as something the cat is currently on. Ne
     { type: 'text', text: contextBlock + journalInstruction, cache_control: cacheControl }
   ];
 
-  const model = window._useSonnet ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
+  const model = window._useSonnet ? 'claude-sonnet-5' : 'claude-haiku-4-5-20251001';
   const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -337,7 +337,7 @@ export async function callClaudeRaw(messages, systemPrompt, maxTokens) {
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system: systemPrompt, messages })
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: maxTokens, system: systemPrompt, messages })
     });
     if (res.ok) {
       const data = await res.json();
