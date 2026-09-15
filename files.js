@@ -1013,7 +1013,12 @@ If nothing clinical is missing, respond exactly: NOTHING_NEW`;
       }
     } else {
       // Show diff in record popup
-      if (window.setupClassicPopup) window.setupClassicPopup();
+      // window.setupClassicPopup was never actually set anywhere, so this was
+      // a silent no-op — the popup shell never got reset before use, which
+      // could throw or show stale content if the popup last held different
+      // markup (e.g. the visit folder-view popup).
+      const { setupClassicPopup } = await import('./records.js');
+      setupClassicPopup();
       $('popup-title').textContent = `Verify: ${file.name}`;
       const popupRawText = typeof diffResult === 'string' ? diffResult.trim() : '';
       const body = $('popup-body');

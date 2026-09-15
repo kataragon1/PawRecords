@@ -388,14 +388,14 @@ export function openJournalAddItem(cats, listName) {
   });
 }
 
-export function openJournalEdit(item) {
-  const { setupClassicPopup } = window._recordsModule || {};
-  if (setupClassicPopup) {
-    setupClassicPopup();
-  } else {
-    // Fallback: call via dynamic import
-    import('./records.js').then(m => m.setupClassicPopup());
-  }
+export async function openJournalEdit(item) {
+  // window._recordsModule was never actually set anywhere, so this always fell
+  // through to the dynamic-import branch below — and since that .then() wasn't
+  // awaited, setupClassicPopup() (which wipes .record-popup-box back to an
+  // empty shell) ran as a microtask AFTER the form below was already built and
+  // the popup opened, silently blanking it every time. Await it instead.
+  const { setupClassicPopup } = await import('./records.js');
+  setupClassicPopup();
 
   const itemCats = jCats(item);
   const isNew = !!item._isNew;
