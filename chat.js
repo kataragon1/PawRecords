@@ -335,13 +335,14 @@ export async function callClaudeRaw(messages, systemPrompt, maxTokens) {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: maxTokens, system: systemPrompt, messages })
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0);
+      if (data.usage) updateSessionCost(data.usage.input_tokens||0, data.usage.output_tokens||0, data.usage.cache_read_input_tokens||0, data.usage.cache_creation_input_tokens||0);
       return { text: data.content.map(b => b.text||'').join('').trim(), stopReason: data.stop_reason };
     }
     const err = await res.json().catch(() => ({}));
@@ -652,7 +653,13 @@ export async function checkPausedSession() {
 }
 
 // ── SAVE SESSION ──
-function buildSaveSessionPrompt(journalContext, pendingContext, notesContext, conversationText, today) {
+// Split into a stable prefix (identical across every chunk within one Save
+// Session run — journal/pending/notes are computed once, before the loop)
+// and the conversation block, which genuinely differs per chunk. Caching
+// only helps when a save spans 2+ chunks; the stable part is cache_control'd
+// as its own content block so repeat chunks read it at ~0.1x instead of
+// resending it at full price each time.
+function buildSaveSessionStable(journalContext, pendingContext, notesContext, today) {
   return `You are reviewing a veterinary care session to extract ONLY genuinely new journal entries for cats: ${APP_PETS.join(', ')}.
 Be conservative — it is better to miss a marginal item than to add noise.
 
@@ -664,9 +671,6 @@ ${pendingContext}
 
 CURRENT CONTEXT NOTES:
 ${notesContext}
-
-CONVERSATION:
-${conversationText}
 
 Rules:
 - Only extract items that are NEW — not already in the existing journal or pending list above
@@ -850,6 +854,11 @@ export async function runSaveSession(resumeData) {
   let allNoteSuggestions = resumeData?.notes || [];
   const startChunk = resumeData?.nextChunk || 0;
 
+  // Built once — identical across every chunk in this run, so it's the
+  // cacheable prefix. Only matters (i.e. only gets a cache read) when the
+  // conversation splits into 2+ chunks; single-chunk saves see no difference.
+  const stablePrompt = buildSaveSessionStable(journalContext, pendingContext, notesContext, today);
+
   for (let i = startChunk; i < chunks.length; i++) {
     const chunkLabel = chunks.length > 1 ? ` (part ${i+1}/${chunks.length})` : '';
     $('save-session-btn').innerHTML = `<span class="free-dot"></span> Saving${chunkLabel}…`;
@@ -857,10 +866,13 @@ export async function runSaveSession(resumeData) {
       ? `\nALREADY EXTRACTED FROM PRIOR CHUNKS:\n${allUpdates.map(u => `${(Array.isArray(u.cats)?u.cats:[u.cat||'?']).join(', ')} / ${u.list}: ${u.text}`).join('\n')}\n`
       : '';
     const convText = priorContext + (chunks.length > 1 ? `[Conversation part ${i+1} of ${chunks.length}]\n` : '') + chunks[i];
-    const prompt = buildSaveSessionPrompt(journalContext, pendingContext, notesContext, convText, today);
+    const messageContent = [
+      { type: 'text', text: stablePrompt, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: `CONVERSATION:\n${convText}` }
+    ];
     let result;
     try {
-      result = await callClaudeRaw([{ role: 'user', content: prompt }], '', 6000);
+      result = await callClaudeRaw([{ role: 'user', content: messageContent }], '', 6000);
     } catch(err) {
       const resume = await showConfirmDialog(`Save paused on part ${i+1}/${chunks.length}`, `${err.message}\n\nItems extracted so far: ${allUpdates.length}. Resume from here?`, 'Resume', 'Cancel');
       if (resume) { await sleep(30000); i--; continue; }

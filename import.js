@@ -16,6 +16,7 @@ import {
   db, doc, getDoc, setDoc, deleteDoc, writeBatch,
   collection, getDocs, query, where,
   $, showToast, showAlert, escHtml, sleep, invalidateChatContext,
+  updateSessionCost,
 } from './core.js';
 
 import { sanitizeForFirestore, writeFileStatus, updateFileBadge } from './files.js';
@@ -253,22 +254,104 @@ export function getSystemExtraction() {
   return `You are a veterinary medical records parser. Extract structured data from vet records and return ONLY valid JSON with no markdown fences. The patient is the ANIMAL, not the owner or vet. Include synopsis (2-4 factual sentences), chiefComplaint, medications with supplement flag, procedures, labs with labGroup, and full narrative structured as HISTORY/PHYSICAL EXAM/ASSESSMENT/PLAN sections. If the record mentions the patient's date of birth or birth year, include it as "birthdate" in YYYY-MM-DD format (use YYYY-01-01 if only year is known) on the visit object. Never truncate or omit clinical data. IMPORTANT: For lab values, always output valid JSON — never use bare < or > characters in values. For results reported as "< 0.1" or "> 100", encode as the string "<0.1" or ">100". For qualitative results like "ADEQUATE" or "NORMAL", use the string as the value. Reference ranges with < or > should be set to null rather than including the operator.`;
 }
 
+// Detailed extraction rules — identical on every chunk/file within a
+// processing run (APP_PETS only changes when the household's pet list
+// changes, which is rare mid-run). Split out from runCombinedPass's prompt
+// so it can be sent as a cached system block instead of full-price in every
+// user message — a 20-file batch previously paid for this ~800-token block
+// 20+ times over.
+export function getExtractionRulesBlock() {
+  return `CRITICAL — DATE ANCHORING:
+All content in a document (clinical note, physical exam, assessments, AND all diagnostics including
+CBC, chemistry, urinalysis, endocrinology, blood pressure) shares the single Record Date from the
+document header. Use that date for every visit and every lab result unless a DIFFERENT date is
+explicitly stated for a specific result. Never leave resultDate or visitDate null.
+TWO-DIGIT YEARS: When dates use MM/DD/YY format, determine the correct 4-digit year from document
+context (invoice headers, "Record Date" fields, surrounding dates). A two-digit year of 23 = 2023,
+24 = 2024, etc. Never assign a year in the future. If the same lab values appear on two close dates
+that differ only by year (e.g. 01/23/23 and 01/23/24), this is a duplicate — use the year that
+matches other dates in the same document and flag the ambiguity.
+
+CRITICAL — CAT IDENTIFICATION:
+Cat name may not appear until page 2 or 3. "Patient" may be used instead of name. If name is
+ambiguous, use species/breed/age fields nearby to confirm. Multiple cats in household: ${APP_PETS.join(', ')||'detect from document'}.
+
+CLINIC NAME: Abbreviate the clinic name to be concise — strip generic words like "animal hospital",
+"veterinary", "vet clinic", "cat hospital". Examples: "Morrisville Cat Hospital" → "Morrisville",
+"BluePearl Emergency" → "BluePearl", "Carolina Veterinary Dermatology" → "Derm Clinic".
+
+LAB TABLE FORMAT:
+PDF extraction garbles table columns. Columns are: Test | Result | Units | Low Ref | High Ref | Qualifier
+Qualifier values: H, HIGH, L, LOW, * (asterisk) → all mean abnormal. Blank = normal.
+If qualifier says H/L/* but value appears within reference range, TRUST THE QUALIFIER — mark it abnormal.
+Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
+PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
+
+LAB GROUPING — use ONLY these canonical group names:
+  CBC — any complete blood count panel (also: Hematology, Automated CBC, IDEXX CBC, hemogram)
+  Chemistry — any chemistry/biochemistry panel (also: Chem 25, Chem 27, Total Health Profile, Comprehensive Panel)
+  Urinalysis — urine analysis panel
+  GI Panel — TLI, PLI, cobalamin, folate
+  Endocrinology — T4, TSH, Free T4, cortisol panels
+  Serology — FeLV, FIV, heartworm antibody, titers
+  PCR — any RealPCR or molecular panel
+  Fecal — parasite screens, fecal PCR, giardia antigen
+  Blood Gas — point-of-care blood gas panels
+  Coagulation — PT, PTT, coagulation panels
+BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP instead.
+
+CANONICAL TEST NAMES — always output the canonical name regardless of how the lab printed it:
+CBC: RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, RDW, WBC, Neutrophils, % Neutrophils,
+  Lymphocytes, % Lymphocytes, Monocytes, % Monocytes, Eosinophils, % Eosinophils,
+  Basophils, % Basophils, Platelets, Reticulocytes, % Reticulocytes, Reticulocyte Hemoglobin, MPV, Plateletcrit, Bands, NRBC
+Chemistry: Glucose, BUN, Creatinine, IDEXX SDMA, Phosphorus, Calcium, Sodium, Potassium,
+  Chloride, TCO2, Anion Gap, Na:K Ratio, Total Protein, Albumin, Globulin, Albumin:Globulin Ratio,
+  ALT, AST, ALP, GGT, Bilirubin - Total, Bilirubin - Conjugated, Bilirubin - Unconjugated,
+  Cholesterol, Triglycerides, Amylase, Lipase, Creatine Kinase, BUN:Creatinine Ratio,
+  Hemolysis Index, Lipemia Index, Icterus Index
+Urinalysis: Specific Gravity, pH, Urine Protein, Glucose, Ketones, Bilirubin, Blood / Hemoglobin,
+  Urobilinogen, Color, Clarity, WBC, RBC, Casts, Bacteria, Epithelial Cells, Crystals, Mucus, IDEXX Cystatin B
+Endocrinology: Total T4, Free T4, TSH, Cortisol
+GI Panel: TLI, PLI, Cobalamin, Folate, Feline Pancreatic Lipase
+Common aliases to normalize: HCT→Hematocrit, HGB→Hemoglobin, PLT→Platelets,
+  ALT (SGPT)→ALT, AST (SGOT)→AST, Alk Phosphatase→ALP, Alkphos→ALP,
+  SDMA→IDEXX SDMA, BUN/Creatinine Ratio→BUN:Creatinine Ratio, A/G Ratio→Albumin:Globulin Ratio,
+  Na/K Ratio→Na:K Ratio, TCO2 (Bicarbonate)→TCO2, Total Bilirubin→Bilirubin - Total,
+  Absolute Neutrophils→Neutrophils, Absolute Lymphocytes→Lymphocytes,
+  Absolute Monocytes→Monocytes, Absolute Eosinophils→Eosinophils, Absolute Basophils→Basophils,
+  PCV→Hematocrit, Packed Cell Volume→Hematocrit, Red Blood Cells→RBC, White Blood Cells→WBC,
+  Cobalamin (Vitamin B12)→Cobalamin, Vitamin B12→Cobalamin,
+  Pancreatic Lipase Immunoreactivity→PLI, Trypsin-Like Immunoreactivity→TLI,
+  Spec fPL→Feline Pancreatic Lipase, fPLI→Feline Pancreatic Lipase
+
+Return JSON only, no markdown:
+{"skip":false,"isAmendment":false,"cats":["Bella"],"dates":["2025-05-13"],"visits":[{"cat":"Bella","date":"2025-05-13","clinic":"City Vet","doctor":"Dr. Smith","chiefComplaint":"weight loss","synopsis":"2-4 sentence summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164,"RR":50,"BCS":"4.5/9","muscleConditionScore":"1.5/4","BP":"124/124/124 mmHg"},"narrative":"HISTORY\\n[text]\\n\\nPHYSICAL EXAM\\n[text]\\n\\nASSESSMENT\\n[text]\\n\\nPLAN\\n[text]","confidence":0.9,"flags":[]}],"labs":[{"cat":"Bella","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry","source":null}],"pcr":[],"flags":[]}
+
+INVOICES: Extract meds dispensed, vaccines given, procedures with dates. Store as docType:"Invoice". Set chiefComplaint to a brief clinical description. Set visitClass to "problem" unless vaccines-only.
+If invoice has no clinical content → {"skip":true}`;
+}
+
 // ── CLAUDE EXTRACTION API CALL ──
 export async function callExtractionClaude(messages, maxTokens = 2000) {
   if (!apiKey) throw new Error('No API key');
   await throttleCheck();
+  const systemBlocks = [
+    { type: 'text', text: getSystemExtraction() },
+    { type: 'text', text: getExtractionRulesBlock(), cache_control: { type: 'ephemeral' } }
+  ];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31',
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
       model: 'claude-sonnet-5',
       max_tokens: maxTokens,
-      system: getSystemExtraction(),
+      system: systemBlocks,
       messages
     })
   });
@@ -280,8 +363,8 @@ export async function callExtractionClaude(messages, maxTokens = 2000) {
     await sleep(wait);
     const res2 = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: maxTokens, system: getSystemExtraction(), messages })
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: maxTokens, system: systemBlocks, messages })
     });
     if (res2.status === 429 || res2.status === 529) {
       showPauseOverlay($('progress-current').textContent);
@@ -291,6 +374,9 @@ export async function callExtractionClaude(messages, maxTokens = 2000) {
     }
     if (!res2.ok) { const e2 = await res2.json().catch(()=>({})); throw new Error(e2?.error?.message||`API ${res2.status}`); }
     const d2 = await res2.json();
+    if (d2.usage) {
+      updateSessionCost(d2.usage.input_tokens || 0, d2.usage.output_tokens || 0, d2.usage.cache_read_input_tokens || 0, d2.usage.cache_creation_input_tokens || 0);
+    }
     try {
       const d2raw = d2.content.map(b=>b.text||'').join('').trim()
         .replace(/^```json\n?|^```\n?|```$/gm,'').trim()
@@ -306,8 +392,8 @@ export async function callExtractionClaude(messages, maxTokens = 2000) {
     throw new Error(err?.error?.message || `API ${res.status}`);
   }
   const data = await res.json();
-  if (data.usage && window.updateSessionCost) {
-    window.updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+  if (data.usage) {
+    updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0, data.usage.cache_read_input_tokens || 0, data.usage.cache_creation_input_tokens || 0);
   }
   const raw = data.content.map(b => b.text || '').join('').trim();
   if (data.stop_reason === 'max_tokens') {
@@ -363,8 +449,8 @@ export async function callPlainClaude(prompt, maxTokens = 1000) {
     throw new Error(err?.error?.message || `API ${res.status}`);
   }
   const data = await res.json();
-  if (data.usage && window.updateSessionCost) {
-    window.updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
+  if (data.usage) {
+    updateSessionCost(data.usage.input_tokens || 0, data.usage.output_tokens || 0);
   }
   return data.content.map(b => b.text || '').join('').trim();
 }
@@ -469,77 +555,12 @@ If it's clearly a lab continuation with no new date, return visits:[] and put la
     ? APP_PETS.filter(p => filenameLower.includes(p.toLowerCase()))
     : [];
 
+  // Detailed extraction rules (canonical test names, lab format, JSON schema,
+  // etc.) now live in getExtractionRulesBlock() as a cached system block —
+  // identical on every chunk/file in a run, so it's only sent at full price
+  // once instead of every call. This prompt keeps only what varies per call.
   const prompt = `You are a veterinary medical records processor. Known pets in this account: ${APP_PETS.join(', ')||'detect from document'}${filenameHint.length ? ` — filename suggests this may be for: ${filenameHint.join(', ')}` : ''}. The cat/patient name is the ANIMAL PATIENT listed in the patient details section (with species, breed, age), NOT the owner, vet, or clinic name.
 ${continuationHeader}
-CRITICAL — DATE ANCHORING:
-All content in a document (clinical note, physical exam, assessments, AND all diagnostics including
-CBC, chemistry, urinalysis, endocrinology, blood pressure) shares the single Record Date from the
-document header. Use that date for every visit and every lab result unless a DIFFERENT date is
-explicitly stated for a specific result. Never leave resultDate or visitDate null.
-TWO-DIGIT YEARS: When dates use MM/DD/YY format, determine the correct 4-digit year from document
-context (invoice headers, "Record Date" fields, surrounding dates). A two-digit year of 23 = 2023,
-24 = 2024, etc. Never assign a year in the future. If the same lab values appear on two close dates
-that differ only by year (e.g. 01/23/23 and 01/23/24), this is a duplicate — use the year that
-matches other dates in the same document and flag the ambiguity.
-
-CRITICAL — CAT IDENTIFICATION:
-Cat name may not appear until page 2 or 3. "Patient" may be used instead of name. If name is
-ambiguous, use species/breed/age fields nearby to confirm. Multiple cats in household: ${APP_PETS.join(', ')||'detect from document'}.
-
-CLINIC NAME: Abbreviate the clinic name to be concise — strip generic words like "animal hospital",
-"veterinary", "vet clinic", "cat hospital". Examples: "Morrisville Cat Hospital" → "Morrisville",
-"BluePearl Emergency" → "BluePearl", "Carolina Veterinary Dermatology" → "Derm Clinic".
-
-LAB TABLE FORMAT:
-PDF extraction garbles table columns. Columns are: Test | Result | Units | Low Ref | High Ref | Qualifier
-Qualifier values: H, HIGH, L, LOW, * (asterisk) → all mean abnormal. Blank = normal.
-If qualifier says H/L/* but value appears within reference range, TRUST THE QUALIFIER — mark it abnormal.
-Extract EVERY row. For "<N" values keep the string. Reference ranges vary by lab — use the ones in THIS document.
-PCR/serology results may be buried in narrative text, not in the main lab table — extract those too.
-
-LAB GROUPING — use ONLY these canonical group names:
-  CBC — any complete blood count panel (also: Hematology, Automated CBC, IDEXX CBC, hemogram)
-  Chemistry — any chemistry/biochemistry panel (also: Chem 25, Chem 27, Total Health Profile, Comprehensive Panel)
-  Urinalysis — urine analysis panel
-  GI Panel — TLI, PLI, cobalamin, folate
-  Endocrinology — T4, TSH, Free T4, cortisol panels
-  Serology — FeLV, FIV, heartworm antibody, titers
-  PCR — any RealPCR or molecular panel
-  Fecal — parasite screens, fecal PCR, giardia antigen
-  Blood Gas — point-of-care blood gas panels
-  Coagulation — PT, PTT, coagulation panels
-BLOOD PRESSURE: Do NOT put in labs array. Store systolic readings in vitals.BP instead.
-
-CANONICAL TEST NAMES — always output the canonical name regardless of how the lab printed it:
-CBC: RBC, Hematocrit, Hemoglobin, MCV, MCH, MCHC, RDW, WBC, Neutrophils, % Neutrophils,
-  Lymphocytes, % Lymphocytes, Monocytes, % Monocytes, Eosinophils, % Eosinophils,
-  Basophils, % Basophils, Platelets, Reticulocytes, % Reticulocytes, Reticulocyte Hemoglobin, MPV, Plateletcrit, Bands, NRBC
-Chemistry: Glucose, BUN, Creatinine, IDEXX SDMA, Phosphorus, Calcium, Sodium, Potassium,
-  Chloride, TCO2, Anion Gap, Na:K Ratio, Total Protein, Albumin, Globulin, Albumin:Globulin Ratio,
-  ALT, AST, ALP, GGT, Bilirubin - Total, Bilirubin - Conjugated, Bilirubin - Unconjugated,
-  Cholesterol, Triglycerides, Amylase, Lipase, Creatine Kinase, BUN:Creatinine Ratio,
-  Hemolysis Index, Lipemia Index, Icterus Index
-Urinalysis: Specific Gravity, pH, Urine Protein, Glucose, Ketones, Bilirubin, Blood / Hemoglobin,
-  Urobilinogen, Color, Clarity, WBC, RBC, Casts, Bacteria, Epithelial Cells, Crystals, Mucus, IDEXX Cystatin B
-Endocrinology: Total T4, Free T4, TSH, Cortisol
-GI Panel: TLI, PLI, Cobalamin, Folate, Feline Pancreatic Lipase
-Common aliases to normalize: HCT→Hematocrit, HGB→Hemoglobin, PLT→Platelets,
-  ALT (SGPT)→ALT, AST (SGOT)→AST, Alk Phosphatase→ALP, Alkphos→ALP,
-  SDMA→IDEXX SDMA, BUN/Creatinine Ratio→BUN:Creatinine Ratio, A/G Ratio→Albumin:Globulin Ratio,
-  Na/K Ratio→Na:K Ratio, TCO2 (Bicarbonate)→TCO2, Total Bilirubin→Bilirubin - Total,
-  Absolute Neutrophils→Neutrophils, Absolute Lymphocytes→Lymphocytes,
-  Absolute Monocytes→Monocytes, Absolute Eosinophils→Eosinophils, Absolute Basophils→Basophils,
-  PCV→Hematocrit, Packed Cell Volume→Hematocrit, Red Blood Cells→RBC, White Blood Cells→WBC,
-  Cobalamin (Vitamin B12)→Cobalamin, Vitamin B12→Cobalamin,
-  Pancreatic Lipase Immunoreactivity→PLI, Trypsin-Like Immunoreactivity→TLI,
-  Spec fPL→Feline Pancreatic Lipase, fPLI→Feline Pancreatic Lipase
-
-Return JSON only, no markdown:
-{"skip":false,"isAmendment":false,"cats":["Bella"],"dates":["2025-05-13"],"visits":[{"cat":"Bella","date":"2025-05-13","clinic":"City Vet","doctor":"Dr. Smith","chiefComplaint":"weight loss","synopsis":"2-4 sentence summary","medications":[{"name":"Prednisolone","dose":"5mg","frequency":"SID","route":"PO","continuing":true,"dispensed":false,"supplement":false}],"procedures":[{"name":"Cystocentesis","date":"2025-05-13","findings":"UA collected"}],"vitals":{"weight":"8.25 lbs","HR":164,"RR":50,"BCS":"4.5/9","muscleConditionScore":"1.5/4","BP":"124/124/124 mmHg"},"narrative":"HISTORY\\n[text]\\n\\nPHYSICAL EXAM\\n[text]\\n\\nASSESSMENT\\n[text]\\n\\nPLAN\\n[text]","confidence":0.9,"flags":[]}],"labs":[{"cat":"Bella","test":"BUN","value":16,"unit":"mg/dL","refLow":16,"refHigh":37,"abnormal":null,"resultDate":"2025-05-13","visitDate":"2025-05-13","labName":"Chemistry","labGroup":"Chemistry","source":null}],"pcr":[],"flags":[]}
-
-INVOICES: Extract meds dispensed, vaccines given, procedures with dates. Store as docType:"Invoice". Set chiefComplaint to a brief clinical description. Set visitClass to "problem" unless vaccines-only.
-If invoice has no clinical content → {"skip":true}
-
 --- FILE: ${file.name} ---
 `;
 
